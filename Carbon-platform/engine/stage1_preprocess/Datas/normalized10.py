@@ -8,31 +8,15 @@ from __future__ import annotations
 
 import argparse
 import re
-import sys
 from datetime import datetime
-from pathlib import Path
 
 import pandas as pd
 from pandas import ExcelWriter
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
-from config import STAGE1_OUTPUT_DIR, pick_first_existing
-
-
-# Inputs remain CLI-overridable, but their default locations now come from the
-# centralized DATA_DIR configuration.
-DEFAULT_INPUT = str(
-    pick_first_existing(
-        STAGE1_OUTPUT_DIR / "stage1_02_cleaned.xlsx",
-        STAGE1_OUTPUT_DIR / "merged_WT_ELEC_DH_S3C15.xlsx",
-    )
-)
-DEFAULT_OUTPUT = str(
-    STAGE1_OUTPUT_DIR / f"normalized_emission_factor_mapping_final_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-)
+# Inputs (defaults preserved; can be overridden via CLI)
+DEFAULT_INPUT = r"engine/stage1_preprocess/Datas\merged_WT_ELEC_DH_S3C15_20260225_145121.xlsx"
+DEFAULT_OUTPUT = f"normalized_emission_factor_mapping_final_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
 
 
 # Currency normalization dictionary

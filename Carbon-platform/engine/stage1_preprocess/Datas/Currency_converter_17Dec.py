@@ -2,29 +2,15 @@ from __future__ import annotations
 
 import argparse
 import re
-import sys
 from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from config import STAGE1_OUTPUT_DIR, pick_first_existing
-
 
 # === SETTINGS (defaults preserved; can be overridden via CLI) ===
-DEFAULT_INPUT = str(
-    pick_first_existing(
-        STAGE1_OUTPUT_DIR / "stage1_03_normalized.xlsx",
-        STAGE1_OUTPUT_DIR / "normalized_emission_factor_mapping_final.xlsx",
-    )
-)
-DEFAULT_OUTPUT = str(
-    STAGE1_OUTPUT_DIR / f"normalized_emission_factor_mapping_with_spend_euro_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-)
+DEFAULT_INPUT = "normalized_emission_factor_mapping_final_20260225_145153.xlsx"
+DEFAULT_OUTPUT = f"normalized_emission_factor_mapping_with_spend_euro_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
 
 
 # === ECB 2025 AVERAGE EXCHANGE RATES (1 unit currency -> EUR) ===

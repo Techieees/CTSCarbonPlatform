@@ -5,18 +5,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
-import sys
-from pathlib import Path
-
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from config import STAGE1_BUSINESS_TRAVEL_DIR
 
 # File paths
-data_path = os.path.join(str(STAGE1_BUSINESS_TRAVEL_DIR), "cleaned_source_Raw_Data.xlsx")
-output_dir = str(STAGE1_BUSINESS_TRAVEL_DIR)
+data_path = r"C:\Users\FlorianDemir\Desktop\Business Travel_MGMT\January 2025(WholeYear)\cleaned_source_Raw_Data.xlsx"
+output_dir = r"C:\Users\FlorianDemir\Desktop\Business Travel_MGMT\January 2025(WholeYear)"
 os.makedirs(output_dir, exist_ok=True)
 
 # Read the data

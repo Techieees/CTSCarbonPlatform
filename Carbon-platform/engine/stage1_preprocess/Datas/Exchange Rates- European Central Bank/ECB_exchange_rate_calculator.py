@@ -1,15 +1,10 @@
 import pandas as pd
 from pathlib import Path
-import sys
-
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from config import STAGE1_EXCHANGE_RATE_WORKBOOK
 
 # === FILE PATH ===
-file_path = STAGE1_EXCHANGE_RATE_WORKBOOK
+file_path = Path(
+    r"C:\Users\FlorianDemir\Desktop\Desktop- August\Datas\Exchange Rates- European Central Bank\Exchange_Rates_European_Central_Bank.xlsx"
+)
 
 # === LOAD FILE ===
 df = pd.read_excel(file_path)
