@@ -1,0 +1,113 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h2 class="mb-1">Carbon Accounting</h2>
+      <div class="text-muted">Reporting year: {{ year }}</div>
+    </div>
+    <a class="btn btn-ghost" href="{{ url_for('home') }}">
+      <i class="fas fa-arrow-left me-1"></i>Back to Overview
+    </a>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-4">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="text-muted">Total emissions</div>
+          <div class="display-6 mt-1">{{ totals.total }} <span class="text-muted fs-5">tCO₂e</span></div>
+          <div class="small text-muted mt-2">Computed from latest mapping outputs per category (sheet).</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-8">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between">
+            <h5 class="mb-0">Emissions by scope</h5>
+            <span class="badge bg-light text-dark">tCO₂e</span>
+          </div>
+          <div class="mt-3 chart-surface">
+            <div id="scopeChart" class="chart-host chart-host--sm"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mt-1">
+    <div class="col-md-4">
+      <div class="card">
+        <div class="card-body">
+          <div class="text-muted">Scope 1</div>
+          <div class="h2 mb-0">{{ totals.scope1 }} <span class="text-muted fs-6">tCO₂e</span></div>
+          <div class="small text-muted mt-1">Direct emissions from owned or controlled sources.</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card">
+        <div class="card-body">
+          <div class="text-muted">Scope 2</div>
+          <div class="h2 mb-0">{{ totals.scope2 }} <span class="text-muted fs-6">tCO₂e</span></div>
+          <div class="small text-muted mt-1">Indirect emissions from purchased energy generation.</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card">
+        <div class="card-body">
+          <div class="text-muted">Scope 3</div>
+          <div class="h2 mb-0">{{ totals.scope3 }} <span class="text-muted fs-6">tCO₂e</span></div>
+          <div class="small text-muted mt-1">Other indirect value chain emissions.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row mt-4">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="fas fa-layer-group me-2"></i>Category totals (latest)</h5>
+        </div>
+        <div class="card-body">
+          {% if by_sheet %}
+          <div class="table-responsive">
+            <table class="table table-hover align-middle">
+              <thead>
+                <tr>
+                  <th>Category (sheet)</th>
+                  <th>Scope</th>
+                  <th class="text-end">tCO₂e</th>
+                  <th class="text-muted text-end">Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for r in by_sheet %}
+                <tr>
+                  <td>{{ r.sheet }}</td>
+                  <td class="text-muted">{{ r.scope or '' }}</td>
+                  <td class="text-end fw-semibold">{{ r.tco2e }}</td>
+                  <td class="text-muted text-end">{{ r.updated_at }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="text-muted">No mapping results yet. Go to Dashboard and run “Map now”.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script id="carbon-accounting-scope-chart-data" type="application/json">{{ {"labels": ["Scope 1", "Scope 2", "Scope 3"], "values": [totals.scope1, totals.scope2, totals.scope3], "seriesName": "tCO₂e", "tooltipSuffix": " tCO₂e", "height": 280}|tojson }}</script>
+{% endblock %} 
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<script type="module" src="{{ url_for('static', filename='js/charts/init_charts.js') }}"></script>
+{% endblock %}

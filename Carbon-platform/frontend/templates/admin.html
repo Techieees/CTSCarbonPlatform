@@ -1,0 +1,326 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Panel - GHG Data Collection System{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">
+                        <i class="fas fa-cog me-2"></i>Administration Panel
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">Manage users, review mapping activity, and monitor platform usage.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <i class="fas fa-users" style="font-size: 2rem; color: var(--secondary-color);"></i>
+                    <h4 class="mt-2">{{ users|length }}</h4>
+                    <p class="text-muted mb-0">Total Users</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <i class="fas fa-file-excel" style="font-size: 2rem; color: var(--success-color);"></i>
+                    <h4 class="mt-2">{{ mapping_runs|length }}</h4>
+                    <p class="text-muted mb-0">Total Mapping Runs</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <i class="fas fa-building" style="font-size: 2rem; color: var(--warning-color);"></i>
+                    <h4 class="mt-2">{{ users|selectattr('company_name')|map(attribute='company_name')|unique|list|length }}</h4>
+                    <p class="text-muted mb-0">Active Companies</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <i class="fas fa-calendar-check" style="font-size: 2rem; color: var(--accent-color);"></i>
+                    <h4 class="mt-2">{{ recent_admin_submissions_count }}</h4>
+                    <p class="text-muted mb-0">This Week</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Dashboard Chart -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">
+                        <i class="fas fa-chart-bar me-2"></i>Company Mapping Coverage
+                    </h4>
+                    <form id="monthForm" class="d-flex align-items-center gap-2">
+                        <label for="monthSelect" class="form-label mb-0 me-2">Month:</label>
+                        <select id="monthSelect" name="month" class="form-select form-select-sm" style="width: auto;">
+                            {% for month in available_months %}
+                                <option value="{{ month }}" {% if month == selected_month %}selected{% endif %}>{{ month }}</option>
+                            {% endfor %}
+                        </select>
+                    </form>
+                </div>
+                <div class="card-body">
+                    <div class="chart-surface">
+                        <div id="companyChart" class="chart-host chart-host--md"></div>
+                    </div>
+                    <div class="table-responsive mt-4">
+                        <table class="table table-bordered table-sm align-middle text-center">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Company</th>
+                                    <th>Month</th>
+                                    <th>Mapped Categories</th>
+                                    <th>Available Categories</th>
+                                    <th>Coverage</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in submission_stats %}
+                                <tr>
+                                    <td>{{ row.company }}</td>
+                                    <td>{{ row.month }}</td>
+                                    <td>{{ row.submitted }}</td>
+                                    <td>{{ row.expected }}</td>
+                                    <td><span class="badge bg-{{ 'success' if row.rate >= 100 else 'warning' }}">{{ row.rate }}%</span></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Users Management -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-users me-2"></i>User Management
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Email</th>
+                                    <th>Company</th>
+                                    <th>Role</th>
+                                    <th>Registration Date</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for user in users %}
+                                <tr>
+                                    <td>
+                                        <i class="fas fa-envelope me-2 text-muted"></i>
+                                        {{ user.email }}
+                                    </td>
+                                    <td>
+                                        <i class="fas fa-building me-2 text-primary"></i>
+                                        {{ user.company_name }}
+                                    </td>
+                                    <td>
+                                        {% if user.is_admin %}
+                                        <span class="badge bg-danger">Admin</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">User</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ user.created_at.strftime('%Y-%m-%d') }}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-info js-view-user" data-user-id="{{ user.id }}">
+                                            <i class="fas fa-eye me-1"></i>View
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-warning js-edit-user" data-user-id="{{ user.id }}">
+                                            <i class="fas fa-edit me-1"></i>Edit
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mapping Overview -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-bolt me-2"></i>Recent Mapping Runs
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Company</th>
+                                    <th>Category</th>
+                                    <th>Run Date</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for submission in mapping_runs[:20] %}
+                                <tr>
+                                    <td>
+                                        <i class="fas fa-building me-2 text-primary"></i>
+                                        {{ submission.company_name }}
+                                    </td>
+                                    <td>
+                                        <i class="fas fa-file-excel me-2 text-success"></i>
+                                        {{ submission.sheet_name }}
+                                    </td>
+                                    <td>{{ submission.created_at.strftime('%Y-%m-%d %H:%M') if submission.created_at else '' }}</td>
+                                    <td>
+                                        {% if submission.status == 'succeeded' %}
+                                            <span class="badge bg-success">Succeeded</span>
+                                        {% elif submission.status == 'failed' %}
+                                            <span class="badge bg-danger">Failed</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ submission.status }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if submission.status == 'succeeded' and submission.output_path %}
+                                        <a class="btn btn-sm btn-outline-success" href="{{ url_for('api_mapping_download', run_id=submission.id) }}">
+                                            <i class="fas fa-download me-1"></i>Download
+                                        </a>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="logo-scroller-container">
+        <div class="logo-scroller">
+            {% for logo in logos %}
+                <img src="{{ logo.src }}" alt="{{ logo.alt }}">
+            {% endfor %}
+            {% for logo in logos %}
+                <img src="{{ logo.src }}" alt="{{ logo.alt }}">
+            {% endfor %}
+        </div>
+    </div>
+</div>
+<script id="admin-chart-data" type="application/json">{{ chart_data|tojson }}</script>
+
+<!-- User Details Modal -->
+<div class="modal fade" id="userModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">User Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="userDetails">
+                <!-- Content will be loaded here -->
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.js-view-user').forEach((btn) => {
+    btn.addEventListener('click', () => viewUser(Number(btn.getAttribute('data-user-id') || '0')));
+});
+
+document.querySelectorAll('.js-edit-user').forEach((btn) => {
+    btn.addEventListener('click', () => editUser(Number(btn.getAttribute('data-user-id') || '0')));
+});
+
+function viewUser(userId) {
+    document.getElementById('userDetails').innerHTML = `
+        <div class="text-center py-4">
+            <i class="fas fa-spinner fa-spin" style="font-size: 2rem; color: var(--secondary-color);"></i>
+            <p class="mt-3">Loading user details...</p>
+        </div>
+    `;
+    
+    const modal = new bootstrap.Modal(document.getElementById('userModal'));
+    modal.show();
+}
+
+function editUser(userId) {
+    // Implementation for editing user
+    alert('Edit user functionality would be implemented here');
+}
+
+document.getElementById('monthSelect').addEventListener('change', function() {
+    document.getElementById('monthForm').submit();
+});
+</script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<script type="module" src="{{ url_for('static', filename='js/charts/init_charts.js') }}"></script>
+{% endblock %}
+
+<style>
+.logo-scroller-container {
+  width: 100%;
+  overflow: hidden;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  margin: 0 auto;
+}
+
+.logo-scroller {
+  display: flex;
+  align-items: center;
+  gap: 40px;
+  animation: scroll-logos 30s linear infinite;
+  width: max-content;
+}
+
+.logo-scroller img {
+  height: 60px;
+  object-fit: contain;
+  filter: grayscale(0.2);
+  transition: filter 0.3s;
+}
+.logo-scroller img:hover {
+  filter: grayscale(0) drop-shadow(0 0 8px #aaa);
+}
+
+@keyframes scroll-logos {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+</style> 

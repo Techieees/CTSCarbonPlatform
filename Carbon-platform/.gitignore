@@ -1,0 +1,42 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Data and large files
+data/
+*.xlsx
+*.xls
+*.xlsb
+*.csv
+*.zip
+
+# Python cache and tooling
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local runtime files
+instance/
+uploads/
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,280 @@
+:root {
+  --mouse-x: 50vw;
+  --mouse-y: 50vh;
+}
+
+:where([data-parallax-scope]) {
+  --mx: 0;
+  --my: 0;
+}
+
+.lp-hero {
+  --hero-parallax-x: 0px;
+  --hero-parallax-y: 0px;
+}
+
+.cursor-light {
+  position: fixed;
+  inset: 0;
+  z-index: 12;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      400px circle at var(--mouse-x) var(--mouse-y),
+      rgba(255, 255, 255, 0.08),
+      rgba(255, 255, 255, 0.04) 20%,
+      transparent 60%
+    );
+  mix-blend-mode: screen;
+  opacity: 1;
+  transition: opacity 0.25s ease;
+}
+
+.hero-logo-background,
+.hero-logo-grid {
+  transition: transform 0.22s ease-out, opacity 0.22s ease-out;
+  will-change: transform, opacity;
+}
+
+.hero-logo-background {
+  transform: translate3d(calc(var(--hero-parallax-x) * 0.35), calc(var(--hero-parallax-y) * 0.35), 0);
+}
+
+.hero-logo-grid {
+  transform: translate3d(calc(var(--hero-parallax-x) * 0.2), calc(var(--hero-parallax-y) * 0.2), 0);
+}
+
+.hero-premium-orb {
+  position: relative;
+  width: clamp(180px, 24vw, 320px);
+  max-width: min(100%, 320px);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  z-index: 1;
+  pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background:
+    radial-gradient(circle at 32% 30%, rgba(255, 255, 255, 0.46), rgba(255, 255, 255, 0.08) 22%, transparent 46%),
+    radial-gradient(circle at 70% 72%, rgba(14, 165, 233, 0.22), transparent 55%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04));
+  box-shadow:
+    0 24px 80px rgba(37, 99, 235, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.26);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  will-change: transform, opacity;
+  margin-inline: auto;
+  transform: translate3d(var(--hero-parallax-x), var(--hero-parallax-y), 0) rotate(0deg);
+  animation: premium-hero-orb 9s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+.hero-premium-orb img {
+  position: relative;
+  z-index: 2;
+  width: 62%;
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 12px 28px rgba(14, 165, 233, 0.16));
+}
+
+.hero-premium-orb::before,
+.hero-premium-orb::after {
+  content: "";
+  position: absolute;
+  inset: 12%;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.hero-premium-orb::before {
+  inset: 8%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  opacity: 0.85;
+}
+
+.hero-premium-orb::after {
+  inset: 20%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.34), transparent 62%);
+  filter: blur(10px);
+  opacity: 0.65;
+}
+
+:is(button, .btn, a.button):not(.btn-close):not(.navbar-toggler) {
+  --button-mouse-x: 50%;
+  --button-mouse-y: 50%;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+:is(button, .btn, a.button):not(.btn-close):not(.navbar-toggler)::before,
+:is(button, .btn, a.button):not(.btn-close):not(.navbar-toggler)::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+:is(button, .btn, a.button):not(.btn-close):not(.navbar-toggler)::before {
+  background: radial-gradient(
+    circle at var(--button-mouse-x) var(--button-mouse-y),
+    rgba(255, 255, 255, 0.34),
+    rgba(255, 255, 255, 0.12) 18%,
+    transparent 60%
+  );
+  mix-blend-mode: screen;
+  transform: scale(0.84);
+}
+
+:is(button, .btn, a.button):not(.btn-close):not(.navbar-toggler)::after {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    0 0 24px rgba(255, 255, 255, 0.08);
+  transform: scale(0.98);
+}
+
+:is(button, .btn, a.button):not(.btn-close):not(.navbar-toggler):is(:hover, :focus-visible, .is-premium-lit) {
+  transform: translateY(-2px) scale(1.02);
+}
+
+:is(button, .btn, a.button):not(.btn-close):not(.navbar-toggler):is(:hover, :focus-visible, .is-premium-lit)::before,
+:is(button, .btn, a.button):not(.btn-close):not(.navbar-toggler):is(:hover, :focus-visible, .is-premium-lit)::after {
+  opacity: 1;
+  transform: scale(1);
+}
+
+:is(.card, .glass-card, .lp-feature, .mock, .lp-cta, .logo-marquee, .list-group-item, .lp-kicker, .lp-stat) {
+  --fx-local-x: 50%;
+  --fx-local-y: 50%;
+  position: relative;
+  isolation: isolate;
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow:
+    0 20px 60px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: transform 0.22s ease, box-shadow 0.22s ease, opacity 0.22s ease;
+}
+
+:is(.card, .lp-feature, .mock, .list-group-item, .lp-kicker, .lp-stat)::before,
+:is(.card, .lp-feature, .mock, .list-group-item, .lp-kicker, .lp-stat)::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+:is(.card, .lp-feature, .mock, .list-group-item, .lp-kicker, .lp-stat)::before {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 38%),
+    radial-gradient(
+      220px circle at var(--fx-local-x) var(--fx-local-y),
+      rgba(255, 255, 255, 0.14),
+      transparent 65%
+    );
+  opacity: 0.55;
+  transform: translateZ(0);
+}
+
+:is(.card, .lp-feature, .mock, .list-group-item, .lp-kicker, .lp-stat)::after {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 0 32px rgba(37, 99, 235, 0.08);
+  opacity: 0;
+  transform: scale(0.985);
+}
+
+:is(.card, .glass-card, .lp-feature, .mock, .lp-cta, .logo-marquee, .list-group-item, .lp-kicker, .lp-stat):is(:hover, :focus-within, .is-premium-lit) {
+  transform: translateY(-4px);
+  box-shadow:
+    0 28px 72px rgba(15, 23, 42, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+
+:is(.card, .lp-feature, .mock, .list-group-item, .lp-kicker, .lp-stat):is(:hover, :focus-within, .is-premium-lit)::before {
+  opacity: 0.85;
+}
+
+:is(.card, .lp-feature, .mock, .list-group-item, .lp-kicker, .lp-stat):is(:hover, :focus-within, .is-premium-lit)::after {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.lp-feature,
+.mock,
+.lp-cta {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.05));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+@keyframes premium-hero-orb {
+  0%,
+  18%,
+  100% {
+    transform: translate3d(var(--hero-parallax-x), var(--hero-parallax-y), 0) rotate(0deg) scale(1);
+  }
+
+  34% {
+    transform: translate3d(var(--hero-parallax-x), var(--hero-parallax-y), 0) rotate(720deg) scale(1.03);
+  }
+
+  48% {
+    transform: translate3d(var(--hero-parallax-x), var(--hero-parallax-y), 0) rotate(-18deg) scale(0.995);
+  }
+
+  62% {
+    transform: translate3d(var(--hero-parallax-x), var(--hero-parallax-y), 0) rotate(0deg) scale(1);
+  }
+}
+
+@media (max-width: 767.98px), (pointer: coarse) {
+  .cursor-light,
+  .hero-premium-orb,
+  :is(button, .btn, a.button):not(.btn-close):not(.navbar-toggler)::before,
+  :is(button, .btn, a.button):not(.btn-close):not(.navbar-toggler)::after,
+  :is(.card, .lp-feature, .mock, .list-group-item, .lp-kicker, .lp-stat)::before,
+  :is(.card, .lp-feature, .mock, .list-group-item, .lp-kicker, .lp-stat)::after {
+    display: none;
+  }
+
+  .hero-logo-background,
+  .hero-logo-grid,
+  :is(.card, .glass-card, .lp-feature, .mock, .lp-cta, .logo-marquee, .list-group-item, .lp-kicker, .lp-stat) {
+    transform: none !important;
+  }
+
+  :is(button, .btn, a.button):not(.btn-close):not(.navbar-toggler):is(:hover, :focus-visible, .is-premium-lit) {
+    transform: translateY(-1px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cursor-light {
+    opacity: 0.35;
+  }
+
+  .hero-premium-orb,
+  .hero-logo-background,
+  .hero-logo-grid,
+  :is(button, .btn, a.button):not(.btn-close):not(.navbar-toggler),
+  :is(.card, .glass-card, .lp-feature, .mock, .lp-cta, .logo-marquee, .list-group-item, .lp-kicker, .lp-stat) {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}

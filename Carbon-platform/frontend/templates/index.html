@@ -1,0 +1,400 @@
+{% extends "base.html" %}
+
+{% block title %}GHG Data Collection System - Home{% endblock %}
+
+{% block content %}
+<section class="lp-hero" data-parallax-scope>
+    <div class="lp-grid" aria-hidden="true"></div>
+    <div class="hero-logo-background" aria-hidden="true">
+        <div class="hero-logo-grid">
+            <img src="{{ url_for('static', filename='images/Logos/CTS_Group_Logo_documents.png') }}" alt="" loading="lazy" decoding="async" />
+            <img src="{{ url_for('static', filename='images/Logos/CTS-VDC_Logo_documents.png') }}" alt="" loading="lazy" decoding="async" />
+            <img src="{{ url_for('static', filename='images/Logos/CTS_Nordics_Logo_documents.png') }}" alt="" loading="lazy" decoding="async" />
+            <img src="{{ url_for('static', filename='images/Logos/Navitas_Nordics_Logo_documents.png') }}" alt="" loading="lazy" decoding="async" />
+            <img src="{{ url_for('static', filename='images/Logos/BIMMS_Logo_Tagline_documents.png') }}" alt="" loading="lazy" decoding="async" />
+            <img src="{{ url_for('static', filename='images/Logos/Caerus_Logo_documents.png') }}" alt="" loading="lazy" decoding="async" />
+            <img src="{{ url_for('static', filename='images/Logos/Gapit_Nordics_Logo_documents.png') }}" alt="" loading="lazy" decoding="async" />
+            <img src="{{ url_for('static', filename='images/Logos/SD_Nordics_Logo_documents.png') }}" alt="" loading="lazy" decoding="async" />
+            <img src="{{ url_for('static', filename='images/Logos/Velox_Nordics_Logo_documents.png') }}" alt="" loading="lazy" decoding="async" />
+            <img src="{{ url_for('static', filename='images/Logos/QEC_Nordics_Logo_documents.png') }}" alt="" loading="lazy" decoding="async" />
+            <img src="{{ url_for('static', filename='images/Logos/Mecwide_Nordics_Logo_documents.png') }}" alt="" loading="lazy" decoding="async" />
+            <img src="{{ url_for('static', filename='images/Logos/NordicEPOD-logo-documents.png') }}" alt="" loading="lazy" decoding="async" />
+        </div>
+    </div>
+    <div class="container">
+        <div class="lp-hero-inner lp-hero-inner--hero">
+            <div class="lp-hero-copy">
+                <div class="lp-kicker" data-reveal>
+                    <span class="dot" aria-hidden="true"></span>
+                    Designed and developed by the Sustainability Team (Florian Demir and Marta Gulman)
+                </div>
+
+                <h1 class="lp-title" data-reveal>
+                    An internal carbon platform for CTS Group<br/> 
+                </h1>
+
+                <p class="lp-subtitle" data-reveal>
+                    Collect structured activity data from all subsidiaries, validate inputs, and deliver clean, auditable outputs.
+                </p>
+
+                <div class="lp-cta-row" data-reveal>
+                    {% if not current_user.is_authenticated %}
+                        <a class="btn btn-primary" href="{{ url_for('register') }}">
+                            Create account
+                        </a>
+                        <a class="btn btn-ghost" href="{{ url_for('login') }}">
+                            Sign in
+                        </a>
+                    {% else %}
+                        <a class="btn btn-primary" href="{{ url_for('dashboard') }}">
+                            Open data entry
+                        </a>
+                        <a class="btn btn-ghost" href="{{ url_for('carbon_accounting') }}">
+                            View carbon accounting
+                        </a>
+                    {% endif %}
+                </div>
+
+                <div class="lp-trust" data-reveal>
+                    <div class="lp-stat">
+                        <strong>Secure by design</strong>
+                        <span>Role based access and controlled workbook access</span>
+                    </div>
+                    <div class="lp-stat">
+                        <strong>Excel-native</strong>
+                        <span>Enter, validate, and export workbook data with confidence</span>
+                    </div>
+                    <div class="lp-stat">
+                        <strong>Audit-ready</strong>
+                        <span>Clear lineage from input files to aggregated outputs</span>
+                    </div>
+                </div>
+            </div>
+            <div class="lp-hero-visual" aria-hidden="true">
+                <div class="hero-premium-orb">
+                    <img src="{{ url_for('mouse_symbol_image') }}" alt="" loading="eager" decoding="async">
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="lp-section lp-preview" data-parallax-scope>
+    <div class="container">
+        <div class="lp-split">
+            <div class="lp-copy" data-reveal>
+                <div class="eyebrow">Preview</div>
+                <h3>At-a-glance progress, clean structure.</h3>
+                <p>
+                    Lightweight cards that summarize collection health, reporting status, and automation readiness—designed to stay readable while your logo pattern animates in the background.
+                </p>
+            </div>
+
+            <div class="lp-right" aria-label="Product preview" data-reveal>
+                <div class="lp-float">
+                    <article class="glass-card gc-1" role="group" aria-label="Collection status">
+                        <div class="gc-top">
+                            <span class="gc-pill"><span class="gc-dot" aria-hidden="true"></span>Collection</span>
+                            <span class="gc-badge good">Healthy</span>
+                        </div>
+                        <div class="gc-body">
+                            <div class="gc-row">
+                                <div class="gc-label">Subsidiaries</div>
+                                <div class="gc-value">28</div>
+                            </div>
+                            <div class="gc-row">
+                                <div class="gc-label">Latest cycle</div>
+                                <div class="gc-value">On track</div>
+                            </div>
+                            <div class="gc-row">
+                                <div class="gc-label">Validation</div>
+                                <div class="gc-badge good">Passing</div>
+                            </div>
+                        </div>
+                    </article>
+
+                    <article class="glass-card gc-2" role="group" aria-label="Reporting snapshot">
+                        <div class="gc-top">
+                            <span class="gc-pill"><span class="gc-dot" aria-hidden="true"></span>Reporting</span>
+                            <span class="gc-badge warn">Review</span>
+                        </div>
+                        <div class="gc-body">
+                            <div class="gc-row">
+                                <div class="gc-label">Scope mix</div>
+                                <div class="gc-value">1 / 2 / 3</div>
+                            </div>
+                            <div class="gc-row">
+                                <div class="gc-label">Exports</div>
+                                <div class="gc-value">Categories</div>
+                            </div>
+                            <div class="gc-row">
+                                <div class="gc-label">Traceability</div>
+                                <div class="gc-badge good">Strong</div>
+                            </div>
+                        </div>
+                    </article>
+
+                    <article class="glass-card gc-3" role="group" aria-label="Pipeline automation">
+                        <div class="gc-top">
+                            <span class="gc-pill"><span class="gc-dot" aria-hidden="true"></span>Automation</span>
+                            <span class="gc-badge good">Ready</span>
+                        </div>
+                        <div class="gc-body">
+                            <div class="gc-row">
+                                <div class="gc-label">Stage 1</div>
+                                <div class="gc-badge good">Normalized</div>
+                            </div>
+                            <div class="gc-row">
+                                <div class="gc-label">Stage 2</div>
+                                <div class="gc-badge good">Mapped</div>
+                            </div>
+                            <div class="gc-row">
+                                <div class="gc-label">Downloads</div>
+                                <div class="gc-value">One click</div>
+                            </div>
+                        </div>
+                    </article>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="features" class="lp-section">
+    <div class="container">
+        <div class="text-center">
+            <div class="eyebrow" data-reveal>Features</div>
+            <h2 data-reveal>A single source of truth for all your sustainability data.</h2>
+            <p class="lead" data-reveal>
+                A focused user experience with clear checks and well-structured outputs.
+            </p>
+        </div>
+
+        <div class="lp-features">
+            <div class="lp-feature" data-reveal>
+                <div class="icon" aria-hidden="true"><i class="fas fa-shield-alt"></i></div>
+                <h3>Secure & reliable</h3>
+                <p>Authentication, role-based access, and controlled workbook access across companies.</p>
+            </div>
+            <div class="lp-feature" data-reveal>
+                <div class="icon" aria-hidden="true"><i class="fas fa-file-excel"></i></div>
+                <h3>Excel-native workflows</h3>
+                <p>Work directly against workbook schemas, validate structure, and keep data entry consistent.</p>
+            </div>
+            <div class="lp-feature" data-reveal>
+                <div class="icon" aria-hidden="true"><i class="fas fa-chart-bar"></i></div>
+                <h3>Reporting that holds up</h3>
+                <p>Aggregate outputs with a clear trail from raw inputs to final results.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="product" class="lp-section" style="padding-top: 0;">
+    <div class="container">
+        <div class="lp-split">
+            <div class="lp-copy" data-reveal>
+                <h3>Clear data collection that eliminates repeated clarification.</h3>
+                <p>
+                    A consistent submission process with validations that reduce clarification loops.
+                </p>
+                <ul class="lp-bullets">
+                    <li><span class="check" aria-hidden="true"><i class="fas fa-check" style="font-size:12px;"></i></span>Schema-driven data capture</li>
+                    <li><span class="check" aria-hidden="true"><i class="fas fa-check" style="font-size:12px;"></i></span>Quality checks before storage</li>
+                    <li><span class="check" aria-hidden="true"><i class="fas fa-check" style="font-size:12px;"></i></span>Consistent exports for downstream accounting</li>
+                </ul>
+            </div>
+
+            <div class="lp-media" data-reveal aria-label="Product screenshot placeholder">
+                <div class="mock">
+                    <div class="chrome" aria-hidden="true">
+                        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                        <span class="mock-title">Collection dashboard</span>
+                    </div>
+                    <div class="screen">
+                        <div class="ui-row">
+                            <div class="ui-bar"></div>
+                            <span class="ui-chip">Validation: passing</span>
+                        </div>
+                        <div class="ui-row">
+                            <div class="ui-bar short"></div>
+                            <div class="ui-bar"></div>
+                        </div>
+                        <div class="ui-row">
+                            <div class="ui-bar"></div>
+                            <div class="ui-bar short"></div>
+                        </div>
+                        <div class="ui-row">
+                            <div class="ui-bar short"></div>
+                            <span class="ui-chip">Export</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="lp-split reverse" id="security">
+            <div class="lp-copy" data-reveal>
+                <h3>Admin clarity with the right constraints.</h3>
+                <p>
+                    Give every company exactly what they need no more, no less. Keep runs and workbook access organized with clean permissions.
+                </p>
+                <ul class="lp-bullets">
+                    <li><span class="check" aria-hidden="true"><i class="fas fa-check" style="font-size:12px;"></i></span>Role-based admin controls</li>
+                    <li><span class="check" aria-hidden="true"><i class="fas fa-check" style="font-size:12px;"></i></span>Controlled downloads and uploads</li>
+                    <li><span class="check" aria-hidden="true"><i class="fas fa-check" style="font-size:12px;"></i></span>Traceable pipeline runs and logs</li>
+                </ul>
+            </div>
+
+            <div class="lp-media" data-reveal aria-label="Security and controls placeholder">
+                <div class="mock">
+                    <div class="chrome" aria-hidden="true">
+                        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                        <span class="mock-title">Access & schemas</span>
+                    </div>
+                    <div class="screen">
+                        <div class="ui-row">
+                            <span class="ui-chip">Admin</span>
+                            <div class="ui-bar"></div>
+                        </div>
+                        <div class="ui-row">
+                            <div class="ui-bar"></div>
+                            <span class="ui-chip">Company-scoped</span>
+                        </div>
+                        <div class="ui-row">
+                            <div class="ui-bar short"></div>
+                            <div class="ui-bar"></div>
+                        </div>
+                        <div class="ui-row">
+                            <span class="ui-chip">Audit trail</span>
+                            <div class="ui-bar"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="lp-section" style="padding-top: 0;">
+    <div class="container">
+        <div class="lp-cta" id="cta" data-parallax-scope data-reveal>
+            <div class="lp-cta-inner">
+                <div>
+                    <h3>Ready to streamline your next reporting cycle?</h3>
+                    <p>Start with workbook schemas, lock in consistency, and scale data collection across companies.</p>
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    {% if not current_user.is_authenticated %}
+                        <a class="btn btn-primary" href="{{ url_for('register') }}">Create account</a>
+                        <a class="btn btn-ghost" href="{{ url_for('login') }}">Sign in</a>
+                    {% else %}
+                        <a class="btn btn-primary" href="{{ url_for('dashboard') }}">Open dashboard</a>
+                        <a class="btn btn-ghost" href="{{ url_for('report') }}">View report</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="lp-section" style="padding-top: 0;">
+    <div class="container">
+        <div class="text-center">
+            <div class="eyebrow" data-reveal>Coverage</div>
+            <h2 data-reveal>Built for multi-company operations.</h2>
+            <p class="lead" data-reveal>Support a wide set of subsidiaries with consistent workbook schemas and workflows.</p>
+        </div>
+        <div class="logo-marquee mt-4" data-reveal data-marquee aria-label="Company coverage marquee">
+            <div class="logo-marquee__track" aria-hidden="true">
+                <div class="logo-marquee__group">
+                    <div class="logo-marquee__item">
+                        <img class="logo-marquee__logo" src="{{ url_for('static', filename='images/Logos/Navitas_Nordics_Logo_documents.png') }}" alt="Navitas Nordics" loading="lazy" decoding="async">
+                        <span class="logo-marquee__name"></span>
+                    </div>
+                    <div class="logo-marquee__item">
+                        <img class="logo-marquee__logo" src="{{ url_for('static', filename='images/Logos/Navitas_Nordics_Logo_documents.png') }}" alt="Navidas Nordics" loading="lazy" decoding="async">
+                        <span class="logo-marquee__name"></span>
+                    </div>
+                    <div class="logo-marquee__item">
+                        <img class="logo-marquee__logo" src="{{ url_for('static', filename='images/Logos/Caerus_Logo_documents.png') }}" alt="Caerus Architects" loading="lazy" decoding="async">
+                        <span class="logo-marquee__name"></span>
+                    </div>
+                    <div class="logo-marquee__item">
+                        <img class="logo-marquee__logo" src="{{ url_for('static', filename='images/Logos/SD_Nordics_Logo_documents.png') }}" alt="SD Nordics" loading="lazy" decoding="async">
+                        <span class="logo-marquee__name"></span>
+                    </div>
+                    <div class="logo-marquee__item">
+                        <img class="logo-marquee__logo" src="{{ url_for('static', filename='images/Logos/CTS-VDC_Logo_documents.png') }}" alt="CTS VDC Services" loading="lazy" decoding="async">
+                        <span class="logo-marquee__name"></span>
+                    </div>
+                    <div class="logo-marquee__item">
+                        <img class="logo-marquee__logo" src="{{ url_for('static', filename='images/Logos/CTS_Nordics_Logo_documents.png') }}" alt="CTS Nordics" loading="lazy" decoding="async">
+                        <span class="logo-marquee__name"></span>
+                    </div>
+                    <div class="logo-marquee__item">
+                        <img class="logo-marquee__logo" src="{{ url_for('static', filename='images/Logos/CTS_Group_Logo_documents.png') }}" alt="CTS Group" loading="lazy" decoding="async">
+                        <span class="logo-marquee__name"></span>
+                    </div>
+                    <div class="logo-marquee__item">
+                        <img class="logo-marquee__logo" src="{{ url_for('static', filename='images/Logos/QEC_Nordics_Logo_documents.png') }}" alt="QEC" loading="lazy" decoding="async">
+                        <span class="logo-marquee__name"></span>
+                    </div>
+                    <div class="logo-marquee__item">
+                        <img class="logo-marquee__logo" src="{{ url_for('static', filename='images/Logos/Velox_Nordics_Logo_documents.png') }}" alt="Velox" loading="lazy" decoding="async">
+                        <span class="logo-marquee__name"></span>
+                    </div>
+                    <div class="logo-marquee__item">
+                        <img class="logo-marquee__logo" src="{{ url_for('static', filename='images/Logos/Mecwide_Nordics_Logo_documents.png') }}" alt="Mecwide Nordics" loading="lazy" decoding="async">
+                        <span class="logo-marquee__name"></span>
+                    </div>
+                    <div class="logo-marquee__item">
+                        <img class="logo-marquee__logo" src="{{ url_for('static', filename='images/Logos/Velox_Europe_Logo_documents.png') }}" alt="Velox Europe" loading="lazy" decoding="async">
+                        <span class="logo-marquee__name"></span>
+                    </div>
+                    <div class="logo-marquee__item">
+                        <img class="logo-marquee__logo" src="{{ url_for('static', filename='images/Logos/DCS_Norway_Logo_documents.png') }}" alt="DC Piping" loading="lazy" decoding="async">
+                        <span class="logo-marquee__name"></span>
+                    </div>
+                    <div class="logo-marquee__item">
+                        <img class="logo-marquee__logo" src="{{ url_for('static', filename='images/Logos/MC_Prefab_Logo_documents.png') }}" alt="MC Prefab" loading="lazy" decoding="async">
+                        <span class="logo-marquee__name"></span>
+                    </div>
+                    <div class="logo-marquee__item">
+                        <img class="logo-marquee__logo" src="{{ url_for('static', filename='images/Logos/Gapit_Nordics_Logo_documents.png') }}" alt="Gapit Nordics" loading="lazy" decoding="async">
+                        <span class="logo-marquee__name"></span>
+                    </div>
+                    <div class="logo-marquee__item">
+                        <img class="logo-marquee__logo" src="{{ url_for('static', filename='images/Logos/NordicEPOD-logo-documents.png') }}" alt="NordicEPOD" loading="lazy" decoding="async">
+                        <span class="logo-marquee__name"></span>
+                    </div>
+                    <div class="logo-marquee__item">
+                        <img class="logo-marquee__logo" src="{{ url_for('static', filename='images/Logos/CTS_Europe_Logo_Tagline_documents.png') }}" alt="CTS Europe" loading="lazy" decoding="async">
+                        <span class="logo-marquee__name"></span>
+                    </div>
+                    <div class="logo-marquee__item">
+                        <img class="logo-marquee__logo" src="{{ url_for('static', filename='images/Logos/BIMMS_Logo_Tagline_documents.png') }}" alt="BIMMS" loading="lazy" decoding="async">
+                        <span class="logo-marquee__name"></span>
+                    </div>
+                    <div class="logo-marquee__item">
+                        <img class="logo-marquee__logo" src="{{ url_for('static', filename='images/Logos/NEP-SW_Logo_documents.png') }}" alt="NEP Switchboards" loading="lazy" decoding="async">
+                        <span class="logo-marquee__name"></span>
+                    </div>
+                    <div class="logo-marquee__item">
+                        <img class="logo-marquee__logo" src="{{ url_for('static', filename='images/Logos/CTS_Security_Solutions_Logo_documents.png') }}" alt="CTS Security Solutions" loading="lazy" decoding="async">
+                        <span class="logo-marquee__name"></span>
+                    </div>
+                    <div class="logo-marquee__item">
+                        <img class="logo-marquee__logo" src="{{ url_for('static', filename='images/Logos/CTS_VDC_Services_Logo_documents.png') }}" alt="CTS VDC Services" loading="lazy" decoding="async">
+                        <span class="logo-marquee__name"></span>
+                    </div>
+                    <div class="logo-marquee__item">
+                        <img class="logo-marquee__logo" src="{{ url_for('static', filename='images/Logos/Fortica_Logo_documents.png') }}" alt="Fortica" loading="lazy" decoding="async">
+                        <span class="logo-marquee__name"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %} 
