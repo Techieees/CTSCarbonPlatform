@@ -4,15 +4,7 @@
 
 import pandas as pd
 import os
-import sys
 from datetime import datetime
-from pathlib import Path
-
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from config import STAGE1_KLARAKARBON_OUTPUT_DIR
 
 # =============================================================================
 # HELPERS
@@ -40,7 +32,7 @@ def contains_any(series: pd.Series, keywords: list[str]) -> pd.Series:
 # PATHS
 # =============================================================================
 
-base_folder = str(STAGE1_KLARAKARBON_OUTPUT_DIR)
+base_folder = r"C:\Users\FlorianDemir\Desktop\Desktop- August\Datas\Klarakarbon\Output_Klarakarbon"
 
 input_file = os.path.join(
     base_folder,

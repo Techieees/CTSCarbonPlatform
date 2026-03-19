@@ -934,7 +934,7 @@ def _latest_sheet_totals_for_company(company_keys: list[str]) -> list[MappingRun
 
 
 def _backfill_mapping_summaries(max_runs: int = 200) -> None:
-    """
+    return    """
     Best-effort backfill for existing MappingRun rows created before summaries existed.
     Safe to call frequently; only fills missing summaries.
     """
@@ -1775,7 +1775,7 @@ def register():
 def dashboard():
     _ensure_db_tables()
     if current_user.is_admin:
-        _backfill_mapping_summaries()
+        #_backfill_mapping_summaries()
         # Admin analytics dashboard (mapping-summary based)
         company_filter = request.args.get('company', '').strip().lower()
         template_filter = request.args.get('template', '').strip().lower()

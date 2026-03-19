@@ -4,21 +4,13 @@
 
 import pandas as pd
 import os
-import sys
 from datetime import datetime
 from openpyxl import load_workbook
-from pathlib import Path
-
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from config import STAGE1_KLARAKARBON_INPUT_DIR, STAGE1_KLARAKARBON_OUTPUT_DIR
 
 
 # Define folders
-input_folder = str(STAGE1_KLARAKARBON_INPUT_DIR)
-output_folder = str(STAGE1_KLARAKARBON_OUTPUT_DIR)
+input_folder = r"C:\Users\FlorianDemir\Desktop\Desktop- August\Datas\Klarakarbon\All Together"
+output_folder = r"C:\Users\FlorianDemir\Desktop\Desktop- August\Datas\Klarakarbon\Output_Klarakarbon"
 output_file = os.path.join(output_folder, f"combined_klarakarbon_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
 
 

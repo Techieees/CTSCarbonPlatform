@@ -6,30 +6,14 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime
-from pathlib import Path
-import sys
 
 import pandas as pd
 from deep_translator import GoogleTranslator
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
-from config import STAGE1_OUTPUT_DIR, pick_first_existing
-
-
-# Defaults remain CLI-overridable, but now resolve from the shared data
-# directory configured through the environment.
-DEFAULT_INPUT = str(
-    pick_first_existing(
-        STAGE1_OUTPUT_DIR / "stage1_04_currency.xlsx",
-        STAGE1_OUTPUT_DIR / "normalized_emission_factor_mapping_with_spend_euro.xlsx",
-    )
-)
-DEFAULT_OUTPUT = str(
-    STAGE1_OUTPUT_DIR / f"normalized_emission_factor_mapping_translated_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-)
+# Defaults preserved; can be overridden via CLI
+DEFAULT_INPUT = r"C:\Users\FlorianDemir\Desktop\Desktop- August\normalized_emission_factor_mapping_with_spend_euro_20260225_145241.xlsx"
+DEFAULT_OUTPUT = rf"engine/stage1_preprocess/Datas\normalized_emission_factor_mapping_translated_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
 
 
 # Target sheets, files, and columns

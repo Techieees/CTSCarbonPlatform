@@ -7,27 +7,12 @@
 
 import pandas as pd
 import re
-import sys
 from datetime import datetime
 import argparse
-from pathlib import Path
-
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from config import STAGE1_OUTPUT_DIR, pick_first_existing
 
 # ============================= PATHS ==========================================
-INPUT_FILE = str(
-    pick_first_existing(
-        STAGE1_OUTPUT_DIR / "stage1_01_merged.xlsx",
-        STAGE1_OUTPUT_DIR / "merged.xlsx",
-    )
-)
-OUTPUT_FILE = str(
-    STAGE1_OUTPUT_DIR / f"merged_WT_ELEC_DH_S3C15_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-)
+INPUT_FILE  = r"engine/stage1_preprocess/Datas\merged_20260225_145034.xlsx"
+OUTPUT_FILE = rf"engine/stage1_preprocess/Datas\merged_WT_ELEC_DH_S3C15_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
 
 # ============================= COMMON HELPERS =================================
 def ncomp(x):

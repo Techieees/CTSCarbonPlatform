@@ -5,17 +5,9 @@
 
 import pandas as pd
 import os
-import sys
-from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from config import STAGE1_BUSINESS_TRAVEL_DIR
-
-input_path = os.path.join(str(STAGE1_BUSINESS_TRAVEL_DIR), "source Raw Data.xlsx")
-output_path = os.path.join(str(STAGE1_BUSINESS_TRAVEL_DIR), "cleaned_source_Raw_Data.xlsx")
+input_path = r"C:\Users\FlorianDemir\Desktop\Business Travel_MGMT\January 2025(WholeYear)\source Raw Data.xlsx"
+output_path = r"C:\Users\FlorianDemir\Desktop\Business Travel_MGMT\January 2025(WholeYear)\cleaned_source_Raw_Data.xlsx"
 
 # Only keep the following columns
 keep_columns = [

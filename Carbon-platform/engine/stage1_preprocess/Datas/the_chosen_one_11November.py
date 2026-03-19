@@ -1,31 +1,17 @@
-# Python 3.10+
+INPUT_FOLDER = "/home/azureuser/CTSCarbonPlatform/Carbon-platform/engine/stage1_preprocess/Datas/input"# Python 3.10+
 # Requirements: pandas, openpyxl, os, datetime
 # Author: Florian Demir (Sustainability Data Analyst)
 
 
 import os
 import re
-import sys
 from datetime import datetime
-from pathlib import Path
 import pandas as pd
 import numpy as np
 import argparse
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from config import STAGE1_INPUT_DIR, STAGE1_OUTPUT_DIR
-
-
-# Stage 1 defaults now resolve from DATA_DIR so the same script works in every
-# environment while keeping the existing CLI override behaviour.
-INPUT_FOLDER = str(STAGE1_INPUT_DIR)
-OUTPUT_FILE = os.path.join(
-    str(STAGE1_OUTPUT_DIR),
-    f"merged_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-)
+INPUT_FOLDER = r"/home/azureuser/CTSCarbonPlatform/Carbon-platform/engine/stage1_preprocess/Datas/input"
+OUTPUT_FILE = rf"engine/stage1_preprocess/Datas\merged_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
 
 MAX_ROWS_PER_SHEET = 1_048_576
 SHEET_NAME_MAXLEN = 31
