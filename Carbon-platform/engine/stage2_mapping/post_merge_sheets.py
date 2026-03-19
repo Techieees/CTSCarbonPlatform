@@ -13,6 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from config import STAGE2_OUTPUT_DIR
+from excel_writer_utils import preferred_excel_writer_engine
 
 
 # Post-mapping consolidation rules
@@ -200,8 +201,9 @@ def apply_post_mapping_merges(target_workbook: Optional[Path] = None) -> Optiona
     ts = pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')
     merged_path = out_dir / f"mapped_results_merged_{ts}.xlsx"
 
+    writer_engine = preferred_excel_writer_engine()
     try:
-        with pd.ExcelWriter(merged_path, engine="xlsxwriter") as writer:
+        with pd.ExcelWriter(merged_path, engine=writer_engine) as writer:
             for name, df in updated.items():
                 safe_name = name[:31] if len(name) > 31 else name
                 df.to_excel(writer, sheet_name=safe_name, index=False)
@@ -209,7 +211,7 @@ def apply_post_mapping_merges(target_workbook: Optional[Path] = None) -> Optiona
     except PermissionError:
         ts_fallback = pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')
         ts_name = out_dir / f"mapped_results_merged_{ts_fallback}.xlsx"
-        with pd.ExcelWriter(ts_name, engine="xlsxwriter") as writer:
+        with pd.ExcelWriter(ts_name, engine=writer_engine) as writer:
             for name, df in updated.items():
                 safe_name = name[:31] if len(name) > 31 else name
                 df.to_excel(writer, sheet_name=safe_name, index=False)

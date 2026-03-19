@@ -16,6 +16,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from config import DATA_DIR, STAGE2_HEADCOUNT_CSV, STAGE2_INPUT_DIR, STAGE2_MANUAL_MAPPING_DIR, STAGE2_OUTPUT_DIR
+from excel_writer_utils import preferred_excel_writer_engine
 
 import mapping_utils as mu
 
@@ -1412,8 +1413,9 @@ def process_all_sheets() -> None:
 
     # Write mapped results
     mapped_path = output_dir / "mapped_results.xlsx"
+    writer_engine = preferred_excel_writer_engine()
     try:
-        with pd.ExcelWriter(mapped_path, engine="xlsxwriter") as writer:
+        with pd.ExcelWriter(mapped_path, engine=writer_engine) as writer:
             for name, dfm in mapped_results.items():
                 safe_name = name[:31] if len(name) > 31 else name
                 dfm.to_excel(writer, sheet_name=safe_name, index=False)
@@ -1421,7 +1423,7 @@ def process_all_sheets() -> None:
         # If file is open/locked (e.g., by Excel), write to a timestamped file instead
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         mapped_path = output_dir / f"mapped_results_{ts}.xlsx"
-        with pd.ExcelWriter(mapped_path, engine="xlsxwriter") as writer:
+        with pd.ExcelWriter(mapped_path, engine=writer_engine) as writer:
             for name, dfm in mapped_results.items():
                 safe_name = name[:31] if len(name) > 31 else name
                 dfm.to_excel(writer, sheet_name=safe_name, index=False)
