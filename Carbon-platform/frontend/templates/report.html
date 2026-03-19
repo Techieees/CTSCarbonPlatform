@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block title %}Emission Report{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h2 class="card-title mb-2">
+                        <i class="fas fa-chart-bar me-2"></i>Emission Report for {{ user.company_name }}
+                    </h2>
+                    <p class="text-muted mb-0">Visualize your GHG emissions by category and reporting output</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <form class="row g-3 mb-4" method="get">
+        <div class="col-lg-5">
+            <input type="text" class="form-control" name="template" value="{{ request.args.get('template', '') }}" placeholder="Filter by Category">
+        </div>
+        <div class="col-lg-4">
+            <input type="month" class="form-control" name="date" value="{{ request.args.get('date', '') }}" placeholder="Filter by Date">
+        </div>
+        <div class="col-lg-3">
+            <button class="btn btn-primary w-100" type="submit">Apply Filters</button>
+        </div>
+    </form>
+
+    <div class="report-kpi-grid mb-4">
+        <div class="report-kpi-card">
+            <span class="report-kpi-card__label">Total emissions</span>
+            <strong class="report-kpi-card__value" id="reportMetricTotal">--</strong>
+            <small class="report-kpi-card__meta">Aggregated tCO₂e across current filters</small>
+        </div>
+        <div class="report-kpi-card">
+            <span class="report-kpi-card__label">Categories</span>
+            <strong class="report-kpi-card__value" id="reportMetricCategories">{{ emission_results|length }}</strong>
+            <small class="report-kpi-card__meta">Mapped categories included in analytics</small>
+        </div>
+        <div class="report-kpi-card">
+            <span class="report-kpi-card__label">Months covered</span>
+            <strong class="report-kpi-card__value" id="reportMetricMonths">--</strong>
+            <small class="report-kpi-card__meta">Distinct reporting months in the dataset</small>
+        </div>
+        <div class="report-kpi-card">
+            <span class="report-kpi-card__label">Peak month</span>
+            <strong class="report-kpi-card__value" id="reportMetricPeak">--</strong>
+            <small class="report-kpi-card__meta">Highest emissions point in the current view</small>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-12">
+            <div class="chart-surface report-panel">
+                <div class="report-panel__header">
+                    <div>
+                        <h4 class="report-panel__title">Animated Emissions Race</h4>
+                        <p class="report-panel__subtitle">Monthly emissions trajectory with progressive timeline animation and end labels.</p>
+                    </div>
+                </div>
+                <div id="emissionsRaceChart" class="chart-host chart-host--xl"></div>
+            </div>
+        </div>
+
+        <div class="col-xl-8">
+            <div class="chart-surface report-panel">
+                <div class="report-panel__header">
+                    <div>
+                        <h4 class="report-panel__title">Emissions Heatmap</h4>
+                        <p class="report-panel__subtitle">Spot seasonality and month-level intensity across the reporting dataset.</p>
+                    </div>
+                </div>
+                <div id="emissionsHeatmap" class="chart-host chart-host--lg"></div>
+            </div>
+        </div>
+
+        <div class="col-xl-4">
+            <div class="chart-surface report-panel">
+                <div class="report-panel__header">
+                    <div>
+                        <h4 class="report-panel__title">Scope Sunburst</h4>
+                        <p class="report-panel__subtitle">Hierarchical split by company, scope, and category.</p>
+                    </div>
+                </div>
+                <div id="scopeSunburst" class="chart-host chart-host--lg"></div>
+            </div>
+        </div>
+
+        <div class="col-xl-5">
+            <div class="chart-surface report-panel">
+                <div class="report-panel__header">
+                    <div>
+                        <h4 class="report-panel__title">Category Treemap</h4>
+                        <p class="report-panel__subtitle">Contribution of each scope and category to total emissions.</p>
+                    </div>
+                </div>
+                <div id="categoryTreemap" class="chart-host chart-host--lg"></div>
+            </div>
+        </div>
+
+        <div class="col-xl-7">
+            <div class="chart-surface report-panel">
+                <div class="report-panel__header">
+                    <div>
+                        <h4 class="report-panel__title">Emissions Flow Sankey</h4>
+                        <p class="report-panel__subtitle">Trace how total emissions flow from company to scope and category.</p>
+                    </div>
+                </div>
+                <div id="emissionsSankey" class="chart-host chart-host--xl"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-4">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <div>
+                <h4 class="mb-1">Category Snapshots</h4>
+                <p class="text-muted mb-0">Compact cards for each mapped category included in the report.</p>
+            </div>
+        </div>
+
+        {% if emission_results %}
+        <div class="report-summary-grid">
+            {% for result in emission_results %}
+            <article
+                class="report-summary-card report-analytics-source"
+                data-index="{{ loop.index0 }}"
+                data-company="{{ user.company_name|e }}"
+                data-template="{{ result.template_name|e }}"
+                data-period="{{ result.period_label|e }}"
+                data-total="{{ result.total_emission }}"
+            >
+                <div class="report-summary-card__eyebrow">Category {{ loop.index }}</div>
+                <h5 class="report-summary-card__title">{{ result.template_name }}</h5>
+                <div class="report-summary-card__meta">{{ result.period_label }}</div>
+                <div class="report-summary-card__value">{{ result.total_emission }} <span>tCO₂e</span></div>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="report-empty-state">
+            <i class="fas fa-chart-area"></i>
+            <h5>No emissions data available</h5>
+            <p>Adjust the filters or create new mapped runs to populate the analytics dashboard.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+<script id="report-chart-data" type="application/json">{{ chart_data|tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<script type="module" src="{{ url_for('static', filename='js/charts/init_charts.js') }}"></script>
+{% endblock %}

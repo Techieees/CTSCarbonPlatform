@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1262" height="303" viewBox="0 0 1262 303">
+  <rect width="1262" height="303" fill="white"/>
+  <g fill="none" stroke="#0047BB" stroke-width="12" stroke-linejoin="miter">
+    <path d="M20 120 L20 225 L77 282 L152 207 L95 150 L152 93 L189 130 L133 186 L152 205 L226 131 L188 94 L132 150 L77 95 L133 38 L170 75 L226 19"/>
+    <path d="M48 121 L48 214 L77 243 L123 197 L77 151 L152 76 L188 112"/>
+    <path d="M77 121 L77 184 L95 202 L152 145"/>
+  </g>
+  <g fill="none" stroke="#009846" stroke-width="12" stroke-linejoin="miter">
+    <path d="M150 92 L205 147 L205 168 L150 223 L113 186 L168 131 L113 76 L150 39 L206 95"/>
+    <path d="M179 92 L233 147 L233 168 L179 223"/>
+    <path d="M206 92 L261 147 L261 168 L206 223"/>
+  </g>
+  <text x="375" y="150" font-family="Arial, Helvetica, sans-serif" font-size="180" font-weight="700" fill="#0047BB" letter-spacing="1">CTS-VDC</text>
+  <text x="375" y="280" font-family="Arial, Helvetica, sans-serif" font-size="110" font-weight="700" fill="#009846">Services</text>
+</svg>
