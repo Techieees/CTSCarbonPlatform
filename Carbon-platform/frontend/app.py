@@ -1206,6 +1206,69 @@ def _ensure_company_backup_and_initialize(company_file: Path) -> None:
 
 
 _EF_CACHE: dict[str, object] = {"mtime_ns": None, "rows": None, "sheets": None, "scopes": None, "sources": None}
+_SCHEMA_CACHE_LOCK = threading.Lock()
+_SCHEMA_CACHE: dict[tuple[str, int | None], dict[str, object]] = {}
+
+
+def _schema_cache_key(company_file: Path) -> tuple[str, int | None]:
+    try:
+        st = company_file.stat()
+        mtime_ns = getattr(st, "st_mtime_ns", None) or int(st.st_mtime * 1_000_000_000)
+    except Exception:
+        mtime_ns = None
+    return (str(company_file.resolve()), mtime_ns)
+
+
+def _invalidate_schema_cache(company_file: Path | None = None) -> None:
+    global _SCHEMA_CACHE
+    with _SCHEMA_CACHE_LOCK:
+        if company_file is None:
+            _SCHEMA_CACHE = {}
+            return
+        target = str(company_file.resolve())
+        _SCHEMA_CACHE = {k: v for k, v in _SCHEMA_CACHE.items() if k[0] != target}
+
+
+def _get_schema_cache_entry(company_file: Path) -> dict[str, object]:
+    key = _schema_cache_key(company_file)
+    with _SCHEMA_CACHE_LOCK:
+        cached = _SCHEMA_CACHE.get(key)
+        if cached is None:
+            cached = {"sheets": None, "headers": {}}
+            _SCHEMA_CACHE[key] = cached
+        return cached
+
+
+def _get_visible_sheet_names(company_file: Path) -> list[str]:
+    cache_entry = _get_schema_cache_entry(company_file)
+    cached_sheets = cache_entry.get("sheets")
+    if isinstance(cached_sheets, list):
+        return cached_sheets
+
+    wb = load_workbook(company_file, read_only=True, data_only=True, keep_links=False)
+    sheets = [s for s in list(wb.sheetnames) if not _is_hidden_schema_sheet(s)]
+    cache_entry["sheets"] = sheets
+    return sheets
+
+
+def _get_sheet_headers_and_rules(company_file: Path, sheet: str) -> tuple[int, list[str], dict[str, str]]:
+    cache_entry = _get_schema_cache_entry(company_file)
+    headers_cache = cache_entry.setdefault("headers", {})
+    if isinstance(headers_cache, dict) and sheet in headers_cache:
+        cached = headers_cache[sheet]
+        if isinstance(cached, tuple) and len(cached) == 3:
+            return cached  # type: ignore[return-value]
+
+    wb = load_workbook(company_file, read_only=True, data_only=True, keep_links=False)
+    if sheet not in wb.sheetnames:
+        raise KeyError(sheet)
+    ws = wb[sheet]
+    header_row, headers = _detect_header_row_and_headers(ws)
+    rules = {h: _infer_column_rule(h) for h in headers}
+    result = (header_row, headers, rules)
+    if isinstance(headers_cache, dict):
+        headers_cache[sheet] = result
+    return result
 
 
 def _load_stage2_emission_factors() -> dict[str, object]:
@@ -1940,8 +2003,7 @@ def api_excel_schema_sheets():
         return jsonify({"error": "Access denied"}), 403
 
     try:
-        wb = load_workbook(company_file, read_only=True, data_only=True, keep_links=False)
-        sheets = [s for s in list(wb.sheetnames) if not _is_hidden_schema_sheet(s)]
+        sheets = _get_visible_sheet_names(company_file)
     except Exception as e:
         return jsonify({"error": f"Failed to read workbook: {e}"}), 400
 
@@ -1965,15 +2027,12 @@ def api_excel_schema_headers():
         return jsonify({"error": "Access denied"}), 403
 
     try:
-        wb = load_workbook(company_file, read_only=True, data_only=True, keep_links=False)
-        if sheet not in wb.sheetnames:
+        try:
+            header_row, headers, rules = _get_sheet_headers_and_rules(company_file, sheet)
+        except KeyError:
             return jsonify({"error": "Sheet not found"}), 404
-        ws = wb[sheet]
-        header_row, headers = _detect_header_row_and_headers(ws)
     except Exception as e:
         return jsonify({"error": f"Failed to read sheet headers: {e}"}), 400
-
-    rules = {h: _infer_column_rule(h) for h in headers}
     return jsonify({"company": company_file.stem, "sheet": sheet, "header_row": header_row, "headers": headers, "rules": rules})
 
 
@@ -2053,6 +2112,7 @@ def api_excel_schema_save():
                 ws.cell(row=start_row + i, column=j).value = vv if vv != "" else None
 
         wb.save(company_file)
+        _invalidate_schema_cache(company_file)
 
     except Exception as e:
         return jsonify({"error": f"Save failed: {e}"}), 500

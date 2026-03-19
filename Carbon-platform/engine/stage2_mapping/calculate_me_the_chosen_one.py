@@ -14,6 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from config import STAGE2_OUTPUT_DIR
+from excel_writer_utils import preferred_excel_writer_engine
 
 
 # This script reads the latest mapped results workbook (output/mapped_results*.xlsx)
@@ -617,15 +618,16 @@ def main() -> None:
         per_sheet_totals.append((sheet, total))
 
     # Write back to the same workbook; if locked, write timestamped copy
+    writer_engine = preferred_excel_writer_engine()
     try:
-        with pd.ExcelWriter(target, engine="xlsxwriter") as writer:
+        with pd.ExcelWriter(target, engine=writer_engine) as writer:
             for name, df in all_sheets.items():
                 safe_name = name[:31] if len(name) > 31 else name
                 df.to_excel(writer, sheet_name=safe_name, index=False)
         written_path = target
     except PermissionError:
         ts_name = target.with_name(f"{target.stem}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}{target.suffix}")
-        with pd.ExcelWriter(ts_name, engine="xlsxwriter") as writer:
+        with pd.ExcelWriter(ts_name, engine=writer_engine) as writer:
             for name, df in all_sheets.items():
                 safe_name = name[:31] if len(name) > 31 else name
                 df.to_excel(writer, sheet_name=safe_name, index=False)
