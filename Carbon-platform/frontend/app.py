@@ -16,6 +16,7 @@ import shutil
 from pathlib import Path
 from datetime import datetime, timedelta
 from types import SimpleNamespace
+import hashlib
 import json
 from collections import defaultdict
 import csv
@@ -54,6 +55,61 @@ INSTANCE_DIR.mkdir(parents=True, exist_ok=True)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + str(FRONTEND_DB_PATH)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = str(FRONTEND_UPLOAD_DIR)
+
+TEMPLATES_PATH = APP_DIR / "data" / "templates.json"
+
+
+def _normalize_template_key(value: str) -> str:
+    return " ".join(str(value or "").strip().lower().split())
+
+
+def _load_templates_from_json() -> dict[str, dict[str, list[str]]]:
+    try:
+        with TEMPLATES_PATH.open("r", encoding="utf-8") as f:
+            raw = json.load(f)
+    except Exception:
+        raw = {}
+
+    templates: dict[str, dict[str, list[str]]] = {}
+    if not isinstance(raw, dict):
+        return templates
+
+    for company_name, sheets in raw.items():
+        if not isinstance(company_name, str) or not isinstance(sheets, dict):
+            continue
+        clean_company = company_name.strip()
+        if not clean_company:
+            continue
+        clean_sheets: dict[str, list[str]] = {}
+        for sheet_name, headers in sheets.items():
+            if not isinstance(sheet_name, str) or not isinstance(headers, list):
+                continue
+            clean_sheet = sheet_name.strip()
+            if not clean_sheet:
+                continue
+            clean_headers = [str(h).strip() for h in headers if str(h).strip()]
+            clean_sheets[clean_sheet] = clean_headers
+        templates[clean_company] = clean_sheets
+    return templates
+
+
+def _build_template_index() -> dict[str, dict[str, object]]:
+    index: dict[str, dict[str, object]] = {}
+    for company_name, sheets in TEMPLATES.items():
+        norm_company = _normalize_template_key(company_name)
+        sheet_index: dict[str, dict[str, object]] = {}
+        for sheet_name, headers in sheets.items():
+            sheet_index[_normalize_template_key(sheet_name)] = {
+                "name": sheet_name,
+                "headers": headers,
+            }
+        index[norm_company] = {"name": company_name, "sheets": sheet_index}
+    return index
+
+
+TEMPLATES = _load_templates_from_json()
+TEMPLATE_INDEX = _build_template_index()
+print("Templates loaded:", len(TEMPLATES))
 
 # ---- Stage2 mapping (web single-company runner) ----
 STAGE2_MAPPING_OUTPUT_DIR = STAGE2_OUTPUT_DIR
@@ -196,6 +252,8 @@ class MappingRun(db.Model):
     input_path = db.Column(db.String(900))
     output_path = db.Column(db.String(900))
     error_message = db.Column(db.Text)
+    # When set, this run mapped only the given DataEntry batch (entry_group).
+    source_entry_group = db.Column(db.String(40), nullable=True)
 
 
 class MappingRunSummary(db.Model):
@@ -210,6 +268,20 @@ class MappingRunSummary(db.Model):
     scope = db.Column(db.Integer)  # 1/2/3 or NULL
     tco2e_total = db.Column(db.Float, default=0.0)
     rows_count = db.Column(db.Integer, default=0)
+    mapped_categories_count = db.Column(db.Integer, default=0)
+    total_categories = db.Column(db.Integer, default=0)
+    coverage_pct = db.Column(db.Float, default=0.0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class DataEntry(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    company_name = db.Column(db.String(200), nullable=False)
+    sheet_name = db.Column(db.String(200), nullable=False)
+    entry_group = db.Column(db.String(32), nullable=False, default="")
+    row_index = db.Column(db.Integer, nullable=False, default=1)
+    column_name = db.Column(db.String(200), nullable=False)
+    value = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
@@ -220,6 +292,560 @@ def _ensure_db_tables() -> None:
     """
     try:
         db.create_all()
+        _ensure_mapping_run_summary_columns()
+        _ensure_data_entry_columns()
+        _ensure_mapping_run_source_entry_group_column()
+    except Exception:
+        pass
+
+
+def _ensure_mapping_run_source_entry_group_column() -> None:
+    try:
+        from sqlalchemy import inspect, text
+
+        inspector = inspect(db.engine)
+        if not inspector.has_table("mapping_run"):
+            return
+        existing_columns = {col["name"] for col in inspector.get_columns("mapping_run")}
+        if "source_entry_group" in existing_columns:
+            return
+        with db.engine.begin() as conn:
+            conn.execute(text("ALTER TABLE mapping_run ADD COLUMN source_entry_group VARCHAR(40)"))
+    except Exception:
+        pass
+
+
+def _resolve_template_company_name(company_name: str) -> str | None:
+    raw = (company_name or "").strip()
+    candidates = [raw]
+    canon, _country = _canonical_company_name_and_country(raw)
+    if canon and canon not in candidates:
+        candidates.append(canon)
+
+    for candidate in candidates:
+        norm_candidate = _normalize_template_key(candidate)
+        entry = TEMPLATE_INDEX.get(norm_candidate)
+        if entry:
+            return str(entry["name"])
+    return None
+
+
+def _resolve_template_sheet_name(company_name: str, sheet_name: str) -> str | None:
+    company_key = _resolve_template_company_name(company_name)
+    if not company_key:
+        return None
+    company_entry = TEMPLATE_INDEX.get(_normalize_template_key(company_key)) or {}
+    sheets = company_entry.get("sheets") or {}
+    if not isinstance(sheets, dict):
+        return None
+    sheet_entry = sheets.get(_normalize_template_key(sheet_name))
+    if not isinstance(sheet_entry, dict):
+        return None
+    return str(sheet_entry.get("name") or "")
+
+
+def _list_template_companies_for_user() -> list[dict[str, str]]:
+    if bool(getattr(current_user, "is_admin", False)):
+        return [{"key": name, "label": name} for name in TEMPLATES.keys()]
+
+    resolved = _resolve_template_company_name(getattr(current_user, "company_name", "") or "")
+    if not resolved:
+        return []
+    return [{"key": resolved, "label": resolved}]
+
+
+def _get_template_company_sheets(company_name: str) -> list[str]:
+    resolved_company = _resolve_template_company_name(company_name)
+    if not resolved_company:
+        return []
+    return list((TEMPLATES.get(resolved_company) or {}).keys())
+
+
+def _get_template_sheet_headers(company_name: str, sheet_name: str) -> list[str]:
+    resolved_company = _resolve_template_company_name(company_name)
+    resolved_sheet = _resolve_template_sheet_name(company_name, sheet_name)
+    if not resolved_company or not resolved_sheet:
+        return []
+    return list((TEMPLATES.get(resolved_company) or {}).get(resolved_sheet) or [])
+
+
+def _build_template_workbook(company_name: str) -> BytesIO:
+    resolved_company = _resolve_template_company_name(company_name)
+    wb = Workbook()
+    try:
+        wb.remove(wb.active)
+    except Exception:
+        pass
+
+    for sheet_name in _get_template_company_sheets(resolved_company or company_name):
+        ws = wb.create_sheet(title=str(sheet_name)[:31])
+        for idx, header in enumerate(_get_template_sheet_headers(resolved_company or company_name, sheet_name), start=1):
+            ws.cell(row=1, column=idx).value = header
+
+    bio = BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    return bio
+
+
+def _user_can_access_company(company_name: str) -> bool:
+    if bool(getattr(current_user, "is_admin", False)):
+        return True
+    resolved_requested = _resolve_template_company_name(company_name)
+    resolved_owned = _resolve_template_company_name(getattr(current_user, "company_name", "") or "")
+    if not resolved_requested or not resolved_owned:
+        return False
+    return _normalize_template_key(resolved_requested) == _normalize_template_key(resolved_owned)
+
+
+def _get_data_entry_template_schema(company_name: str, sheet_name: str) -> tuple[list[str], dict[str, dict[str, str]]]:
+    headers = _get_template_sheet_headers(company_name, sheet_name)
+    if not headers:
+        return [], {}
+    rules = {h: _infer_column_rule(h) for h in headers}
+    return headers, rules
+
+
+def _clean_data_entry_rows(headers: list[str], rows: list[object]) -> tuple[list[list[str]], list[str]]:
+    cleaned_rows: list[list[str]] = []
+    for r in rows:
+        if not isinstance(r, list):
+            continue
+        rr = [("" if v is None else str(v)) for v in r]
+        if not any(v.strip() for v in rr):
+            continue
+        if len(rr) < len(headers):
+            rr = rr + [""] * (len(headers) - len(rr))
+        elif len(rr) > len(headers):
+            rr = rr[: len(headers)]
+        cleaned_rows.append(rr)
+    return _validate_and_normalize_rows(headers, cleaned_rows)
+
+
+def _parse_iso_datetime(value: object) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def _is_data_entry_editable(created_at: datetime | None) -> bool:
+    if bool(getattr(current_user, "is_admin", False)):
+        return True
+    if not isinstance(created_at, datetime):
+        return True
+    return created_at >= (datetime.utcnow() - timedelta(days=7))
+
+
+def _normalize_data_entry_rows(headers: list[str], rows: list[object]) -> tuple[list[dict[str, object]], list[str]]:
+    normalized_rows: list[dict[str, object]] = []
+    raw_values: list[list[str]] = []
+    for row_idx, r in enumerate(rows, start=1):
+        if isinstance(r, dict):
+            cells = r.get("cells") or r.get("values") or []
+            entry_group = str(r.get("entry_group") or "").strip()
+            created_at = _parse_iso_datetime(r.get("created_at"))
+            is_persisted = bool(r.get("is_persisted"))
+            source_row_index = int(r.get("row_index") or row_idx)
+        elif isinstance(r, list):
+            cells = r
+            entry_group = ""
+            created_at = None
+            is_persisted = False
+            source_row_index = row_idx
+        else:
+            continue
+
+        if not isinstance(cells, list):
+            continue
+        rr = [("" if v is None else str(v)) for v in cells]
+        if not any(v.strip() for v in rr):
+            continue
+        if len(rr) < len(headers):
+            rr = rr + [""] * (len(headers) - len(rr))
+        elif len(rr) > len(headers):
+            rr = rr[: len(headers)]
+        normalized_rows.append(
+            {
+                "entry_group": entry_group,
+                "created_at": created_at,
+                "is_persisted": is_persisted,
+                "row_index": source_row_index,
+                "cells": rr,
+            }
+        )
+        raw_values.append(rr)
+
+    cleaned_values, validation_errors = _validate_and_normalize_rows(headers, raw_values)
+    for meta, cleaned in zip(normalized_rows, cleaned_values):
+        meta["cells"] = cleaned
+    return normalized_rows, validation_errors
+
+
+def _data_entry_content_fingerprint(headers: list[str], cells: list[str]) -> str:
+    """Stable fingerprint for duplicate detection (full row vector, trimmed)."""
+    padded = list(cells[: len(headers)])
+    while len(padded) < len(headers):
+        padded.append("")
+    normalized = [str(c or "").strip() for c in padded]
+    return json.dumps(normalized, ensure_ascii=True, separators=(",", ":"))
+
+
+def _validate_data_entry_row_requirements(headers: list[str], rows: list[dict[str, object]]) -> list[str]:
+    """Required-field validation after normalization (types already checked)."""
+    errors: list[str] = []
+    rules = [_infer_column_rule(h) for h in headers]
+    for ridx, meta in enumerate(rows, start=1):
+        cells = list(meta.get("cells") or [])
+        while len(cells) < len(headers):
+            cells.append("")
+        if not any(str(c or "").strip() for c in cells):
+            continue
+        for cidx, h in enumerate(headers):
+            rule = rules[cidx] if cidx < len(rules) else {"type": "text"}
+            val = str(cells[cidx]).strip() if cidx < len(cells) else ""
+            if rule.get("required") == "1" and not val:
+                errors.append(f"Row {ridx}, column '{h}': required field is empty")
+    return errors
+
+
+def _delete_data_entry_group(
+    company_name: str,
+    sheet_name: str,
+    entry_group: str,
+    created_at: datetime | None,
+    row_index: int,
+) -> None:
+    if entry_group and not entry_group.startswith("legacy:"):
+        DataEntry.query.filter_by(
+            company_name=company_name,
+            sheet_name=sheet_name,
+            entry_group=entry_group,
+        ).delete(synchronize_session=False)
+        return
+
+    query = DataEntry.query.filter_by(
+        company_name=company_name,
+        sheet_name=sheet_name,
+        row_index=row_index,
+    )
+    if created_at is not None:
+        query = query.filter(DataEntry.created_at == created_at)
+    query.delete(synchronize_session=False)
+
+
+def _upsert_data_entries(company_name: str, sheet_name: str, headers: list[str], rows: list[dict[str, object]]) -> dict[str, object]:
+    """
+    Save rows with duplicate detection (company + sheet + full row content).
+    Returns counts and entry_group ids that were newly written.
+    """
+    grid_snapshot = _load_data_entry_grid_rows(company_name, sheet_name, headers)
+    entry_group_to_fp: dict[str, str] = {}
+    all_fps: set[str] = set()
+    for r in grid_snapshot:
+        eg = str(r.get("entry_group") or "").strip()
+        if not eg:
+            continue
+        fp = _data_entry_content_fingerprint(headers, list(r.get("cells") or []))
+        entry_group_to_fp[eg] = fp
+        all_fps.add(fp)
+
+    saved_rows_count = 0
+    duplicate_rows_count = 0
+    saved_entry_groups: list[str] = []
+    batch_fps: set[str] = set()
+
+    next_row_index = (
+        db.session.query(db.func.max(DataEntry.row_index))
+        .filter_by(company_name=company_name, sheet_name=sheet_name)
+        .scalar()
+        or 0
+    )
+
+    for row in rows:
+        cells = list(row.get("cells") or [])
+        if not any(str(v or "").strip() for v in cells):
+            continue
+
+        fp = _data_entry_content_fingerprint(headers, cells)
+        entry_group = str(row.get("entry_group") or "").strip()
+        created_at = row.get("created_at")
+        if not isinstance(created_at, datetime):
+            created_at = None
+        source_row_index = int(row.get("row_index") or 0)
+        is_persisted = bool(row.get("is_persisted"))
+
+        check = set(all_fps) | set(batch_fps)
+        old_fp = entry_group_to_fp.get(entry_group) if entry_group else None
+        if is_persisted and old_fp is not None:
+            check.discard(old_fp)
+            if fp == old_fp:
+                duplicate_rows_count += 1
+                continue
+
+        if fp in check:
+            duplicate_rows_count += 1
+            continue
+
+        if is_persisted:
+            if not _is_data_entry_editable(created_at):
+                continue
+            if old_fp is not None:
+                all_fps.discard(old_fp)
+            entry_group_to_fp.pop(entry_group, None)
+            _delete_data_entry_group(company_name, sheet_name, entry_group, created_at, source_row_index)
+            effective_created_at = created_at or datetime.utcnow()
+            effective_row_index = source_row_index or (next_row_index + 1)
+            effective_entry_group = uuid.uuid4().hex[:12]
+        else:
+            next_row_index += 1
+            effective_created_at = datetime.utcnow()
+            effective_row_index = next_row_index
+            effective_entry_group = uuid.uuid4().hex[:12]
+
+        for column_name, value in zip(headers, cells):
+            vv = (value or "").strip()
+            if vv == "":
+                continue
+            db.session.add(
+                DataEntry(
+                    company_name=company_name,
+                    sheet_name=sheet_name,
+                    entry_group=effective_entry_group,
+                    row_index=effective_row_index,
+                    column_name=column_name,
+                    value=vv,
+                    created_at=effective_created_at,
+                )
+            )
+
+        all_fps.add(fp)
+        batch_fps.add(fp)
+        entry_group_to_fp[effective_entry_group] = fp
+        saved_rows_count += 1
+        saved_entry_groups.append(effective_entry_group)
+
+    return {
+        "saved_rows_count": saved_rows_count,
+        "duplicate_rows_count": duplicate_rows_count,
+        "saved_entry_groups": saved_entry_groups,
+    }
+
+
+def _load_data_entry_grid_rows(company_name: str, sheet_name: str, headers: list[str]) -> list[dict[str, object]]:
+    entries = (
+        DataEntry.query.filter_by(company_name=company_name, sheet_name=sheet_name)
+        .order_by(DataEntry.created_at.asc(), DataEntry.row_index.asc(), DataEntry.id.asc())
+        .all()
+    )
+    grouped: dict[str, dict[str, object]] = {}
+    order: list[str] = []
+    for entry in entries:
+        created_at = getattr(entry, "created_at", None)
+        row_index = int(getattr(entry, "row_index", 0) or 0)
+        entry_group = str(getattr(entry, "entry_group", "") or "").strip()
+        group_key = entry_group or f"legacy:{created_at.isoformat() if created_at else ''}:{row_index}"
+        if group_key not in grouped:
+            grouped[group_key] = {
+                "entry_group": group_key,
+                "row_index": row_index,
+                "created_at": created_at,
+                "values": {},
+            }
+            order.append(group_key)
+        values = grouped[group_key]["values"]
+        if isinstance(values, dict):
+            values[str(entry.column_name)] = "" if entry.value is None else str(entry.value)
+
+    rows: list[dict[str, object]] = []
+    for key in order:
+        row = grouped[key]
+        values = row.get("values") if isinstance(row.get("values"), dict) else {}
+        created_at = row.get("created_at") if isinstance(row.get("created_at"), datetime) else None
+        rows.append(
+            {
+                "entry_group": row.get("entry_group") or "",
+                "row_index": int(row.get("row_index") or 0),
+                "created_at": created_at.isoformat() if created_at else "",
+                "is_editable": _is_data_entry_editable(created_at),
+                "is_persisted": True,
+                "cells": [values.get(header, "") for header in headers],
+            }
+        )
+    return rows
+
+
+def _load_data_entries_dataframe(company_name: str, sheet_name: str, headers: list[str]) -> "pd.DataFrame":
+    rows = _load_data_entry_grid_rows(company_name, sheet_name, headers)
+    values = [list(row.get("cells") or []) for row in rows]
+    return pd.DataFrame(values, columns=headers)
+
+
+def _load_data_entries_dataframe_for_entry_groups(
+    company_name: str, sheet_name: str, headers: list[str], entry_groups: set[str]
+) -> "pd.DataFrame":
+    """Build a dataframe containing only logical rows whose entry_group is in entry_groups."""
+    if not entry_groups:
+        return pd.DataFrame(columns=headers)
+    rows = _load_data_entry_grid_rows(company_name, sheet_name, headers)
+    filtered = [r for r in rows if str(r.get("entry_group") or "").strip() in entry_groups]
+    values = [list(row.get("cells") or []) for row in filtered]
+    if not values:
+        return pd.DataFrame(columns=headers)
+    return pd.DataFrame(values, columns=headers)
+
+
+def _list_admin_data_entry_batches() -> list[dict[str, object]]:
+    """
+    Uploaded data: exactly one row per (company, sheet, entry_group batch).
+    Uses trimmed names in GROUP BY so whitespace variants do not duplicate rows.
+    """
+    from sqlalchemy import func
+
+    _ensure_db_tables()
+
+    co_company = func.trim(func.coalesce(DataEntry.company_name, ""))
+    co_sheet = func.trim(func.coalesce(DataEntry.sheet_name, ""))
+    co_group = func.trim(func.coalesce(DataEntry.entry_group, ""))
+
+    rows = (
+        db.session.query(
+            co_company.label("company_name"),
+            co_sheet.label("sheet_name"),
+            co_group.label("entry_group"),
+            func.max(DataEntry.created_at).label("uploaded_at"),
+            func.count(func.distinct(DataEntry.row_index)).label("row_count"),
+        )
+        .group_by(co_company, co_sheet, co_group)
+        .order_by(func.max(DataEntry.created_at).desc())
+        .limit(500)
+        .all()
+    )
+
+    seen_keys: set[tuple[str, str, str]] = set()
+    out: list[dict[str, object]] = []
+    for r in rows:
+        company = str(r.company_name or "").strip()
+        sheet = str(r.sheet_name or "").strip()
+        eg = str(r.entry_group or "").strip()
+        dedup_key = (company, sheet, eg)
+        if dedup_key in seen_keys:
+            continue
+        seen_keys.add(dedup_key)
+
+        if _is_hidden_schema_sheet(sheet):
+            continue
+
+        mapped_run = None
+        if eg:
+            mapped_run = (
+                MappingRun.query.filter_by(
+                    company_name=company,
+                    sheet_name=sheet,
+                    status="succeeded",
+                    source_entry_group=eg,
+                )
+                .order_by(MappingRun.created_at.desc())
+                .first()
+            )
+        mapper_email = ""
+        if mapped_run is not None:
+            u = db.session.get(User, mapped_run.user_id)
+            if u is not None:
+                mapper_email = str(getattr(u, "email", "") or "")
+        uid = hashlib.sha1(f"{company}\x00{sheet}\x00{eg}".encode("utf-8")).hexdigest()[:16]
+        out.append(
+            {
+                "batch_uid": uid,
+                "company_name": company,
+                "sheet_name": sheet,
+                "entry_group": eg,
+                "uploaded_at": r.uploaded_at,
+                "row_count": int(r.row_count or 0),
+                "mappable": bool(eg),
+                "mapped": mapped_run is not None,
+                "mapped_at": getattr(mapped_run, "created_at", None) if mapped_run else None,
+                "mapped_by": mapper_email,
+                "download_run_id": str(getattr(mapped_run, "id", "") or "") if mapped_run else "",
+            }
+        )
+    return out
+
+
+def _batches_for_admin_mapping_json(batches: list[dict[str, object]]) -> list[dict[str, object]]:
+    """JSON-serializable batch list for the admin mapping page scripts."""
+    out: list[dict[str, object]] = []
+    for b in batches:
+        ua = b.get("uploaded_at")
+        ma = b.get("mapped_at")
+        out.append(
+            {
+                "batch_uid": str(b.get("batch_uid") or ""),
+                "company_name": str(b.get("company_name") or ""),
+                "sheet_name": str(b.get("sheet_name") or ""),
+                "entry_group": str(b.get("entry_group") or ""),
+                "row_count": int(b.get("row_count") or 0),
+                "mappable": bool(b.get("mappable")),
+                "mapped": bool(b.get("mapped")),
+                "uploaded_at": ua.isoformat() + "Z" if isinstance(ua, datetime) else "",
+                "mapped_at": ma.isoformat() + "Z" if isinstance(ma, datetime) else "",
+                "mapped_by": str(b.get("mapped_by") or ""),
+                "download_run_id": str(b.get("download_run_id") or ""),
+            }
+        )
+    return out
+
+
+def _ensure_mapping_run_summary_columns() -> None:
+    try:
+        from sqlalchemy import inspect, text
+
+        inspector = inspect(db.engine)
+        if not inspector.has_table("mapping_run_summary"):
+            return
+
+        existing_columns = {col["name"] for col in inspector.get_columns("mapping_run_summary")}
+        alter_statements = []
+        if "mapped_categories_count" not in existing_columns:
+            alter_statements.append(
+                "ALTER TABLE mapping_run_summary ADD COLUMN mapped_categories_count INTEGER DEFAULT 0"
+            )
+        if "total_categories" not in existing_columns:
+            alter_statements.append(
+                "ALTER TABLE mapping_run_summary ADD COLUMN total_categories INTEGER DEFAULT 0"
+            )
+        if "coverage_pct" not in existing_columns:
+            alter_statements.append(
+                "ALTER TABLE mapping_run_summary ADD COLUMN coverage_pct FLOAT DEFAULT 0"
+            )
+
+        if not alter_statements:
+            return
+
+        with db.engine.begin() as conn:
+            for stmt in alter_statements:
+                conn.execute(text(stmt))
+    except Exception:
+        pass
+
+
+def _ensure_data_entry_columns() -> None:
+    try:
+        from sqlalchemy import inspect, text
+
+        inspector = inspect(db.engine)
+        if not inspector.has_table("data_entry"):
+            return
+
+        existing_columns = {col["name"] for col in inspector.get_columns("data_entry")}
+        if "entry_group" in existing_columns:
+            return
+
+        with db.engine.begin() as conn:
+            conn.execute(text("ALTER TABLE data_entry ADD COLUMN entry_group VARCHAR(32) DEFAULT ''"))
     except Exception:
         pass
 
@@ -233,6 +859,83 @@ def _infer_scope_from_sheet(sheet_name: str) -> int | None:
     if "scope 3" in s or s.startswith("scope3"):
         return 3
     return None
+
+
+def _count_company_mapped_categories(company_name: str) -> int:
+    company_keys = _company_candidate_keys(company_name)
+    if not company_keys:
+        return 0
+
+    runs = (
+        MappingRun.query.filter(
+            MappingRun.status == "succeeded",
+            MappingRun.company_name.in_(company_keys),
+        )
+        .order_by(MappingRun.created_at.desc())
+        .all()
+    )
+    seen: set[str] = set()
+    for run in runs:
+        sheet_key = (getattr(run, "sheet_name", "") or "").strip().lower()
+        if sheet_key:
+            seen.add(sheet_key)
+    return len(seen)
+
+
+def _calculate_mapping_coverage(company_name: str) -> tuple[int, int, float]:
+    mapped_categories_count = int(_count_company_mapped_categories(company_name) or 0)
+    total_categories = int(_count_company_schema_sheets(company_name) or 0)
+    coverage_pct = round((mapped_categories_count / total_categories) * 100, 2) if total_categories > 0 else 0.0
+    return mapped_categories_count, total_categories, coverage_pct
+
+
+def _upsert_mapping_run_summary(
+    run_id: str,
+    company_name: str,
+    sheet_name: str,
+    mapped_df: "pd.DataFrame",
+    output_path: str | Path | None,
+) -> None:
+    total_tco2e = 0.0
+    rows_count = 0
+    used_col = None
+    if output_path:
+        total_tco2e, rows_count, used_col = _sum_tco2e_from_xlsx(output_path, sheet_name)
+    if used_col is None:
+        total_tco2e, rows_count, used_col = _sum_tco2e(mapped_df)
+
+    mapped_categories_count, total_categories, coverage_pct = _calculate_mapping_coverage(company_name)
+    print("SUMMARY:", mapped_categories_count, total_categories, coverage_pct)
+
+    summ = MappingRunSummary.query.filter_by(run_id=run_id).first()
+    if not summ:
+        company_key = (company_name or "").strip()
+        sheet_key = (sheet_name or "").strip().lower()
+        existing_for_sheet = (
+            MappingRunSummary.query.filter_by(company_name=company_key)
+            .order_by(MappingRunSummary.created_at.desc())
+            .all()
+        )
+        for row in existing_for_sheet:
+            row_sheet_key = (getattr(row, "sheet_name", "") or "").strip().lower()
+            if row_sheet_key == sheet_key:
+                summ = row
+                break
+
+    if not summ:
+        summ = MappingRunSummary(run_id=run_id)
+        db.session.add(summ)
+
+    summ.run_id = run_id
+    summ.company_name = company_name
+    summ.sheet_name = sheet_name
+    summ.scope = _infer_scope_from_sheet(sheet_name)
+    summ.tco2e_total = float(total_tco2e or 0.0)
+    summ.rows_count = int(rows_count or 0)
+    summ.mapped_categories_count = int(mapped_categories_count or 0)
+    summ.total_categories = int(total_categories or 0)
+    summ.coverage_pct = float(coverage_pct or 0.0)
+    summ.created_at = datetime.now()
 
 
 def _find_tco2e_column(df: "pd.DataFrame") -> str | None:
@@ -778,14 +1481,7 @@ def _company_candidate_keys(raw_company_name: str) -> list[str]:
 
 
 def _count_company_schema_sheets(company_name: str) -> int:
-    company_file = _resolve_company_file(company_name)
-    if not company_file or not company_file.exists():
-        return 0
-    try:
-        wb = load_workbook(company_file, read_only=True, data_only=True, keep_links=False)
-        return int(len([s for s in (wb.sheetnames or []) if not _is_hidden_schema_sheet(s)]))
-    except Exception:
-        return 0
+    return int(len(_get_template_company_sheets(company_name)))
 
 
 HIDDEN_SCHEMA_SHEETS = {"readme", "company information"}
@@ -808,6 +1504,7 @@ def _infer_column_rule(header: str) -> dict[str, str]:
         "end date",
         "travel date",
         "date duration",
+        "purchase date",
     )
     number_keywords = (
         "spend",
@@ -838,7 +1535,7 @@ def _infer_column_rule(header: str) -> dict[str, str]:
     text_exclusions = ("id", "unit", "currency", "supplier", "source", "description", "name", "country")
 
     if any(marker in low for marker in date_markers) or compact == "date":
-        return {"type": "date", "format": "YYYY-MM-DD", "placeholder": "YYYY-MM-DD"}
+        return {"type": "date", "format": "YYYY-MM-DD", "placeholder": "YYYY-MM-DD", "required": "1"}
 
     if any(ex in low for ex in text_exclusions):
         return {"type": "text"}
@@ -1805,7 +2502,7 @@ def dashboard():
     _ensure_db_tables()
     if current_user.is_admin:
 
-        #_backfill_mapping_summaries()
+        _backfill_mapping_summaries()
 
 
         # Admin analytics dashboard (mapping-summary based)
@@ -1969,22 +2666,15 @@ def dashboard():
         MappingRun.created_at >= thirty_days_ago
     ).count()
 
-    # Excel schema-driven templates (Stage1 input folder) with canonical display names
-    canon_map = _company_canonical_file_map()
-    all_companies = [{"key": k, "label": k} for k in sorted(canon_map.keys(), key=lambda x: x.lower())]
+    all_companies = _list_template_companies_for_user() if current_user.is_admin else []
     default_company = None
 
     if current_user.is_admin:
         default_company = (all_companies[0]["key"] if all_companies else None)
         companies = all_companies
     else:
-        canon, _country = _canonical_company_name_and_country(current_user.company_name)
-        resolved = _resolve_company_file(canon or current_user.company_name)
-        if resolved:
-            default_company = canon or resolved.stem
-            companies = [{"key": default_company, "label": default_company}]
-        else:
-            companies = []
+        companies = _list_template_companies_for_user()
+        default_company = (companies[0]["key"] if companies else None)
 
     return render_template(
         "dashboard.html",
@@ -2015,12 +2705,11 @@ def _user_can_access_company_file(company_file: Path) -> bool:
 @login_required
 def api_excel_schema_companies():
     if current_user.is_admin:
-        companies = [{"key": k, "label": k} for k in sorted(_company_canonical_file_map().keys(), key=lambda x: x.lower())]
+        companies = list(TEMPLATES.keys())
         return jsonify({"companies": companies})
 
-    canon, _country = _canonical_company_name_and_country(current_user.company_name)
-    resolved = _resolve_company_file(canon or current_user.company_name)
-    companies = [{"key": (canon or resolved.stem), "label": (canon or resolved.stem)}] if resolved else []
+    company_name = _resolve_template_company_name(getattr(current_user, "company_name", "") or "")
+    companies = [company_name] if company_name else []
     return jsonify({"companies": companies})
 
 
@@ -2028,18 +2717,13 @@ def api_excel_schema_companies():
 @login_required
 def api_excel_schema_sheets():
     company = request.args.get("company", "").strip()
-    company_file = _resolve_company_file(company)
-    if not company_file or not company_file.exists():
-        return jsonify({"error": "Company Excel file not found"}), 404
-    if not _user_can_access_company_file(company_file):
+    if not _user_can_access_company(company):
         return jsonify({"error": "Access denied"}), 403
-
-    try:
-        sheets = _get_visible_sheet_names(company_file)
-    except Exception as e:
-        return jsonify({"error": f"Failed to read workbook: {e}"}), 400
-
-    return jsonify({"company": company_file.stem, "sheets": sheets})
+    resolved_company = _resolve_template_company_name(company)
+    if not resolved_company:
+        return jsonify({"error": "Company not found"}), 404
+    sheets = _get_template_company_sheets(resolved_company)
+    return jsonify({"company": resolved_company, "sheets": sheets})
 
 
 @app.route("/api/excel_schema/headers", methods=["GET"])
@@ -2052,33 +2736,71 @@ def api_excel_schema_headers():
     if _is_hidden_schema_sheet(sheet):
         return jsonify({"error": "This sheet is not available for web data entry"}), 403
 
-    company_file = _resolve_company_file(company)
-    if not company_file or not company_file.exists():
-        return jsonify({"error": "Company Excel file not found"}), 404
-    if not _user_can_access_company_file(company_file):
+    if not _user_can_access_company(company):
+        return jsonify({"error": "Access denied"}), 403
+    resolved_company = _resolve_template_company_name(company)
+    if not resolved_company:
+        return jsonify({"error": "Company not found"}), 404
+    resolved_sheet = _resolve_template_sheet_name(resolved_company, sheet)
+    if not resolved_sheet:
+        return jsonify({"error": "Sheet not found"}), 404
+    headers = _get_template_sheet_headers(resolved_company, resolved_sheet)
+    return jsonify(
+        {
+            "company": resolved_company,
+            "sheet": resolved_sheet,
+            "header_row": 1,
+            "headers": headers,
+            "rules": {h: _infer_column_rule(h) for h in headers},
+        }
+    )
+
+
+@app.route("/api/data_entry/rows", methods=["GET"])
+@login_required
+def api_data_entry_rows():
+    company = request.args.get("company", "").strip()
+    sheet = request.args.get("sheet", "").strip()
+    if not company or not sheet:
+        return jsonify({"error": "company and sheet are required"}), 400
+    if not _user_can_access_company(company):
         return jsonify({"error": "Access denied"}), 403
 
-    try:
-        try:
-            header_row, headers, rules = _get_sheet_headers_and_rules(company_file, sheet)
-        except KeyError:
-            return jsonify({"error": "Sheet not found"}), 404
-    except Exception as e:
-        return jsonify({"error": f"Failed to read sheet headers: {e}"}), 400
-    return jsonify({"company": company_file.stem, "sheet": sheet, "header_row": header_row, "headers": headers, "rules": rules})
+    resolved_company = _resolve_template_company_name(company)
+    if not resolved_company:
+        return jsonify({"error": "Company not found"}), 404
+    resolved_sheet = _resolve_template_sheet_name(resolved_company, sheet)
+    if not resolved_sheet:
+        return jsonify({"error": "Sheet not found"}), 404
+
+    headers, _rules = _get_data_entry_template_schema(resolved_company, resolved_sheet)
+    return jsonify(
+        {
+            "company": resolved_company,
+            "sheet": resolved_sheet,
+            "headers": headers,
+            "rows": _load_data_entry_grid_rows(resolved_company, resolved_sheet, headers),
+        }
+    )
 
 
 @app.route("/api/excel_schema/download", methods=["GET"])
 @login_required
 def api_excel_schema_download():
     company = request.args.get("company", "").strip()
-    company_file = _resolve_company_file(company)
-    if not company_file or not company_file.exists():
-        return jsonify({"error": "Company Excel file not found"}), 404
-    if not _user_can_access_company_file(company_file):
+    if not _user_can_access_company(company):
         return jsonify({"error": "Access denied"}), 403
-
-    return send_file(str(company_file), as_attachment=True, download_name=company_file.name)
+    resolved_company = _resolve_template_company_name(company)
+    if not resolved_company:
+        return jsonify({"error": "Company not found"}), 404
+    bio = _build_template_workbook(resolved_company)
+    filename = secure_filename(f"{resolved_company}_template.xlsx") or "template.xlsx"
+    return send_file(
+        bio,
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 @app.route("/api/excel_schema/save", methods=["POST"])
@@ -2095,117 +2817,129 @@ def api_excel_schema_save():
         return jsonify({"error": "rows must be a list"}), 400
     if _is_hidden_schema_sheet(sheet):
         return jsonify({"error": "This sheet is not available for web data entry"}), 403
-
-    company_file = _resolve_company_file(company)
-    if not company_file or not company_file.exists():
-        return jsonify({"error": "Company Excel file not found"}), 404
-    if not _user_can_access_company_file(company_file):
+    if not _user_can_access_company(company):
         return jsonify({"error": "Access denied"}), 403
-
+    resolved_company = _resolve_template_company_name(company)
+    if not resolved_company:
+        return jsonify({"error": "Company not found"}), 404
+    resolved_sheet = _resolve_template_sheet_name(resolved_company, sheet)
+    if not resolved_sheet:
+        return jsonify({"error": "Sheet not found"}), 404
+    headers, _rules = _get_data_entry_template_schema(resolved_company, resolved_sheet)
+    if not headers:
+        return jsonify({"error": "Sheet not found"}), 404
+    normalized_rows, validation_errors = _normalize_data_entry_rows(headers, rows)
+    if validation_errors:
+        return jsonify({"error": validation_errors[0], "validation_errors": validation_errors[:20]}), 400
+    requirement_errors = _validate_data_entry_row_requirements(headers, normalized_rows)
+    if requirement_errors:
+        return jsonify({"error": requirement_errors[0], "validation_errors": requirement_errors[:20]}), 400
     try:
-        _ensure_company_backup_and_initialize(company_file)
+        result = _upsert_data_entries(resolved_company, resolved_sheet, headers, normalized_rows)
+        db.session.commit()
     except Exception as e:
-        return jsonify({"error": f"Backup/initialize failed: {e}"}), 500
-
-    try:
-        wb = load_workbook(company_file, keep_links=False)
-        if sheet not in wb.sheetnames:
-            return jsonify({"error": "Sheet not found"}), 404
-
-        ws = wb[sheet]
-        header_row, headers = _detect_header_row_and_headers(ws)
-
-        # Clear existing web-entered rows for this sheet (keep instructions + header row)
-        if ws.max_row and ws.max_row > header_row:
-            ws.delete_rows(header_row + 1, ws.max_row - header_row)
-
-        cleaned_rows: list[list[str]] = []
-        for r in rows:
-            if not isinstance(r, list):
-                continue
-            rr = [("" if v is None else str(v)) for v in r]
-            if not any(v.strip() for v in rr):
-                continue
-            # Fit to header count
-            if len(rr) < len(headers):
-                rr = rr + [""] * (len(headers) - len(rr))
-            elif len(rr) > len(headers):
-                rr = rr[: len(headers)]
-            cleaned_rows.append(rr)
-
-        cleaned_rows, validation_errors = _validate_and_normalize_rows(headers, cleaned_rows)
-        if validation_errors:
-            return jsonify({"error": validation_errors[0], "validation_errors": validation_errors[:20]}), 400
-
-        start_row = header_row + 1
-        for i, rr in enumerate(cleaned_rows):
-            for j, v in enumerate(rr, start=1):
-                vv = (v or "").strip()
-                ws.cell(row=start_row + i, column=j).value = vv if vv != "" else None
-
-        wb.save(company_file)
-        _invalidate_schema_cache(company_file)
-
-    except Exception as e:
+        db.session.rollback()
         return jsonify({"error": f"Save failed: {e}"}), 500
 
-    return jsonify({"ok": True, "company": company_file.stem, "sheet": sheet, "saved_rows": len(cleaned_rows), "file": str(company_file)})
+    saved_rows_count = int(result.get("saved_rows_count") or 0)
+    duplicate_rows_count = int(result.get("duplicate_rows_count") or 0)
+    saved_entry_groups = list(result.get("saved_entry_groups") or [])
+    return jsonify(
+        {
+            "ok": True,
+            "company": resolved_company,
+            "sheet": resolved_sheet,
+            "saved_rows": saved_rows_count,
+            "saved_rows_count": saved_rows_count,
+            "duplicate_rows_count": duplicate_rows_count,
+            "saved_entry_groups": saved_entry_groups,
+            "message": f"{saved_rows_count} rows saved, {duplicate_rows_count} duplicates skipped",
+        }
+    )
 
 
 @app.route("/api/mapping/run", methods=["POST"])
 @login_required
 def api_mapping_run():
+    if not bool(getattr(current_user, "is_admin", False)):
+        return jsonify({"error": "Mapping is only available for administrators"}), 403
     _ensure_db_tables()
     payload = request.get_json(silent=True) or {}
     company = (payload.get("company") or "").strip()
     sheet = (payload.get("sheet") or "").strip()
-    headers = payload.get("headers") or []
     rows = payload.get("rows") or []
+    entry_group_filter = (payload.get("entry_group") or "").strip()
 
     if not company or not sheet:
         return jsonify({"error": "company and sheet are required"}), 400
-    if not isinstance(headers, list) or not all(isinstance(h, str) for h in headers):
-        return jsonify({"error": "headers must be a list of strings"}), 400
     if not isinstance(rows, list):
         return jsonify({"error": "rows must be a list"}), 400
     if _is_hidden_schema_sheet(sheet):
         return jsonify({"error": "This sheet is not available for web data entry"}), 403
-
-    company_file = _resolve_company_file(company)
-    if not company_file or not company_file.exists():
-        return jsonify({"error": "Company Excel file not found"}), 404
-    if not _user_can_access_company_file(company_file):
+    if not _user_can_access_company(company):
         return jsonify({"error": "Access denied"}), 403
 
-    # Build DataFrame
-    safe_headers = [h.strip() if h and str(h).strip() else f"Column {i+1}" for i, h in enumerate(headers)]
-    cleaned_rows = []
-    for r in rows:
-        if not isinstance(r, list):
-            continue
-        rr = [("" if v is None else str(v)) for v in r]
-        if not any(v.strip() for v in rr):
-            continue
-        if len(rr) < len(safe_headers):
-            rr = rr + [""] * (len(safe_headers) - len(rr))
-        elif len(rr) > len(safe_headers):
-            rr = rr[: len(safe_headers)]
-        cleaned_rows.append(rr)
+    resolved_company = _resolve_template_company_name(company)
+    if not resolved_company:
+        return jsonify({"error": "Company not found"}), 404
+    resolved_sheet = _resolve_template_sheet_name(resolved_company, sheet)
+    if not resolved_sheet:
+        return jsonify({"error": "Sheet not found"}), 404
+    headers, _rules = _get_data_entry_template_schema(resolved_company, resolved_sheet)
+    if not headers:
+        return jsonify({"error": "Sheet not found"}), 404
 
-    cleaned_rows, validation_errors = _validate_and_normalize_rows(safe_headers, cleaned_rows)
-    if validation_errors:
-        return jsonify({"error": validation_errors[0], "validation_errors": validation_errors[:20]}), 400
+    if entry_group_filter:
+        existing_batch_map = MappingRun.query.filter_by(
+            company_name=resolved_company,
+            sheet_name=resolved_sheet,
+            status="succeeded",
+            source_entry_group=entry_group_filter,
+        ).first()
+        if existing_batch_map is not None:
+            ma = existing_batch_map.created_at.isoformat() if existing_batch_map.created_at else ""
+            return jsonify(
+                {
+                    "error": "This batch was already mapped",
+                    "already_mapped": True,
+                    "mapped_at": ma,
+                }
+            ), 409
 
-    df = pd.DataFrame(cleaned_rows, columns=safe_headers)
+    if rows:
+        normalized_rows, validation_errors = _normalize_data_entry_rows(headers, rows)
+        if validation_errors:
+            return jsonify({"error": validation_errors[0], "validation_errors": validation_errors[:20]}), 400
+        requirement_errors = _validate_data_entry_row_requirements(headers, normalized_rows)
+        if requirement_errors:
+            return jsonify({"error": requirement_errors[0], "validation_errors": requirement_errors[:20]}), 400
+        try:
+            _upsert_data_entries(resolved_company, resolved_sheet, headers, normalized_rows)
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"error": f"Save failed: {e}"}), 500
+
+    if entry_group_filter:
+        df = _load_data_entries_dataframe_for_entry_groups(
+            resolved_company, resolved_sheet, headers, {entry_group_filter}
+        )
+        if df.empty:
+            return jsonify({"error": "No saved rows found for this entry batch"}), 400
+    else:
+        df = _load_data_entries_dataframe(resolved_company, resolved_sheet, headers)
+        if df.empty:
+            return jsonify({"error": "No saved rows found for this company and sheet"}), 400
 
     run_id = uuid.uuid4().hex[:12]
     mr = MappingRun(
         id=run_id,
         user_id=current_user.id,
-        company_name=company,
-        sheet_name=sheet,
+        company_name=resolved_company,
+        sheet_name=resolved_sheet,
         status="running",
         created_at=datetime.utcnow(),
+        source_entry_group=entry_group_filter or None,
     )
     try:
         db.session.add(mr)
@@ -2214,7 +2948,7 @@ def api_mapping_run():
         pass
 
     try:
-        mapped_df, out_path, input_path = run_mapping(company, sheet, df)
+        mapped_df, out_path, input_path = run_mapping(resolved_company, resolved_sheet, df)
     except Exception as e:
         try:
             mr.status = "failed"
@@ -2234,40 +2968,32 @@ def api_mapping_run():
 
     # Persist summary totals for dashboards
     try:
-        total_tco2e, rows_count, used_col = _sum_tco2e_from_xlsx(out_path, sheet)
-        if used_col is None:
-            total_tco2e, rows_count, used_col = _sum_tco2e(mapped_df)
-        scope = _infer_scope_from_sheet(sheet)
-        summ = MappingRunSummary.query.filter_by(run_id=run_id).first()
-        if not summ:
-            summ = MappingRunSummary(
-                run_id=run_id,
-                company_name=company,
-                sheet_name=sheet,
-                created_at=datetime.utcnow(),
-            )
-            db.session.add(summ)
-        summ.company_name = company
-        summ.sheet_name = sheet
-        summ.scope = scope
-        summ.tco2e_total = float(total_tco2e or 0.0)
-        summ.rows_count = int(rows_count or 0)
+        _upsert_mapping_run_summary(
+            run_id=run_id,
+            company_name=resolved_company,
+            sheet_name=resolved_sheet,
+            mapped_df=mapped_df,
+            output_path=out_path,
+        )
         db.session.commit()
     except Exception:
         pass
 
     preview = mapped_df.head(40).fillna("").to_dict(orient="records")
-    return jsonify(
-        {
-            "ok": True,
-            "run_id": run_id,
-            "company": company,
-            "sheet": sheet,
-            "mapped_columns": list(mapped_df.columns),
-            "preview": preview,
-            "preview_rows": len(preview),
-        }
-    )
+    resp: dict[str, object] = {
+        "ok": True,
+        "run_id": run_id,
+        "company": resolved_company,
+        "sheet": resolved_sheet,
+        "mapped_columns": list(mapped_df.columns),
+        "preview": preview,
+        "preview_rows": len(preview),
+        "mapped_at": mr.created_at.isoformat() + "Z" if getattr(mr, "created_at", None) else "",
+        "mapped_by": str(getattr(current_user, "email", "") or ""),
+    }
+    if entry_group_filter:
+        resp["entry_group"] = entry_group_filter
+    return jsonify(resp)
 
 
 @app.route("/api/mapping/download/<run_id>", methods=["GET"])
@@ -2334,6 +3060,24 @@ def admin_mapping_runs():
     return render_template("mapping_runs_admin.html", user=current_user, rows=rows)
 
 
+@app.route("/admin/mapping", methods=["GET"])
+@login_required
+def admin_mapping_panel():
+    _ensure_db_tables()
+    if not bool(getattr(current_user, "is_admin", False)):
+        flash("Access denied")
+        return redirect(url_for("dashboard"))
+    _ensure_mapping_run_source_entry_group_column()
+    batches = _list_admin_data_entry_batches()
+    batches_json = _batches_for_admin_mapping_json(batches)
+    return render_template(
+        "admin_mapping.html",
+        user=current_user,
+        batches=batches,
+        batches_json=batches_json,
+    )
+
+
 @app.route('/admin', methods=['GET', 'POST'])
 @login_required
 def admin():
@@ -2355,7 +3099,7 @@ def admin():
     selected_month = request.args.get('month') or available_months[0]
 
     # Calculate progress per company based on mapped categories vs available schema sheets
-    companies = sorted(_company_canonical_file_map().keys(), key=lambda x: x.lower())
+    companies = list(TEMPLATES.keys())
     submission_stats = []
     chart_data = []
     for company in companies:
@@ -3431,6 +4175,28 @@ def carbon_accounting():
         },
         by_sheet=by_sheet,
     )
+
+
+@app.route('/admin_data', methods=['GET'])
+@login_required
+def admin_data():
+    rows = MappingRunSummary.query.order_by(MappingRunSummary.created_at.desc()).all()
+    data = [
+        {
+            "company_name": row.company_name,
+            "created_at": row.created_at.strftime("%Y-%m") if row.created_at else "",
+            "mapped_categories_count": int(getattr(row, "mapped_categories_count", 0) or 0),
+            "total_categories": int(getattr(row, "total_categories", 0) or 0),
+            "coverage_pct": float(getattr(row, "coverage_pct", 0) or 0),
+        }
+        for row in rows
+    ]
+    return jsonify({"data": data})
+
+
+with app.app_context():
+    _ensure_db_tables()
+
 
 if __name__ == '__main__':
     with app.app_context():
