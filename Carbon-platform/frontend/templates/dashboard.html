@@ -3,7 +3,7 @@
 {% block title %}Data Entry - CTS Carbon Platform{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
+<div class="container-fluid mt-4 px-3 px-md-4">
     <!-- Welcome Section -->
     <div class="row mb-4">
         <div class="col-12">
@@ -28,13 +28,13 @@
     <!-- Excel-driven data entry (schema = sheet headers) -->
     <div class="row mb-4">
         <div class="col-12">
-            <div class="card">
-                <div class="card-body p-3 p-md-4">
+            <div class="card shadow-sm">
+                <div class="card-body p-3 p-md-3">
                     <div class="row g-3 data-entry-workspace" id="dataEntryWorkspace">
                         <div class="col-lg-3 data-entry-sidebar">
                             <div class="d-flex align-items-center justify-content-between mb-2">
                                 <div class="fw-bold" style="letter-spacing:-0.01em;">Company</div>
-                                <span class="badge text-bg-light border" id="schemaFileBadge">Workbook</span>
+                                <span class="badge rounded-pill border border-secondary text-secondary-emphasis" id="schemaFileBadge">Workbook</span>
                             </div>
 
                             <select class="form-select" id="companySelect" {% if not user.is_admin and (companies|length) <= 1 %}disabled{% endif %}>
@@ -71,12 +71,15 @@
                                         <button class="btn btn-ghost" type="button" id="clearBtn" disabled>
                                             <i class="fas fa-eraser me-1"></i>Clear
                                         </button>
-                                        <button class="btn btn-primary" type="button" id="saveBtn" disabled>
-                                            <i class="fas fa-save me-1"></i>Save
+                                        <button class="btn btn-primary d-inline-flex align-items-center" type="button" id="saveBtn" disabled>
+                                            <span class="save-btn__idle"><i class="fas fa-save me-1"></i>Save</span>
+                                            <span class="save-btn__busy d-none align-items-center"><span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Saving…</span>
                                         </button>
+                                        {% if user.is_admin %}
                                         <button class="btn btn-ghost" type="button" id="mapBtn" disabled>
                                             <i class="fas fa-bolt me-1"></i>Map now
                                         </button>
+                                        {% endif %}
                                         <a class="btn btn-ghost" id="downloadBtn" href="#" target="_blank">
                                             <i class="fas fa-download me-1"></i>Download Workbook
                                         </a>
@@ -99,10 +102,10 @@
                                 </div>
                             </div>
 
-                            <div class="border rounded-4 data-entry-table-shell" style="border-color: rgba(16,24,40,.12) !important; overflow: hidden;">
-                                <div class="table-responsive data-entry-table-scroll" style="max-height: 620px;">
-                                    <table class="table table-sm align-middle m-0" id="dataTable">
-                                        <thead class="table-light">
+                            <div class="border rounded-4 data-entry-table-shell">
+                                <div class="table-responsive data-entry-table-scroll">
+                                    <table class="table table-sm align-middle mb-0 data-entry-grid-table" id="dataTable">
+                                        <thead class="data-grid__thead">
                                             <tr>
                                                 <th class="text-muted small" style="width: 52px;">#</th>
                                                 <th class="text-muted small">Waiting for sheet selection…</th>
@@ -135,7 +138,7 @@
                                             </a>
                                         </div>
                                         <div class="table-responsive mt-2" style="max-height: 360px;">
-                                            <table class="table table-sm table-hover align-middle mb-0" id="mappingTable"></table>
+                                            <table class="table table-sm table-hover align-middle mb-0 data-entry-grid-table" id="mappingTable"></table>
                                         </div>
                                     </div>
                                 </div>
@@ -240,18 +243,173 @@
             </div>
         </div>
     </div>
+
+    <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1090;">
+        <div id="dataEntryToast" class="toast text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body fw-semibold" id="dataEntryToastBody">Data saved successfully</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script type="application/json" id="companiesJson">{{ (companies or []) | tojson }}</script>
 <script type="application/json" id="defaultCompanyJson">{{ (default_company or "") | tojson }}</script>
+<style>
+.data-entry-table-shell {
+  border-radius: 14px !important;
+  overflow: hidden;
+  border-color: var(--bs-border-color) !important;
+  background: var(--bs-body-bg);
+}
+
+.data-entry-table-scroll {
+  max-height: min(78vh, 1200px);
+  overflow: auto;
+  background: var(--bs-body-bg);
+  scrollbar-gutter: stable;
+}
+
+.data-entry-grid-table {
+  margin-bottom: 0;
+  --bs-table-bg: transparent;
+  --bs-table-color: var(--bs-body-color);
+  color: var(--bs-body-color);
+}
+
+.data-entry-grid-table thead.data-grid__thead th {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: var(--bs-secondary-bg) !important;
+  color: var(--bs-body-color);
+  border-bottom: 1px solid var(--bs-border-color);
+  box-shadow: 0 1px 0 var(--bs-border-color);
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.data-entry-grid-table tbody td,
+.data-entry-grid-table tbody th,
+.data-entry-grid-table thead th {
+  padding: 0.2rem 0.35rem;
+  vertical-align: middle;
+  border-color: var(--bs-border-color);
+  background-color: var(--bs-body-bg);
+}
+
+.data-entry-grid-table tbody tr.is-locked-row {
+  opacity: 0.78;
+}
+
+.data-entry-grid-table tbody tr.is-locked-row td {
+  background: var(--bs-tertiary-bg) !important;
+}
+
+.data-entry-grid-table tbody tr.data-grid__row-saved-flash td {
+  animation: dataGridSavedFlash 1.6s ease-out 1;
+}
+
+@keyframes dataGridSavedFlash {
+  0% { background-color: rgba(25, 135, 84, 0.45) !important; }
+  100% { background-color: var(--bs-body-bg); }
+}
+
+.data-grid__index,
+.data-grid__meta {
+  white-space: nowrap;
+  font-size: 0.75rem;
+  background: var(--bs-body-bg) !important;
+}
+
+.data-grid__cell {
+  min-width: 110px;
+  max-width: 280px;
+  padding: 0 !important;
+  background: var(--bs-body-bg) !important;
+}
+
+.data-grid__cell.is-active {
+  box-shadow: inset 0 0 0 2px rgba(13, 110, 253, 0.55);
+  background: rgba(13, 110, 253, 0.12) !important;
+}
+
+.data-grid__cell-inner {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.data-grid__input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 0.22rem 0.35rem;
+  background: var(--bs-secondary-bg);
+  color: var(--bs-body-color);
+  box-shadow: none !important;
+  font-size: 0.82rem;
+  line-height: 1.25;
+}
+
+.data-grid__input:focus {
+  outline: none;
+  background: var(--bs-body-bg);
+}
+
+.data-grid__input[readonly] {
+  cursor: default;
+  background: var(--bs-tertiary-bg);
+  opacity: 0.95;
+}
+
+.data-grid__input.is-invalid {
+  box-shadow: inset 0 0 0 2px var(--bs-danger) !important;
+  background: rgba(220, 53, 69, 0.08);
+}
+
+.data-grid__inline-error {
+  font-size: 0.68rem;
+  line-height: 1.1;
+  color: var(--bs-danger);
+  padding: 0 0.3rem 0.15rem;
+  min-height: 0;
+}
+
+.data-grid__inline-error:empty {
+  display: none;
+}
+
+.data-grid__row-actions {
+  width: 48px;
+  text-align: center;
+  background: var(--bs-body-bg) !important;
+}
+
+.data-grid__meta-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  background: var(--bs-tertiary-bg);
+  color: var(--bs-body-color);
+  border: 1px solid var(--bs-border-color);
+}
+</style>
 <script>
 const COMPANIES = JSON.parse(document.getElementById('companiesJson')?.textContent || '[]');
 let currentCompany = JSON.parse(document.getElementById('defaultCompanyJson')?.textContent || '""');
 let currentSheet = null;
 let currentHeaders = [];
 let currentRules = {};
+let gridRows = [];
+let allSheets = [];
 
 const WORKSPACE_MODE_KEY = 'cts-data-entry-wide-mode';
 const elWorkspace = document.getElementById('dataEntryWorkspace');
@@ -274,7 +432,6 @@ const elMappingResult = document.getElementById('mappingResult');
 const elMappingMeta = document.getElementById('mappingMeta');
 const elMappingDownload = document.getElementById('mappingDownload');
 const elMappingTable = document.getElementById('mappingTable');
-
 const table = document.getElementById('dataTable');
 
 function setStatus(msg) {
@@ -289,121 +446,359 @@ function getRuleForHeader(header) {
   return currentRules?.[header] || { type: 'text' };
 }
 
-function buildInputCell(header, i) {
+function isRequiredRule(rule) {
+  return rule?.required === '1' || rule?.required === 1 || rule?.required === true;
+}
+
+function parseNumberClient(v) {
+  const s = String(v ?? '').trim().replace(/\s/g, '').replace(',', '.');
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+function isValidYyyyMmDd(v) {
+  const s = String(v ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(`${s}T00:00:00`);
+  return !Number.isNaN(d.getTime());
+}
+
+/** Excel-style European dates → YYYY-MM-DD; returns null if not a match. */
+function tryConvertEuropeanDateString(raw) {
+  const s = String(raw ?? '').trim();
+  if (!s) return null;
+  const m = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+  if (!m) return null;
+  const d = parseInt(m[1], 10);
+  const mo = parseInt(m[2], 10);
+  const y = parseInt(m[3], 10);
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  const dt = new Date(y, mo - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+  return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+function normalizePastedCellValueForColumn(cellValue, colIndex) {
+  if (colIndex < 0 || colIndex >= currentHeaders.length) return cellValue;
+  const rule = getRuleForHeader(currentHeaders[colIndex]);
+  if (rule.type !== 'date') return cellValue;
+  const s = String(cellValue ?? '').trim();
+  const conv = tryConvertEuropeanDateString(s);
+  return conv != null ? conv : cellValue;
+}
+
+function createBlankRow() {
+  return {
+    entry_group: '',
+    row_index: 0,
+    created_at: '',
+    is_editable: true,
+    is_persisted: false,
+    cells: currentHeaders.map(() => ''),
+  };
+}
+
+function rowHasValues(row) {
+  return Array.isArray(row?.cells) && row.cells.some(v => String(v || '').trim() !== '');
+}
+
+function ensureAppendRow() {
+  const last = gridRows[gridRows.length - 1];
+  if (!last || last.is_persisted || rowHasValues(last)) {
+    gridRows.push(createBlankRow());
+  }
+}
+
+function updateButtonState() {
+  const hasSheet = Boolean(currentSheet);
+  const hasEditable = gridRows.some(row => row.is_editable);
+  elAddRow.disabled = !hasSheet;
+  elClear.disabled = !hasSheet || !hasEditable;
+  elSave.disabled = !hasSheet || !hasEditable;
+  if (elMap) elMap.disabled = !hasSheet;
+}
+
+function formatCreatedAt(value) {
+  if (!value) return 'New';
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return value;
+  return dt.toLocaleDateString();
+}
+
+function buildInputCell(row, rowIndex, header, colIndex) {
   const rule = getRuleForHeader(header);
-  const type = rule.type === 'date' ? 'date' : rule.type === 'number' ? 'number' : 'text';
+  // Date columns use type="text" so Excel paste (DD/MM/YYYY etc.) is visible until converted; validation still enforces YYYY-MM-DD.
+  const type = rule.type === 'date' ? 'text' : rule.type === 'number' ? 'number' : 'text';
   const step = rule.type === 'number' ? 'any' : '';
   const placeholder = escapeHtml(rule.placeholder || '');
   const title = escapeHtml(rule.format ? `Format: ${rule.format}` : '');
   const inputmode = rule.type === 'number' ? 'decimal' : '';
-  return `<td><input class="form-control form-control-sm" type="${type}" ${step ? `step="${step}"` : ''} ${inputmode ? `inputmode="${inputmode}"` : ''} placeholder="${placeholder}" title="${title}" data-col="${i}" data-header="${escapeHtml(header)}" /></td>`;
+  const value = escapeHtml(row?.cells?.[colIndex] || '');
+  const readonly = row?.is_editable ? '' : 'readonly tabindex="-1"';
+  const req = isRequiredRule(rule) ? ' aria-required="true"' : '';
+  return `<td class="data-grid__cell" data-row="${rowIndex}" data-col="${colIndex}">
+    <div class="data-grid__cell-inner">
+      <input class="data-grid__input" type="${type}" ${step ? `step="${step}"` : ''} ${inputmode ? `inputmode="${inputmode}"` : ''} placeholder="${placeholder}" title="${title}" data-row="${rowIndex}" data-col="${colIndex}" data-header="${escapeHtml(header)}" value="${value}" ${readonly}${req} />
+      <div class="data-grid__inline-error" data-error-for="${rowIndex}-${colIndex}"></div>
+    </div>
+  </td>`;
 }
 
-function buildTable(headers, initialRowCount = 1) {
+function renderGrid() {
   const thead = table.querySelector('thead');
   const tbody = table.querySelector('tbody');
-  elColumnCountLabel.textContent = `${headers.length} columns`;
+  elColumnCountLabel.textContent = `${currentHeaders.length} columns`;
 
   thead.innerHTML = `
     <tr>
-      <th class="text-muted small" style="width:52px;">#</th>
-      ${headers.map(h => `<th class="text-muted small">${escapeHtml(h)}</th>`).join('')}
-      <th class="text-muted small" style="width:44px;"></th>
+      <th class="text-secondary small data-grid__index" style="width:44px;">#</th>
+      ${currentHeaders.map(h => `<th class="text-secondary small">${escapeHtml(h)}</th>`).join('')}
+      <th class="text-secondary small data-grid__meta" style="width:120px;">Saved</th>
+      <th class="text-secondary small data-grid__row-actions"> </th>
     </tr>
   `;
 
-  tbody.innerHTML = '';
-  for (let i = 0; i < initialRowCount; i++) addRow();
+  tbody.innerHTML = gridRows.map((row, rowIndex) => `
+    <tr class="${row.is_editable ? '' : 'is-locked-row'}" data-row="${rowIndex}" data-entry-group="${escapeHtml(row.entry_group || '')}">
+      <td class="text-muted small data-grid__index">${rowIndex + 1}</td>
+      ${currentHeaders.map((h, colIndex) => buildInputCell(row, rowIndex, h, colIndex)).join('')}
+      <td class="data-grid__meta">
+        <span class="data-grid__meta-badge">
+          <i class="fas ${row.is_editable ? 'fa-pen' : 'fa-lock'}"></i>
+          ${escapeHtml(formatCreatedAt(row.created_at))}
+        </span>
+      </td>
+      <td class="data-grid__row-actions">
+        ${row.is_editable && !row.is_persisted ? `
+          <button type="button" class="btn btn-sm btn-ghost px-2 py-1" title="Remove row" aria-label="Remove row" data-remove-row="${rowIndex}">
+            <i class="fas fa-times"></i>
+          </button>` : ''}
+      </td>
+    </tr>
+  `).join('');
 
-  // Paste support (TSV)
-  tbody.addEventListener('paste', (e) => {
-    const target = e.target;
-    if (!(target instanceof HTMLInputElement)) return;
-    const text = (e.clipboardData || window.clipboardData).getData('text');
-    if (!text || (!text.includes('\t') && !text.includes('\n'))) return;
-    e.preventDefault();
-
-    const startTr = target.closest('tr');
-    const startRowIndex = Array.from(tbody.querySelectorAll('tr')).indexOf(startTr);
-    const startColIndex = Array.from(startTr.querySelectorAll('input')).indexOf(target);
-
-    const rows = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(Boolean).map(r => r.split('\t'));
-    while (tbody.querySelectorAll('tr').length < startRowIndex + rows.length) addRow();
-
-    rows.forEach((r, rIdx) => {
-      const tr = tbody.querySelectorAll('tr')[startRowIndex + rIdx];
-      const inputs = tr.querySelectorAll('input');
-      r.forEach((cell, cIdx) => {
-        const input = inputs[startColIndex + cIdx];
-        if (input) input.value = cell;
-      });
+  tbody.querySelectorAll('[data-remove-row]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const rowIndex = Number(btn.getAttribute('data-remove-row'));
+      gridRows.splice(rowIndex, 1);
+      ensureAppendRow();
+      renderGrid();
     });
-  }, { once: true });
+  });
+
+  tbody.querySelectorAll('.data-grid__input').forEach((input) => {
+    input.addEventListener('focus', () => setActiveCell(input));
+    input.addEventListener('click', () => setActiveCell(input));
+    input.addEventListener('input', () => {
+      const rowIndex = Number(input.getAttribute('data-row'));
+      const colIndex = Number(input.getAttribute('data-col'));
+      if (!gridRows[rowIndex]) return;
+      gridRows[rowIndex].cells[colIndex] = input.value;
+      input.classList.remove('is-invalid');
+      const errEl = table.querySelector(`[data-error-for="${rowIndex}-${colIndex}"]`);
+      if (errEl) errEl.textContent = '';
+      ensureAppendRow();
+    });
+    input.addEventListener('keydown', handleGridKeydown);
+    input.addEventListener('paste', handleGridPaste);
+  });
+
+  updateButtonState();
+}
+
+function setActiveCell(input) {
+  table.querySelectorAll('.data-grid__cell.is-active').forEach((cell) => cell.classList.remove('is-active'));
+  const td = input.closest('.data-grid__cell');
+  if (td) td.classList.add('is-active');
+}
+
+function focusCell(rowIndex, colIndex) {
+  const input = table.querySelector(`.data-grid__input[data-row="${rowIndex}"][data-col="${colIndex}"]`);
+  if (input instanceof HTMLInputElement && !input.readOnly) {
+    input.focus();
+    input.select?.();
+  }
+}
+
+function ensureEditableRowIndex(rowIndex) {
+  while (gridRows.length <= rowIndex) {
+    gridRows.push(createBlankRow());
+  }
+  if (!gridRows[rowIndex].is_editable) {
+    gridRows.push(createBlankRow());
+    return gridRows.length - 1;
+  }
+  return rowIndex;
+}
+
+function handleGridKeydown(e) {
+  const input = e.target;
+  if (!(input instanceof HTMLInputElement) || input.readOnly) return;
+  const rowIndex = Number(input.getAttribute('data-row'));
+  const colIndex = Number(input.getAttribute('data-col'));
+
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const nextRow = ensureEditableRowIndex(rowIndex + 1);
+    renderGrid();
+    focusCell(nextRow, colIndex);
+    return;
+  }
+
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    let nextRow = rowIndex;
+    let nextCol = colIndex + (e.shiftKey ? -1 : 1);
+    if (nextCol >= currentHeaders.length) {
+      nextCol = 0;
+      nextRow = ensureEditableRowIndex(rowIndex + 1);
+      renderGrid();
+    } else if (nextCol < 0) {
+      nextRow = Math.max(0, rowIndex - 1);
+      nextCol = currentHeaders.length - 1;
+    }
+    focusCell(nextRow, nextCol);
+    return;
+  }
+
+  if (['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+    if (input.selectionStart !== input.selectionEnd) return;
+    let nextRow = rowIndex;
+    let nextCol = colIndex;
+    if (e.key === 'ArrowRight') nextCol += 1;
+    if (e.key === 'ArrowLeft') nextCol -= 1;
+    if (e.key === 'ArrowDown') nextRow += 1;
+    if (e.key === 'ArrowUp') nextRow -= 1;
+    if (nextCol < 0 || nextCol >= currentHeaders.length || nextRow < 0) return;
+    e.preventDefault();
+    nextRow = ensureEditableRowIndex(nextRow);
+    renderGrid();
+    focusCell(nextRow, nextCol);
+  }
+}
+
+function handleGridPaste(e) {
+  const input = e.target;
+  if (!(input instanceof HTMLInputElement) || input.readOnly) return;
+  const text = (e.clipboardData || window.clipboardData).getData('text');
+  if (text == null || text === '') return;
+
+  const startRow = Number(input.getAttribute('data-row'));
+  const startCol = Number(input.getAttribute('data-col'));
+  const isMultiCell = text.includes('\t') || text.includes('\n');
+
+  if (!isMultiCell) {
+    const rule = getRuleForHeader(currentHeaders[startCol]);
+    if (rule.type === 'date') {
+      const trimmed = text.trim();
+      const conv = tryConvertEuropeanDateString(trimmed);
+      const finalVal = conv != null ? conv : trimmed;
+      e.preventDefault();
+      if (gridRows[startRow]) {
+        gridRows[startRow].cells[startCol] = finalVal;
+        ensureAppendRow();
+        renderGrid();
+        focusCell(startRow, startCol);
+      }
+    }
+    return;
+  }
+
+  e.preventDefault();
+  const pastedRows = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(Boolean).map(r => r.split('\t'));
+
+  pastedRows.forEach((rowValues, rIdx) => {
+    const targetRow = ensureEditableRowIndex(startRow + rIdx);
+    rowValues.forEach((cellValue, cIdx) => {
+      const targetCol = startCol + cIdx;
+      if (targetCol >= currentHeaders.length) return;
+      gridRows[targetRow].cells[targetCol] = normalizePastedCellValueForColumn(cellValue, targetCol);
+    });
+  });
+
+  ensureAppendRow();
+  renderGrid();
+  focusCell(startRow, startCol);
 }
 
 function addRow() {
-  const tbody = table.querySelector('tbody');
-  const rowIndex = tbody.querySelectorAll('tr').length + 1;
-  const tr = document.createElement('tr');
-  tr.innerHTML = `
-    <td class="text-muted small">${rowIndex}</td>
-    ${currentHeaders.map((h, i) => buildInputCell(h, i)).join('')}
-    <td class="text-end">
-      <button type="button" class="btn btn-sm btn-ghost px-2 py-1" title="Remove row" aria-label="Remove row">
-        <i class="fas fa-times"></i>
-      </button>
-    </td>
-  `;
-  tr.querySelector('button').addEventListener('click', () => {
-    tr.remove();
-    // Renumber
-    Array.from(tbody.querySelectorAll('tr')).forEach((row, idx) => {
-      const cell = row.querySelector('td');
-      if (cell) cell.textContent = String(idx + 1);
-    });
-  });
-  tbody.appendChild(tr);
+  gridRows.push(createBlankRow());
+  renderGrid();
 }
 
 function clearRows() {
-  const tbody = table.querySelector('tbody');
-  tbody.innerHTML = '';
-  addRow();
+  gridRows = gridRows.filter(row => row.is_persisted && !row.is_editable);
+  ensureAppendRow();
+  renderGrid();
 }
 
 function collectRows() {
-  const tbody = table.querySelector('tbody');
-  const trs = Array.from(tbody.querySelectorAll('tr'));
-  const out = [];
-  for (const tr of trs) {
-    const inputs = Array.from(tr.querySelectorAll('input'));
-    const row = inputs.map(i => (i.value ?? '').trim());
-    if (row.some(v => v !== '')) out.push(row);
-  }
-  return out;
+  return gridRows
+    .filter(row => {
+      if (row.is_persisted && !row.is_editable) return false;
+      return row.is_persisted || rowHasValues(row);
+    })
+    .map((row, idx) => ({
+      entry_group: row.entry_group || '',
+      row_index: row.row_index || (idx + 1),
+      created_at: row.created_at || '',
+      is_persisted: Boolean(row.is_persisted),
+      cells: currentHeaders.map((_, colIndex) => String(row.cells?.[colIndex] ?? '').trim()),
+    }));
 }
 
-function validateRowsClient() {
-  const errors = [];
-  const rows = collectRows();
-  rows.forEach((row, rowIdx) => {
-    row.forEach((value, colIdx) => {
-      const header = currentHeaders[colIdx];
+function clearGridValidationMarks() {
+  table.querySelectorAll('.data-grid__input.is-invalid').forEach((el) => el.classList.remove('is-invalid'));
+  table.querySelectorAll('.data-grid__inline-error').forEach((el) => { el.textContent = ''; });
+}
+
+function validateGridForSave() {
+  clearGridValidationMarks();
+  const issues = [];
+  gridRows.forEach((row, rowIndex) => {
+    if (row.is_persisted && !row.is_editable) return;
+    const participates = row.is_persisted || rowHasValues(row);
+    if (!participates) return;
+
+    currentHeaders.forEach((header, colIndex) => {
       const rule = getRuleForHeader(header);
-      const v = String(value ?? '').trim();
-      if (!v) return;
-      if (rule.type === 'number' && Number.isNaN(Number(v.replace(',', '.')))) {
-        errors.push(`Row ${rowIdx + 1}, column "${header}": numeric value required`);
+      const raw = String(row.cells?.[colIndex] ?? '').trim();
+      if (isRequiredRule(rule) && !raw) {
+        issues.push({ rowIndex, colIndex, msg: `${header}: required` });
+        return;
       }
-      if (rule.type === 'date') {
-        const parsed = new Date(v);
-        if (Number.isNaN(parsed.getTime())) {
-          errors.push(`Row ${rowIdx + 1}, column "${header}": expected date format YYYY-MM-DD`);
-        }
+      if (!raw) return;
+      if (rule.type === 'date' && !isValidYyyyMmDd(raw)) {
+        issues.push({ rowIndex, colIndex, msg: `${header}: use YYYY-MM-DD` });
+        return;
+      }
+      if (rule.type === 'number' && parseNumberClient(raw) === null) {
+        issues.push({ rowIndex, colIndex, msg: `${header}: numeric value required` });
       }
     });
   });
-  return errors;
+
+  if (!issues.length) return { ok: true, issues: [] };
+
+  issues.forEach(({ rowIndex, colIndex, msg }) => {
+    const input = table.querySelector(`.data-grid__input[data-row="${rowIndex}"][data-col="${colIndex}"]`);
+    if (input) input.classList.add('is-invalid');
+    const errEl = table.querySelector(`[data-error-for="${rowIndex}-${colIndex}"]`);
+    if (errEl) errEl.textContent = msg;
+  });
+
+  const first = issues[0];
+  const firstInput = table.querySelector(`.data-grid__input[data-row="${first.rowIndex}"][data-col="${first.colIndex}"]`);
+  if (firstInput) {
+    firstInput.focus();
+    const tr = firstInput.closest('tr');
+    tr?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+    const td = firstInput.closest('td');
+    td?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  }
+
+  return { ok: false, issues };
 }
 
 async function fetchJson(url, options) {
@@ -416,7 +811,6 @@ async function fetchJson(url, options) {
   return data;
 }
 
-let allSheets = [];
 function renderSheets(filterText = '') {
   const q = (filterText || '').trim().toLowerCase();
   const list = q ? allSheets.filter(s => s.toLowerCase().includes(q)) : allSheets.slice();
@@ -449,13 +843,11 @@ async function loadSheets() {
   currentSheet = null;
   currentHeaders = [];
   currentRules = {};
+  gridRows = [];
   elTitle.textContent = 'Select a sheet';
-  elMeta.textContent = 'Columns and input rules are generated directly from the Excel schema.';
+  elMeta.textContent = 'Headers remain visible while scrolling. New rows append to history automatically.';
   elColumnCountLabel.textContent = '0 columns';
-  elAddRow.disabled = true;
-  elClear.disabled = true;
-  elSave.disabled = true;
-  elMap.disabled = true;
+  updateButtonState();
   elDownload.href = `/api/excel_schema/download?company=${encodeURIComponent(currentCompany)}`;
 
   const data = await fetchJson(`/api/excel_schema/sheets?company=${encodeURIComponent(currentCompany)}`);
@@ -463,22 +855,68 @@ async function loadSheets() {
   renderSheets(elSheetFilter.value);
 }
 
-async function selectSheet(sheet) {
+function flashSavedEntryGroups(groupIds) {
+  if (!groupIds || !groupIds.length) return;
+  const set = new Set(groupIds);
+  table.querySelectorAll('tbody tr[data-entry-group]').forEach((tr) => {
+    const g = tr.getAttribute('data-entry-group') || '';
+    if (g && set.has(g)) {
+      tr.classList.add('data-grid__row-saved-flash');
+      window.setTimeout(() => tr.classList.remove('data-grid__row-saved-flash'), 1900);
+    }
+  });
+}
+
+async function selectSheet(sheet, flashEntryGroups = null) {
   if (!sheet) return;
   currentSheet = sheet;
-  setStatus('Loading schema…');
-  const data = await fetchJson(`/api/excel_schema/headers?company=${encodeURIComponent(currentCompany)}&sheet=${encodeURIComponent(sheet)}`);
-  currentHeaders = data.headers || [];
-  currentRules = data.rules || {};
+  setStatus('Loading data grid…');
+  const [schema, existing] = await Promise.all([
+    fetchJson(`/api/excel_schema/headers?company=${encodeURIComponent(currentCompany)}&sheet=${encodeURIComponent(sheet)}`),
+    fetchJson(`/api/data_entry/rows?company=${encodeURIComponent(currentCompany)}&sheet=${encodeURIComponent(sheet)}`),
+  ]);
+  currentHeaders = schema.headers || [];
+  currentRules = schema.rules || {};
+  gridRows = (existing.rows || []).map((row) => ({
+    entry_group: row.entry_group || '',
+    row_index: row.row_index || 0,
+    created_at: row.created_at || '',
+    is_editable: Boolean(row.is_editable),
+    is_persisted: Boolean(row.is_persisted),
+    cells: Array.isArray(row.cells) ? row.cells.slice() : currentHeaders.map(() => ''),
+  }));
+  ensureAppendRow();
   elTitle.textContent = sheet;
-  elMeta.textContent = `${currentHeaders.length} columns • Excel header row: ${data.header_row} • dates use YYYY-MM-DD`;
-  elAddRow.disabled = false;
-  elClear.disabled = false;
-  elSave.disabled = false;
-  elMap.disabled = false;
-  buildTable(currentHeaders, 1);
+  elMeta.textContent = `${currentHeaders.length} columns • sticky headers • last 7 days editable`;
+  renderGrid();
+  if (flashEntryGroups?.length) flashSavedEntryGroups(flashEntryGroups);
   setStatus('');
   renderSheets(elSheetFilter.value);
+}
+
+function setSaveBusy(busy) {
+  const idle = elSave?.querySelector('.save-btn__idle');
+  const bsy = elSave?.querySelector('.save-btn__busy');
+  if (idle && bsy) {
+    idle.classList.toggle('d-none', busy);
+    bsy.classList.toggle('d-none', !busy);
+    bsy.classList.toggle('d-inline-flex', busy);
+  }
+}
+
+function showDataEntryToast(title, subline) {
+  const body = document.getElementById('dataEntryToastBody');
+  if (body) {
+    if (subline) {
+      body.innerHTML = `<span class="d-block">${escapeHtml(title)}</span><span class="small fw-normal opacity-90 mt-1 d-block">${escapeHtml(subline)}</span>`;
+    } else {
+      body.textContent = title;
+    }
+  }
+  const el = document.getElementById('dataEntryToast');
+  if (!el || typeof bootstrap === 'undefined') return;
+  const t = bootstrap.Toast.getOrCreateInstance(el, { delay: 5200 });
+  t.show();
 }
 
 function applyWorkspaceMode(isWide) {
@@ -495,40 +933,45 @@ elToggleWorkspace?.addEventListener('click', () => {
   applyWorkspaceMode(next);
   try {
     window.localStorage.setItem(WORKSPACE_MODE_KEY, next ? '1' : '0');
-  } catch (e) {
-    // Ignore storage issues and keep the UI functional.
-  }
+  } catch (e) {}
 });
 
 async function saveCurrent() {
   if (!currentCompany || !currentSheet) return;
-  const clientErrors = validateRowsClient();
-  if (clientErrors.length) {
-    setStatus(clientErrors[0]);
+  const v = validateGridForSave();
+  if (!v.ok) {
+    setStatus(v.issues[0]?.msg || 'Please fix validation errors');
     return;
   }
   const rows = collectRows();
   setStatus(`Saving ${rows.length} row(s)…`);
   elSave.disabled = true;
+  setSaveBusy(true);
   try {
     const data = await fetchJson(`/api/excel_schema/save`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ company: currentCompany, sheet: currentSheet, rows })
+      body: JSON.stringify({ company: currentCompany, sheet: currentSheet, rows }),
     });
-    setStatus(`Saved: ${data.saved_rows} row(s) → ${data.company}.xlsx`);
+    const saved = Number(data.saved_rows_count ?? data.saved_rows ?? 0);
+    const dups = Number(data.duplicate_rows_count ?? 0);
+    const sub = `${saved} rows saved, ${dups} duplicates skipped`;
+    setStatus(sub);
+    showDataEntryToast('Data saved successfully', sub);
+    await selectSheet(currentSheet, data.saved_entry_groups || []);
   } catch (e) {
     setStatus(`Save failed: ${e.message}`);
   } finally {
-    elSave.disabled = false;
+    setSaveBusy(false);
+    updateButtonState();
   }
 }
 
 function renderMappingPreview(columns, previewRows) {
   elMappingTable.innerHTML = '';
   const thead = document.createElement('thead');
-  thead.className = 'table-light';
-  thead.innerHTML = `<tr>${columns.map(c => `<th class="text-muted small">${escapeHtml(c)}</th>`).join('')}</tr>`;
+  thead.className = 'data-grid__thead';
+  thead.innerHTML = `<tr>${columns.map(c => `<th class="text-secondary small">${escapeHtml(c)}</th>`).join('')}</tr>`;
   const tbody = document.createElement('tbody');
   for (const r of previewRows) {
     const tr = document.createElement('tr');
@@ -540,10 +983,10 @@ function renderMappingPreview(columns, previewRows) {
 }
 
 async function mapNow() {
-  if (!currentCompany || !currentSheet) return;
-  const clientErrors = validateRowsClient();
-  if (clientErrors.length) {
-    setStatus(clientErrors[0]);
+  if (!elMap || !currentCompany || !currentSheet) return;
+  const v = validateGridForSave();
+  if (!v.ok) {
+    setStatus(v.issues[0]?.msg || 'Please fix validation errors');
     return;
   }
   const rows = collectRows();
@@ -553,17 +996,18 @@ async function mapNow() {
     const data = await fetchJson(`/api/mapping/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ company: currentCompany, sheet: currentSheet, headers: currentHeaders, rows })
+      body: JSON.stringify({ company: currentCompany, sheet: currentSheet, rows }),
     });
     elMappingMeta.textContent = `${data.company} • ${data.sheet} • preview ${data.preview_rows} rows`;
     elMappingDownload.href = `/api/mapping/download/${encodeURIComponent(data.run_id)}`;
     renderMappingPreview(data.mapped_columns || [], data.preview || []);
     elMappingResult.style.display = 'block';
     setStatus('Mapping complete.');
+    await selectSheet(currentSheet);
   } catch (e) {
     setStatus(`Mapping failed: ${e.message}`);
   } finally {
-    elMap.disabled = false;
+    if (elMap) elMap.disabled = false;
   }
 }
 
@@ -575,7 +1019,7 @@ elSheetFilter?.addEventListener('input', () => renderSheets(elSheetFilter.value)
 elAddRow?.addEventListener('click', () => addRow());
 elClear?.addEventListener('click', () => clearRows());
 elSave?.addEventListener('click', () => saveCurrent());
-elMap?.addEventListener('click', () => mapNow());
+if (elMap) elMap.addEventListener('click', () => mapNow());
 
 (async () => {
   try {
@@ -583,10 +1027,9 @@ elMap?.addEventListener('click', () => mapNow());
   } catch (e) {
     applyWorkspaceMode(false);
   }
-  if (!currentCompany && COMPANIES.length) currentCompany = COMPANIES[0].key;
+  if (!currentCompany && COMPANIES.length) currentCompany = (COMPANIES[0].key || COMPANIES[0]);
   try {
     await loadSheets();
-    // auto-select a likely data sheet
     const preferred = allSheets[0];
     if (preferred) await selectSheet(preferred);
   } catch (e) {

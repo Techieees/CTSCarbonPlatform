@@ -1,0 +1,315 @@
+{% extends "base.html" %}
+
+{% block title %}Admin • Batch Mapping{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4 px-3 px-md-4">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
+    <div>
+      <h2 class="mb-1">Admin • Batch mapping</h2>
+      <p class="text-muted mb-0 small">
+        One row per upload batch (<span class="text-secondary">company</span> + <span class="text-secondary">sheet</span> + <span class="text-secondary">entry_group</span>). Map batches individually or run all pending at once.
+      </p>
+    </div>
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+      <button type="button" class="btn btn-success" id="mapEverythingBtn" {% if not batches %}disabled{% endif %} title="Map every batch that is not yet mapped">
+        <i class="fas fa-play me-1"></i>Map everything
+      </button>
+      <a class="btn btn-ghost" href="{{ url_for('admin_mapping_runs') }}">
+        <i class="fas fa-list me-1"></i>Mapping runs
+      </a>
+      <a class="btn btn-ghost" href="{{ url_for('admin') }}">
+        <i class="fas fa-arrow-left me-1"></i>Admin
+      </a>
+    </div>
+  </div>
+
+  <div class="card shadow-sm border-secondary-subtle">
+    <div class="card-body p-3 p-md-3">
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3 pb-2 border-bottom border-secondary-subtle">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <label class="small text-muted mb-0 me-1" for="batchFilterSelect">Filter</label>
+          <select class="form-select form-select-sm" id="batchFilterSelect" style="width: auto; min-width: 11rem;">
+            <option value="all" selected>All batches</option>
+            <option value="unmapped">Not mapped</option>
+            <option value="mapped">Mapped</option>
+            <option value="legacy">Legacy (no batch id)</option>
+          </select>
+        </div>
+        <div class="small text-muted font-monospace" id="mapEverythingProgress" aria-live="polite"></div>
+      </div>
+
+      {% if batches %}
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0" id="adminMappingTable">
+          <thead class="text-secondary small text-uppercase" style="background-color: var(--bs-secondary-bg); border-bottom: 1px solid var(--bs-border-color);">
+            <tr>
+              <th scope="col">Company</th>
+              <th scope="col">Sheet (category)</th>
+              <th scope="col">Upload (latest)</th>
+              <th scope="col" class="text-end">Data rows</th>
+              <th scope="col">Status</th>
+              <th scope="col" class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for b in batches %}
+            <tr
+              class="admin-mapping-row"
+              data-batch-uid="{{ b.batch_uid }}"
+              data-company="{{ b.company_name | e }}"
+              data-sheet="{{ b.sheet_name | e }}"
+              data-entry-group="{{ b.entry_group | e }}"
+              data-mappable="{{ '1' if b.mappable else '0' }}"
+              data-mapped="{{ '1' if b.mapped else '0' }}"
+              data-filter-kind="{% if b.mapped %}mapped{% elif b.mappable %}unmapped{% else %}legacy{% endif %}"
+            >
+              <td class="fw-medium text-body">{{ b.company_name }}</td>
+              <td class="text-muted">{{ b.sheet_name }}</td>
+              <td class="text-muted small text-nowrap">
+                {{ b.uploaded_at.strftime('%Y-%m-%d %H:%M') ~ ' UTC' if b.uploaded_at else '—' }}
+              </td>
+              <td class="text-end font-monospace">{{ b.row_count }}</td>
+              <td class="js-status-cell small" style="min-width: 9rem;">
+                {% if b.mapped %}
+                  <span class="badge text-bg-success">Mapped</span>
+                  <div class="text-muted mt-1 js-mapped-meta">
+                    {% if b.mapped_at %}{{ b.mapped_at.strftime('%Y-%m-%d %H:%M') }} UTC{% endif %}
+                    {% if b.mapped_by %}<span class="d-block text-truncate" style="max-width: 14rem;" title="{{ b.mapped_by | e }}">by {{ b.mapped_by }}</span>{% endif %}
+                  </div>
+                {% elif b.mappable %}
+                  <span class="badge text-bg-warning text-dark">Not mapped</span>
+                {% else %}
+                  <span class="badge text-bg-secondary">Legacy</span>
+                  <div class="text-muted mt-1 small">Use Data Entry to map full sheet.</div>
+                {% endif %}
+              </td>
+              <td class="text-end js-actions-cell text-nowrap">
+                {% if b.mappable and not b.mapped %}
+                <button type="button" class="btn btn-sm btn-primary js-map-batch">
+                  <i class="fas fa-bolt me-1"></i>Map now
+                </button>
+                {% elif b.mappable and b.mapped %}
+                <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="This batch was already mapped">Mapped</button>
+                {% if b.download_run_id %}
+                <a class="btn btn-sm btn-ghost" href="{{ url_for('api_mapping_download', run_id=b.download_run_id) }}" target="_blank" rel="noopener" title="Download Excel">
+                  <i class="fas fa-download"></i>
+                </a>
+                {% endif %}
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center py-5 text-muted">
+        <i class="fas fa-inbox fa-2x mb-3 d-block opacity-50"></i>
+        No uploaded data batches yet.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<script type="application/json" id="adminBatchesJson">{{ batches_json | tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const runUrl = {{ url_for('api_mapping_run') | tojson }};
+  const mappingDownloadTmpl = {{ url_for('api_mapping_download', run_id='__RUN_ID__') | tojson }};
+
+  let BATCHES = [];
+  try {
+    BATCHES = JSON.parse(document.getElementById('adminBatchesJson')?.textContent || '[]');
+  } catch (e) {
+    BATCHES = [];
+  }
+
+  function esc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function formatUtc(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+  }
+
+  function rowByUidSafe(uid) {
+    return document.querySelector(`#adminMappingTable tr.admin-mapping-row[data-batch-uid="${CSS.escape(String(uid))}"]`);
+  }
+
+  function applyRowMappedUI(row, data) {
+    if (!row) return;
+    const statusCell = row.querySelector('.js-status-cell');
+    const actionsCell = row.querySelector('.js-actions-cell');
+    if (!statusCell || !actionsCell) return;
+
+    row.setAttribute('data-mapped', '1');
+    row.setAttribute('data-filter-kind', 'mapped');
+
+    const mappedAt = formatUtc(data.mapped_at);
+    const by = data.mapped_by ? esc(data.mapped_by) : '';
+    statusCell.innerHTML =
+      '<span class="badge text-bg-success">Mapped</span>' +
+      '<div class="text-muted mt-1 js-mapped-meta small">' +
+      esc(mappedAt) +
+      (by ? '<span class="d-block text-truncate" style="max-width:14rem;" title="' + by + '">by ' + by + '</span>' : '') +
+      '</div>';
+
+    const runId = data.run_id;
+    const dlHref = runId ? mappingDownloadTmpl.replace('__RUN_ID__', encodeURIComponent(runId)) : '';
+    const dl = dlHref
+      ? '<a class="btn btn-sm btn-ghost" href="' + esc(dlHref) + '" target="_blank" rel="noopener" title="Download Excel"><i class="fas fa-download"></i></a>'
+      : '';
+    actionsCell.innerHTML =
+      '<button type="button" class="btn btn-sm btn-outline-secondary" disabled title="This batch was already mapped">Mapped</button>' + dl;
+  }
+
+  async function callMappingApi(company, sheet, entryGroup) {
+    const res = await fetch(runUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ company, sheet, entry_group: entryGroup, rows: [] }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 409) {
+      return { ok: true, data, alreadyMapped: true };
+    }
+    if (!res.ok) {
+      return { ok: false, error: data.error || ('Request failed (' + res.status + ')'), data };
+    }
+    return { ok: true, data };
+  }
+
+  async function mapBatchRow(row, batch) {
+    const company = batch.company_name || row.getAttribute('data-company') || '';
+    const sheet = batch.sheet_name || row.getAttribute('data-sheet') || '';
+    const entryGroup = batch.entry_group || row.getAttribute('data-entry-group') || '';
+    if (!company || !sheet || !entryGroup) return { ok: false, error: 'Invalid batch' };
+
+    const statusCell = row.querySelector('.js-status-cell');
+    const actionsCell = row.querySelector('.js-actions-cell');
+    const btn = row.querySelector('.js-map-batch');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Mapping…';
+    }
+
+    try {
+      const result = await callMappingApi(company, sheet, entryGroup);
+      if (!result.ok) {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Map now';
+        }
+        return result;
+      }
+      if (result.alreadyMapped) {
+        const ma = result.data?.mapped_at ? formatUtc(result.data.mapped_at) : '';
+        if (statusCell) {
+          statusCell.innerHTML =
+            '<span class="badge text-bg-success">Mapped</span>' +
+            '<div class="text-muted mt-1 js-mapped-meta small">' + (ma ? esc(ma) : 'Already mapped') + '</div>';
+        }
+        if (actionsCell) {
+          actionsCell.innerHTML = '<button type="button" class="btn btn-sm btn-outline-secondary" disabled>Mapped</button>';
+        }
+        row.setAttribute('data-mapped', '1');
+        row.setAttribute('data-filter-kind', 'mapped');
+        const uid409 = batch.batch_uid || row.getAttribute('data-batch-uid');
+        if (uid409) {
+          const mem = BATCHES.find((x) => x.batch_uid === uid409);
+          if (mem) mem.mapped = true;
+        }
+        return { ok: true, alreadyMapped: true };
+      }
+      applyRowMappedUI(row, result.data || {});
+      const uid = batch.batch_uid || row.getAttribute('data-batch-uid');
+      if (uid) {
+        const mem = BATCHES.find((x) => x.batch_uid === uid);
+        if (mem) mem.mapped = true;
+      }
+      applyFilter();
+      return { ok: true };
+    } catch (e) {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Map now';
+      }
+      return { ok: false, error: e.message || 'Mapping failed' };
+    }
+  }
+
+  function applyFilter() {
+    const v = document.getElementById('batchFilterSelect')?.value || 'all';
+    document.querySelectorAll('#adminMappingTable tr.admin-mapping-row').forEach((tr) => {
+      const kind = tr.getAttribute('data-filter-kind') || '';
+      let show = true;
+      if (v === 'mapped') show = kind === 'mapped';
+      else if (v === 'unmapped') show = kind === 'unmapped';
+      else if (v === 'legacy') show = kind === 'legacy';
+      tr.classList.toggle('d-none', !show);
+    });
+  }
+
+  document.getElementById('batchFilterSelect')?.addEventListener('change', applyFilter);
+
+  document.querySelectorAll('#adminMappingTable tr.admin-mapping-row').forEach((row) => {
+    const btn = row.querySelector('.js-map-batch');
+    if (!btn) return;
+    const uid = row.getAttribute('data-batch-uid') || '';
+    btn.addEventListener('click', async () => {
+      const batch = BATCHES.find((b) => b.batch_uid === uid) || {
+        batch_uid: uid,
+        company_name: row.getAttribute('data-company'),
+        sheet_name: row.getAttribute('data-sheet'),
+        entry_group: row.getAttribute('data-entry-group'),
+      };
+      const r = await mapBatchRow(row, batch);
+      if (!r.ok && r.error) alert(r.error);
+    });
+  });
+
+  const mapAllBtn = document.getElementById('mapEverythingBtn');
+  const progressEl = document.getElementById('mapEverythingProgress');
+
+  mapAllBtn?.addEventListener('click', async () => {
+    const pending = BATCHES.filter((b) => b.mappable && !b.mapped);
+    if (!pending.length) {
+      alert('No unmapped batches.');
+      return;
+    }
+    mapAllBtn.disabled = true;
+    let okCount = 0;
+    let failCount = 0;
+    const total = pending.length;
+
+    for (let i = 0; i < pending.length; i++) {
+      const b = pending[i];
+      progressEl.textContent = 'Mapping ' + (i + 1) + '/' + total + ': ' + b.sheet_name + '…';
+      const row = rowByUidSafe(b.batch_uid);
+      if (!row) {
+        failCount++;
+        continue;
+      }
+      const r = await mapBatchRow(row, b);
+      if (r.ok) okCount++;
+      else failCount++;
+    }
+
+    progressEl.textContent =
+      failCount > 0
+        ? 'Done: ' + okCount + ' mapped, ' + failCount + ' failed or skipped.'
+        : 'Done: ' + okCount + ' batch(es) mapped.';
+    mapAllBtn.disabled = false;
+    applyFilter();
+  });
+})();
+</script>
+{% endblock %}
