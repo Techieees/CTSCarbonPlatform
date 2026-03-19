@@ -13,7 +13,7 @@
                     </h4>
                 </div>
                 <div class="card-body">
-                    <p class="text-muted">Manage users, review mapping activity, and monitor platform usage.</p>
+                    <p class="text-muted">Manage users, review mapping activity, and monitor platform usage.<br></p>
                 </div>
             </div>
         </div>
@@ -148,7 +148,7 @@
                                         <span class="badge bg-secondary">User</span>
                                         {% endif %}
                                     </td>
-                                    <td>{{ user.created_at.strftime('%Y-%m-%d') }}</td>
+                                    <td>{{ user.created_at.strftime('%Y-%m-%d') if user.created_at else '' }}</td>
                                     <td>
                                         <button class="btn btn-sm btn-outline-info js-view-user" data-user-id="{{ user.id }}">
                                             <i class="fas fa-eye me-1"></i>View
@@ -226,6 +226,7 @@
         </div>
     </div>
 
+    {% if logos %}
     <div class="logo-scroller-container">
         <div class="logo-scroller">
             {% for logo in logos %}
@@ -236,6 +237,7 @@
             {% endfor %}
         </div>
     </div>
+    {% endif %}
 </div>
 <script id="admin-chart-data" type="application/json">{{ chart_data|tojson }}</script>
 
@@ -283,9 +285,13 @@ function editUser(userId) {
     alert('Edit user functionality would be implemented here');
 }
 
-document.getElementById('monthSelect').addEventListener('change', function() {
-    document.getElementById('monthForm').submit();
-});
+const monthSelect = document.getElementById('monthSelect');
+const monthForm = document.getElementById('monthForm');
+if (monthSelect && monthForm) {
+    monthSelect.addEventListener('change', function() {
+        monthForm.submit();
+    });
+}
 </script>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <script type="module" src="{{ url_for('static', filename='js/charts/init_charts.js') }}"></script>

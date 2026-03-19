@@ -737,37 +737,27 @@ def _format_period_label(points: list[dict[str, object]], fallback_dt: datetime 
 
 
 def _period_profile_for_summary(sub: "MappingRunSummary", run_cache: dict[str, "MappingRun | None"] | None = None) -> dict[str, object]:
-    run_cache = run_cache if run_cache is not None else {}
     rid = str(getattr(sub, "run_id", "") or "")
-    mr = run_cache.get(rid)
-    if rid and rid not in run_cache:
-        mr = MappingRun.query.get(rid)
-        run_cache[rid] = mr
+    cache_key = "|".join(
+        [
+            rid,
+            str(getattr(sub, "sheet_name", "") or ""),
+            str(getattr(sub, "created_at", "") or ""),
+            str(getattr(sub, "tco2e_total", "") or ""),
+            str(getattr(sub, "rows_count", "") or ""),
+        ]
+    )
+    with _PERIOD_PROFILE_CACHE_LOCK:
+        cached = _PERIOD_PROFILE_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
 
-    if mr and getattr(mr, "output_path", None) and os.path.exists(str(mr.output_path)):
-        df = _read_sheet_df_from_workbook(mr.output_path, getattr(sub, "sheet_name", None))
-        if df is not None:
-            profile = _build_period_profile_from_df(df)
-            if profile.get("points"):
-                return profile
-
-    fallback_dt = getattr(sub, "created_at", None)
-    fallback_point = None
-    if isinstance(fallback_dt, datetime):
-        fallback_point = {
-            "key": fallback_dt.strftime("%Y-%m"),
-            "label": fallback_dt.strftime("%b %Y"),
-            "date": datetime(fallback_dt.year, fallback_dt.month, 1),
-            "value": round(float(getattr(sub, "tco2e_total", 0.0) or 0.0), 6),
-        }
-
-    return {
-        "points": [fallback_point] if fallback_point else [],
-        "total": round(float(getattr(sub, "tco2e_total", 0.0) or 0.0), 6),
-        "rows_count": int(getattr(sub, "rows_count", 0) or 0),
-        "min_date": fallback_point["date"] if fallback_point else None,
-        "max_date": fallback_point["date"] if fallback_point else None,
-    }
+    # Avoid reopening mapped workbooks during requests. Those reads were causing
+    # slow responses and proxy timeouts on report/dashboard pages.
+    profile = _fallback_period_profile_for_summary(sub)
+    with _PERIOD_PROFILE_CACHE_LOCK:
+        _PERIOD_PROFILE_CACHE[cache_key] = profile
+    return profile
 
 
 def _company_candidate_keys(raw_company_name: str) -> list[str]:
@@ -940,7 +930,8 @@ def _backfill_mapping_summaries(max_runs: int = 200) -> None:
     """
     try:
         _ensure_db_tables()
-        existing = {r.run_id for r in MappingRunSummary.query.with_entities(MappingRunSummary.run_id).all()}
+        if not _should_attempt_backfill_mapping_summaries():
+            return
         runs = (
             MappingRun.query.filter_by(status="succeeded")
             .order_by(MappingRun.created_at.desc())
@@ -953,8 +944,7 @@ def _backfill_mapping_summaries(max_runs: int = 200) -> None:
             if not rid:
                 continue
             summ_existing = MappingRunSummary.query.filter_by(run_id=rid).first()
-            # If a summary exists but is zero, re-evaluate once (common when column name differed like 'co2e')
-            if summ_existing and float(getattr(summ_existing, "tco2e_total", 0.0) or 0.0) != 0.0:
+            if summ_existing:
                 continue
             p = getattr(mr, "output_path", None)
             if not p or not os.path.exists(str(p)):
@@ -999,7 +989,6 @@ def _backfill_mapping_summaries(max_runs: int = 200) -> None:
                     created_at=getattr(mr, "created_at", None) or datetime.utcnow(),
                 )
                 db.session.add(summ)
-                existing.add(rid)
                 changed = True
         if changed:
             db.session.commit()
@@ -1208,6 +1197,10 @@ def _ensure_company_backup_and_initialize(company_file: Path) -> None:
 _EF_CACHE: dict[str, object] = {"mtime_ns": None, "rows": None, "sheets": None, "scopes": None, "sources": None}
 _SCHEMA_CACHE_LOCK = threading.Lock()
 _SCHEMA_CACHE: dict[tuple[str, int | None], dict[str, object]] = {}
+_BACKFILL_STATE_LOCK = threading.Lock()
+_BACKFILL_STATE: dict[str, float] = {"last_attempt_at": 0.0}
+_PERIOD_PROFILE_CACHE_LOCK = threading.Lock()
+_PERIOD_PROFILE_CACHE: dict[str, dict[str, object]] = {}
 
 
 def _schema_cache_key(company_file: Path) -> tuple[str, int | None]:
@@ -1269,6 +1262,42 @@ def _get_sheet_headers_and_rules(company_file: Path, sheet: str) -> tuple[int, l
     if isinstance(headers_cache, dict):
         headers_cache[sheet] = result
     return result
+
+
+def _should_attempt_backfill_mapping_summaries(ttl_seconds: int = 60) -> bool:
+    now = time.time()
+    with _BACKFILL_STATE_LOCK:
+        last_attempt_at = float(_BACKFILL_STATE.get("last_attempt_at", 0.0) or 0.0)
+        if (now - last_attempt_at) < float(ttl_seconds):
+            return False
+        _BACKFILL_STATE["last_attempt_at"] = now
+
+    try:
+        succeeded_count = MappingRun.query.filter_by(status="succeeded").count()
+        summary_count = MappingRunSummary.query.count()
+        return int(summary_count) < int(succeeded_count)
+    except Exception:
+        return False
+
+
+def _fallback_period_profile_for_summary(sub: "MappingRunSummary") -> dict[str, object]:
+    fallback_dt = getattr(sub, "created_at", None)
+    fallback_point = None
+    if isinstance(fallback_dt, datetime):
+        fallback_point = {
+            "key": fallback_dt.strftime("%Y-%m"),
+            "label": fallback_dt.strftime("%b %Y"),
+            "date": datetime(fallback_dt.year, fallback_dt.month, 1),
+            "value": round(float(getattr(sub, "tco2e_total", 0.0) or 0.0), 6),
+        }
+
+    return {
+        "points": [fallback_point] if fallback_point else [],
+        "total": round(float(getattr(sub, "tco2e_total", 0.0) or 0.0), 6),
+        "rows_count": int(getattr(sub, "rows_count", 0) or 0),
+        "min_date": fallback_point["date"] if fallback_point else None,
+        "max_date": fallback_point["date"] if fallback_point else None,
+    }
 
 
 def _load_stage2_emission_factors() -> dict[str, object]:
@@ -1775,7 +1804,10 @@ def register():
 def dashboard():
     _ensure_db_tables()
     if current_user.is_admin:
+
         #_backfill_mapping_summaries()
+
+
         # Admin analytics dashboard (mapping-summary based)
         company_filter = request.args.get('company', '').strip().lower()
         template_filter = request.args.get('template', '').strip().lower()
@@ -2309,7 +2341,6 @@ def admin():
         flash('Access denied')
         return redirect(url_for('dashboard'))
 
-    _backfill_mapping_summaries()
     users = User.query.all()
     mapping_runs = MappingRun.query.order_by(MappingRun.created_at.desc()).all()
 
@@ -2364,7 +2395,8 @@ def admin():
         available_months=available_months,
         selected_month=selected_month,
         submission_stats=submission_stats,
-        chart_data=chart_data
+        chart_data=chart_data,
+        logos=[],
     )
 
 @app.route('/logout')
@@ -2378,7 +2410,6 @@ def logout():
 def report():
     if current_user.is_admin:
         return redirect(url_for('admin_report', **request.args.to_dict(flat=True)))
-    _backfill_mapping_summaries()
     template_filter = request.args.get('template', '').strip().lower()
     month_filter = request.args.get('date', '').strip()
     company_keys = _company_candidate_keys(current_user.company_name)
@@ -2436,7 +2467,6 @@ def admin_report():
     if not current_user.is_admin:
         flash('Access denied')
         return redirect(url_for('dashboard'))
-    _backfill_mapping_summaries()
     company_filter = request.args.get('company', '').strip().lower()
     template_filter = request.args.get('template', '').strip().lower()
     month_filter = request.args.get('date', '').strip()
@@ -3281,7 +3311,6 @@ def export_emission_factors():
 @login_required
 def home():
     _ensure_db_tables()
-    _backfill_mapping_summaries()
     year = datetime.utcnow().year
 
     if bool(getattr(current_user, "is_admin", False)):
@@ -3329,16 +3358,8 @@ def home():
     # Regular user: show totals for their company (latest per sheet)
     keys = _company_candidate_keys(getattr(current_user, "company_name", "") or "")
     latest = _latest_sheet_totals_for_company(keys)
-    # Prefer year inferred from the most recent mapped output (if available)
-    try:
-        if latest:
-            mr0 = MappingRun.query.get(latest[0].run_id)
-            if mr0 and getattr(mr0, "output_path", None):
-                y = _detect_data_year_from_xlsx(mr0.output_path, latest[0].sheet_name)
-                if y:
-                    year = y
-    except Exception:
-        pass
+    if latest and getattr(latest[0], "created_at", None):
+        year = latest[0].created_at.year
     scope1 = sum(float(r.tco2e_total or 0.0) for r in latest if int(r.scope or 0) == 1)
     scope2 = sum(float(r.tco2e_total or 0.0) for r in latest if int(r.scope or 0) == 2)
     scope3 = sum(float(r.tco2e_total or 0.0) for r in latest if int(r.scope or 0) == 3)
@@ -3377,20 +3398,12 @@ def emission_facor():
 @login_required
 def carbon_accounting():
     _ensure_db_tables()
-    _backfill_mapping_summaries()
     year = datetime.utcnow().year
 
     keys = _company_candidate_keys(getattr(current_user, "company_name", "") or "")
     latest = _latest_sheet_totals_for_company(keys)
-    try:
-        if latest:
-            mr0 = MappingRun.query.get(latest[0].run_id)
-            if mr0 and getattr(mr0, "output_path", None):
-                y = _detect_data_year_from_xlsx(mr0.output_path, latest[0].sheet_name)
-                if y:
-                    year = y
-    except Exception:
-        pass
+    if latest and getattr(latest[0], "created_at", None):
+        year = latest[0].created_at.year
 
     scope1 = sum(float(r.tco2e_total or 0.0) for r in latest if int(r.scope or 0) == 1)
     scope2 = sum(float(r.tco2e_total or 0.0) for r in latest if int(r.scope or 0) == 2)
