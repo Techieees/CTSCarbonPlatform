@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import 'macros/ui_illustrations.html' as illu %}
 
 {% block title %}Data Entry - CTS Carbon Platform{% endblock %}
 
@@ -11,8 +12,11 @@
                 <div class="card-body">
                     <div class="row align-items-center">
                         <div class="col-md-8">
-                            <h2 class="card-title mb-2">
-                                <i class="fas fa-pen-to-square me-2"></i>Data Entry, {{ user.company_name }}
+                            <h2 class="card-title mb-2 d-flex align-items-center flex-wrap gap-2">
+                                {% if company_logo_rel %}
+                                <img src="{{ url_for('static', filename=company_logo_rel) }}" alt="" width="40" height="40" style="object-fit:contain;" class="flex-shrink-0">
+                                {% endif %}
+                                <span class="d-inline-flex align-items-center">{{ illu.illu_nav_pen_entry('me-2') }}Data Entry, {{ user.company_name }}</span>
                             </h2>
                             <p class="text-muted mb-0">Manage your GHG data entry and mapping workflow</p>
                         </div>
@@ -62,41 +66,41 @@
                                         <small class="text-muted" id="activeSheetMeta">Columns and input rules are generated directly from the Excel schema.</small>
                                     </div>
                                     <div class="d-flex flex-wrap gap-2">
-                                        <button class="btn btn-ghost" type="button" id="toggleWorkspaceBtn" aria-pressed="false">
-                                            <i class="fas fa-expand me-1"></i>Wide mode
+                                        <button class="btn btn-ghost d-inline-flex align-items-center" type="button" id="toggleWorkspaceBtn" aria-pressed="false">
+                                            {{ illu.illu_btn_expand('me-1') }}Wide mode
                                         </button>
-                                        <button class="btn btn-ghost" type="button" id="addRowBtn" disabled>
-                                            <i class="fas fa-plus me-1"></i>Add row
+                                        <button class="btn btn-ghost d-inline-flex align-items-center" type="button" id="addRowBtn" disabled>
+                                            {{ illu.illu_btn_plus('me-1') }}Add row
                                         </button>
-                                        <button class="btn btn-ghost" type="button" id="clearBtn" disabled>
-                                            <i class="fas fa-eraser me-1"></i>Clear
+                                        <button class="btn btn-ghost d-inline-flex align-items-center" type="button" id="clearBtn" disabled>
+                                            {{ illu.illu_btn_clear('me-1') }}Clear
                                         </button>
                                         <button class="btn btn-primary d-inline-flex align-items-center" type="button" id="saveBtn" disabled>
-                                            <span class="save-btn__idle"><i class="fas fa-save me-1"></i>Save</span>
+                                            <span class="save-btn__idle d-inline-flex align-items-center">{{ illu.illu_btn_save('me-1') }}Save</span>
                                             <span class="save-btn__busy d-none align-items-center"><span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Saving…</span>
                                         </button>
                                         {% if user.is_admin %}
-                                        <button class="btn btn-ghost" type="button" id="mapBtn" disabled>
-                                            <i class="fas fa-bolt me-1"></i>Map now
+                                        <button class="btn btn-ghost d-inline-flex align-items-center" type="button" id="mapBtn" disabled>
+                                            {{ illu.illu_btn_bolt('me-1') }}Map now
                                         </button>
                                         {% endif %}
-                                        <a class="btn btn-ghost" id="downloadBtn" href="#" target="_blank">
-                                            <i class="fas fa-download me-1"></i>Download Workbook
+                                        <a class="btn btn-ghost d-inline-flex align-items-center" id="downloadBtn" href="#" target="_blank">
+                                            {{ illu.illu_btn_download('me-1') }}Download Workbook
                                         </a>
                                     </div>
                                 </div>
 
                                 <div class="data-entry-toolbar">
                                     <div class="data-entry-toolbar__chip">
-                                        <i class="fas fa-table-columns"></i>
+                                        {{ illu.illu_toolbar_columns() }}
                                         <span id="columnCountLabel">0 columns</span>
                                     </div>
                                     <div class="data-entry-toolbar__chip">
-                                        <i class="fas fa-arrows-left-right"></i>
+                                        {{ illu.illu_toolbar_arrows() }}
                                         <span>Horizontal scroll enabled for wide sheets</span>
                                     </div>
                                     <div class="data-entry-toolbar__chip">
-                                        <i class="fas fa-keyboard"></i>
+                                        {{ illu.illu_toolbar_keyboard() }}
                                         <span>Paste tabular data directly from Excel</span>
                                     </div>
                                 </div>
@@ -133,8 +137,8 @@
                                                 <div class="fw-bold">Mapped preview</div>
                                                 <small class="text-muted" id="mappingMeta"></small>
                                             </div>
-                                            <a class="btn btn-ghost" id="mappingDownload" href="#" target="_blank">
-                                                <i class="fas fa-download me-1"></i>Download mapped Excel
+                                            <a class="btn btn-ghost d-inline-flex align-items-center" id="mappingDownload" href="#" target="_blank">
+                                                {{ illu.illu_btn_download('me-1') }}Download mapped Excel
                                             </a>
                                         </div>
                                         <div class="table-responsive mt-2" style="max-height: 360px;">
@@ -155,8 +159,8 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
-                    <h4 class="mb-0">
-                        <i class="fas fa-bolt me-2"></i>Recent Mappings
+                    <h4 class="mb-0 d-flex align-items-center">
+                        {{ illu.illu_btn_bolt('me-2') }}Recent Mappings
                     </h4>
                 </div>
                 <div class="card-body">
@@ -189,8 +193,8 @@
                                     </td>
                                     <td class="text-end">
                                         {% if r.status == 'succeeded' and r.output_path %}
-                                            <a class="btn btn-sm btn-ghost" href="{{ url_for('api_mapping_download', run_id=r.id) }}">
-                                                <i class="fas fa-download me-1"></i>Download
+                                            <a class="btn btn-sm btn-ghost d-inline-flex align-items-center" href="{{ url_for('api_mapping_download', run_id=r.id) }}">
+                                                {{ illu.illu_btn_download('me-1') }}Download
                                             </a>
                                         {% else %}
                                             <button class="btn btn-sm btn-ghost" disabled>Download</button>
@@ -203,7 +207,7 @@
                     </div>
                     {% else %}
                     <div class="text-center py-4">
-                        <i class="fas fa-bolt" style="font-size: 3rem; color: #ccc;"></i>
+                        {{ illu.illu_empty_bolt() }}
                         <p class="mt-3 text-muted">No mapping runs yet</p>
                         <p class="text-muted">Use “Map now” after entering data to generate mapped outputs.</p>
                     </div>
@@ -218,7 +222,7 @@
         <div class="col-md-4">
             <div class="card text-center">
                 <div class="card-body">
-                    <i class="fas fa-file-alt" style="font-size: 2rem; color: var(--secondary-color);"></i>
+                    {{ illu.illu_card_report() }}
                     <h4 class="mt-2" id="statCategories">—</h4>
                     <p class="text-muted mb-0">Categories</p>
                 </div>
@@ -227,7 +231,7 @@
         <div class="col-md-4">
             <div class="card text-center">
                 <div class="card-body">
-                    <i class="fas fa-check-circle" style="font-size: 2rem; color: var(--success-color);"></i>
+                    {{ illu.illu_card_check() }}
                     <h4 class="mt-2">{{ total_mapping_runs }}</h4>
                     <p class="text-muted mb-0">Recent Mapping Runs</p>
                 </div>
@@ -236,7 +240,7 @@
         <div class="col-md-4">
             <div class="card text-center">
                 <div class="card-body">
-                    <i class="fas fa-calendar-check" style="font-size: 2rem; color: var(--warning-color);"></i>
+                    {{ illu.illu_card_calendar() }}
                     <h4 class="mt-2">{{ recent_mapping_runs_count }}</h4>
                     <p class="text-muted mb-0">Last 30 Days</p>
                 </div>
@@ -403,6 +407,12 @@
 }
 </style>
 <script>
+const ILLU_ROW_PEN = '<span class="dash-admin-illu dash-admin-illu--toolbar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 20l8-12 4 4-8 12H4v-4z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="currentColor" fill-opacity="0.06"/></svg></span>';
+const ILLU_ROW_LOCK = '<span class="dash-admin-illu dash-admin-illu--toolbar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="7" y="11" width="10" height="9" rx="1" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.04"/><path d="M9 11V8a3 3 0 016 0v3" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg></span>';
+const ILLU_TIMES = '<span class="dash-admin-illu dash-admin-illu--toolbar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></span>';
+const ILLU_CHEVRON = '<span class="dash-admin-illu dash-admin-illu--toolbar small opacity-75" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></span>';
+const ILLU_WIDE_EXPAND = '<span class="dash-admin-illu dash-admin-illu--btn me-1" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 3H3v6M15 21h6v-6M3 15v6h6M21 9V3h-6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></span>';
+const ILLU_WIDE_COMPRESS = '<span class="dash-admin-illu dash-admin-illu--btn me-1" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 9H3V3M15 15h6v6M9 15v6H3M15 9V3h6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></span>';
 const COMPANIES = JSON.parse(document.getElementById('companiesJson')?.textContent || '[]');
 let currentCompany = JSON.parse(document.getElementById('defaultCompanyJson')?.textContent || '""');
 let currentSheet = null;
@@ -565,14 +575,14 @@ function renderGrid() {
       ${currentHeaders.map((h, colIndex) => buildInputCell(row, rowIndex, h, colIndex)).join('')}
       <td class="data-grid__meta">
         <span class="data-grid__meta-badge">
-          <i class="fas ${row.is_editable ? 'fa-pen' : 'fa-lock'}"></i>
+          ${row.is_editable ? ILLU_ROW_PEN : ILLU_ROW_LOCK}
           ${escapeHtml(formatCreatedAt(row.created_at))}
         </span>
       </td>
       <td class="data-grid__row-actions">
         ${row.is_editable && !row.is_persisted ? `
           <button type="button" class="btn btn-sm btn-ghost px-2 py-1" title="Remove row" aria-label="Remove row" data-remove-row="${rowIndex}">
-            <i class="fas fa-times"></i>
+            ${ILLU_TIMES}
           </button>` : ''}
       </td>
     </tr>
@@ -824,7 +834,7 @@ function renderSheets(filterText = '') {
   elSheetList.innerHTML = list.map(s => `
     <button type="button" class="list-group-item list-group-item-action d-flex align-items-center justify-content-between ${s === currentSheet ? 'active' : ''}" data-sheet="${escapeHtml(s)}" style="border-radius: 14px; margin: 6px;">
       <span class="text-truncate">${escapeHtml(s)}</span>
-      <i class="fas fa-chevron-right small opacity-75"></i>
+      ${ILLU_CHEVRON}
     </button>
   `).join('');
 
@@ -924,8 +934,8 @@ function applyWorkspaceMode(isWide) {
   elWorkspace.classList.toggle('is-wide-mode', isWide);
   elToggleWorkspace.setAttribute('aria-pressed', String(isWide));
   elToggleWorkspace.innerHTML = isWide
-    ? '<i class="fas fa-compress me-1"></i>Standard mode'
-    : '<i class="fas fa-expand me-1"></i>Wide mode';
+    ? `${ILLU_WIDE_COMPRESS}Standard mode`
+    : `${ILLU_WIDE_EXPAND}Wide mode`;
 }
 
 elToggleWorkspace?.addEventListener('click', () => {
@@ -947,6 +957,9 @@ async function saveCurrent() {
   setStatus(`Saving ${rows.length} row(s)…`);
   elSave.disabled = true;
   setSaveBusy(true);
+  if (typeof showCtsBusyOverlay === 'function') {
+    showCtsBusyOverlay('Saving your data…');
+  }
   try {
     const data = await fetchJson(`/api/excel_schema/save`, {
       method: 'POST',
@@ -962,6 +975,9 @@ async function saveCurrent() {
   } catch (e) {
     setStatus(`Save failed: ${e.message}`);
   } finally {
+    if (typeof hideCtsBusyOverlay === 'function') {
+      hideCtsBusyOverlay();
+    }
     setSaveBusy(false);
     updateButtonState();
   }
@@ -992,6 +1008,9 @@ async function mapNow() {
   const rows = collectRows();
   setStatus(`Mapping ${rows.length} row(s)…`);
   elMap.disabled = true;
+  if (typeof showCtsBusyOverlay === 'function') {
+    showCtsBusyOverlay('Running mapping…');
+  }
   try {
     const data = await fetchJson(`/api/mapping/run`, {
       method: 'POST',
@@ -1007,6 +1026,9 @@ async function mapNow() {
   } catch (e) {
     setStatus(`Mapping failed: ${e.message}`);
   } finally {
+    if (typeof hideCtsBusyOverlay === 'function') {
+      hideCtsBusyOverlay();
+    }
     if (elMap) elMap.disabled = false;
   }
 }

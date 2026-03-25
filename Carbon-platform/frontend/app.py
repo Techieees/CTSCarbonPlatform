@@ -24,6 +24,10 @@ from io import BytesIO
 import re
 import time
 import math
+import secrets
+import smtplib
+import ssl
+from email.message import EmailMessage
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -33,9 +37,15 @@ from config import (
     FRONTEND_DB_PATH,
     FRONTEND_INSTANCE_DIR,
     FRONTEND_UPLOAD_DIR,
+    MAIL_DEFAULT_SENDER,
+    MAIL_PASSWORD,
+    MAIL_PORT,
+    MAIL_SERVER,
+    MAIL_USERNAME,
     PIPELINE_RUNS_DIR,
     PIPELINE_TEMPLATE_DIR,
     PROJECT_ROOT,
+    PUBLIC_APP_BASE_URL,
     SECRET_KEY,
     STAGE1_INPUT_BACKUP_DIR,
     STAGE1_INPUT_DIR,
@@ -57,6 +67,138 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = str(FRONTEND_UPLOAD_DIR)
 
 TEMPLATES_PATH = APP_DIR / "data" / "templates.json"
+ISO_COUNTRIES_PATH = APP_DIR / "data" / "iso_countries.json"
+ALLOWED_EMAIL_DOMAIN = "cts-nordics.com"
+PROFILE_PHOTO_ALLOWED_EXT = frozenset({".png", ".jpg", ".jpeg", ".webp"})
+COMPANY_LOGO_ALLOWED_EXT = frozenset({".png"})
+
+
+def _email_domain_allowed(email: str) -> bool:
+    e = (email or "").strip().lower()
+    if e.count("@") != 1:
+        return False
+    local, domain = e.split("@", 1)
+    return bool(local) and domain == ALLOWED_EMAIL_DOMAIN
+
+
+def _hash_password_reset_token(raw_token: str) -> str:
+    return hashlib.sha256((raw_token or "").encode("utf-8")).hexdigest()
+
+
+def _send_plain_email(to_addr: str, subject: str, body: str) -> bool:
+    if not MAIL_SERVER:
+        app.logger.warning("Password reset: MAIL_SERVER not configured; email not sent to %s", to_addr)
+        return False
+    try:
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = MAIL_DEFAULT_SENDER
+        msg["To"] = to_addr
+        msg.set_content(body)
+        ctx = ssl.create_default_context()
+        if MAIL_PORT == 465:
+            with smtplib.SMTP_SSL(MAIL_SERVER, MAIL_PORT, context=ctx, timeout=30) as smtp:
+                if MAIL_USERNAME:
+                    smtp.login(MAIL_USERNAME, MAIL_PASSWORD)
+                smtp.send_message(msg)
+        else:
+            with smtplib.SMTP(MAIL_SERVER, MAIL_PORT, timeout=30) as smtp:
+                smtp.ehlo()
+                smtp.starttls(context=ctx)
+                smtp.ehlo()
+                if MAIL_USERNAME:
+                    smtp.login(MAIL_USERNAME, MAIL_PASSWORD)
+                smtp.send_message(msg)
+        return True
+    except Exception:
+        app.logger.exception("Password reset email failed for %s", to_addr)
+        return False
+
+
+_FORGOT_PW_WINDOW_SEC = 600
+_FORGOT_PW_MAX_PER_IP = 5
+_FORGOT_PW_MAX_PER_EMAIL = 3
+_forgot_pw_lock = threading.Lock()
+_forgot_pw_ip_ts: dict[str, list[float]] = {}
+_forgot_pw_email_ts: dict[str, list[float]] = {}
+
+
+def _client_ip_for_rate_limit() -> str:
+    xff = (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+    if xff:
+        return xff[:200]
+    return str(request.remote_addr or "unknown")[:200]
+
+
+def _prune_ts_list(ts_list: list[float], now: float) -> None:
+    cutoff = now - _FORGOT_PW_WINDOW_SEC
+    ts_list[:] = [t for t in ts_list if t > cutoff]
+
+
+def _forgot_pw_rate_allow_ip(client_ip: str) -> bool:
+    now = time.time()
+    with _forgot_pw_lock:
+        lst = _forgot_pw_ip_ts.setdefault(client_ip, [])
+        _prune_ts_list(lst, now)
+        if len(lst) >= _FORGOT_PW_MAX_PER_IP:
+            return False
+        lst.append(now)
+        return True
+
+
+def _forgot_pw_rate_allow_email(email_norm: str) -> bool:
+    now = time.time()
+    with _forgot_pw_lock:
+        lst = _forgot_pw_email_ts.setdefault(email_norm, [])
+        _prune_ts_list(lst, now)
+        if len(lst) >= _FORGOT_PW_MAX_PER_EMAIL:
+            return False
+        lst.append(now)
+        return True
+
+
+def _audit_password_reset(event: str, **kwargs: object) -> None:
+    extra = " ".join(f"{k}={kwargs[k]}" for k in sorted(kwargs))
+    app.logger.info("[AUDIT] %s %s", event, extra)
+
+
+def _password_reset_meets_policy(pw: str) -> bool:
+    if len(pw) < 8:
+        return False
+    if not re.search(r"[A-Za-z]", pw):
+        return False
+    if not re.search(r"\d", pw):
+        return False
+    return True
+
+
+def _delete_expired_password_reset_tokens() -> None:
+    expired = PasswordResetToken.query.filter(PasswordResetToken.expires_at < datetime.utcnow()).all()
+    for row in expired:
+        db.session.delete(row)
+
+
+def _load_iso_countries() -> list[tuple[str, str]]:
+    try:
+        with ISO_COUNTRIES_PATH.open("r", encoding="utf-8") as f:
+            raw = json.load(f)
+    except Exception:
+        return []
+    out: list[tuple[str, str]] = []
+    if not isinstance(raw, list):
+        return out
+    for row in raw:
+        if not isinstance(row, dict):
+            continue
+        code = str(row.get("code") or "").strip().upper()
+        name = str(row.get("name") or "").strip()
+        if code and name:
+            out.append((code, name))
+    out.sort(key=lambda x: x[1].casefold())
+    return out
+
+
+ISO_COUNTRIES = _load_iso_countries()
 
 
 def _normalize_template_key(value: str) -> str:
@@ -203,7 +345,57 @@ def _canonical_company_name_and_country(name: str) -> tuple[str, str | None]:
 db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
-login_manager.login_view = 'login'
+login_manager.login_view = "login"
+
+_ENDPOINTS_WITHOUT_PROFILE = frozenset(
+    {
+        "login",
+        "logout",
+        "register",
+        "profile_setup",
+        "profile_page",
+        "static",
+        "mouse_symbol_image",
+        "index",
+        "who_we_are",
+        "platform",
+        "methodology",
+        "trust",
+        "forgot_password",
+        "reset_password",
+    }
+)
+
+
+@app.before_request
+def _require_complete_profile_for_app():
+    if not current_user.is_authenticated:
+        return
+    if _user_profile_complete(current_user):
+        return
+    ep = request.endpoint
+    if ep in _ENDPOINTS_WITHOUT_PROFILE:
+        return
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Complete profile setup before using this feature."}), 403
+    return redirect(url_for("profile_setup"))
+
+
+@app.context_processor
+def _nav_profile_context():
+    def nav_profile_photo_url() -> str | None:
+        try:
+            if not current_user.is_authenticated:
+                return None
+            rel = getattr(current_user, "profile_photo_path", None)
+            if not rel:
+                return None
+            return url_for("static", filename=str(rel))
+        except Exception:
+            return None
+
+    return dict(nav_profile_photo_url=nav_profile_photo_url)
+
 
 # Database models
 class User(UserMixin, db.Model):
@@ -213,6 +405,31 @@ class User(UserMixin, db.Model):
     company_name = db.Column(db.String(200), nullable=False)
     is_admin = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    first_name = db.Column(db.String(100), nullable=True)
+    last_name = db.Column(db.String(100), nullable=True)
+    job_title = db.Column(db.String(200), nullable=True)
+    phone = db.Column(db.String(40), nullable=True)
+    company_country = db.Column(db.String(100), nullable=True)
+    profile_photo_path = db.Column(db.String(500), nullable=True)
+    is_profile_complete = db.Column(db.Boolean, default=False)
+
+
+class Company(db.Model):
+    __tablename__ = "companies"
+    id = db.Column(db.Integer, primary_key=True)
+    company_name = db.Column(db.String(200), unique=True, nullable=False)
+    company_logo_path = db.Column(db.String(500), nullable=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+
+
+class PasswordResetToken(db.Model):
+    __tablename__ = "password_reset_tokens"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    token_hash = db.Column(db.String(64), nullable=False, index=True)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used = db.Column(db.Boolean, nullable=False, default=False)
+
 
 class EmissionFactor(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -295,6 +512,134 @@ def _ensure_db_tables() -> None:
         _ensure_mapping_run_summary_columns()
         _ensure_data_entry_columns()
         _ensure_mapping_run_source_entry_group_column()
+        _ensure_user_profile_columns()
+    except Exception:
+        pass
+
+
+def _user_profile_complete(u: object) -> bool:
+    if u is None or not getattr(u, "is_authenticated", False):
+        return True
+    v = getattr(u, "is_profile_complete", None)
+    if v is None:
+        return True
+    return bool(v)
+
+
+def _company_logo_slug_filename(company_key: str) -> str:
+    raw = (company_key or "").strip()
+    slug = re.sub(r"[^0-9a-zA-Z]+", "_", raw).strip("_") or "company"
+    return f"{slug}.png"
+
+
+def _static_subdir(*parts: str) -> Path:
+    p = APP_DIR / "static"
+    for part in parts:
+        p = p / part
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _save_upload_image(
+    storage,
+    dest_dir: Path,
+    base_name: str,
+    allowed_ext: frozenset[str],
+) -> str | None:
+    if not storage or not getattr(storage, "filename", None):
+        return None
+    fn = secure_filename(storage.filename or "")
+    ext = Path(fn).suffix.lower()
+    if ext not in allowed_ext:
+        return None
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / f"{base_name}{ext}"
+    storage.save(str(dest))
+    rel = dest.relative_to(APP_DIR / "static").as_posix()
+    return rel
+
+
+def _company_has_logo_for_key(template_company_key: str) -> bool:
+    row = Company.query.filter_by(company_name=template_company_key).first()
+    if not row or not row.company_logo_path:
+        return False
+    try:
+        return (APP_DIR / "static" / row.company_logo_path).is_file()
+    except Exception:
+        return bool(row.company_logo_path)
+
+
+def _company_logo_static_rel(template_company_key: str) -> str | None:
+    row = Company.query.filter_by(company_name=template_company_key).first()
+    if not row or not row.company_logo_path:
+        return None
+    p = APP_DIR / "static" / row.company_logo_path
+    try:
+        if p.is_file():
+            return row.company_logo_path
+    except Exception:
+        pass
+    return None
+
+
+def _save_company_logo_png(storage, company_key: str) -> str | None:
+    if not storage or not getattr(storage, "filename", None):
+        return None
+    ext = Path(secure_filename(storage.filename or "")).suffix.lower()
+    if ext not in COMPANY_LOGO_ALLOWED_EXT:
+        return None
+    dest_dir = _static_subdir("company_logos")
+    dest_name = _company_logo_slug_filename(company_key)
+    dest = dest_dir / dest_name
+    storage.save(str(dest))
+    return f"company_logos/{dest_name}"
+
+
+def _save_profile_photo_file(storage, user_id: int) -> str | None:
+    if not storage or not getattr(storage, "filename", None):
+        return None
+    fn = secure_filename(storage.filename or "")
+    ext = Path(fn).suffix.lower()
+    if ext not in PROFILE_PHOTO_ALLOWED_EXT:
+        return None
+    dest_dir = _static_subdir("profile_photos")
+    dest = dest_dir / f"user_{user_id}_{uuid.uuid4().hex[:10]}{ext}"
+    storage.save(str(dest))
+    return dest.relative_to(APP_DIR / "static").as_posix()
+
+
+def _ensure_user_profile_columns() -> None:
+    try:
+        from sqlalchemy import inspect, text
+
+        inspector = inspect(db.engine)
+        if not inspector.has_table("user"):
+            return
+        existing = {col["name"] for col in inspector.get_columns("user")}
+        alters: list[str] = []
+        backfill_profile_complete = False
+        if "first_name" not in existing:
+            alters.append("ALTER TABLE user ADD COLUMN first_name VARCHAR(100)")
+        if "last_name" not in existing:
+            alters.append("ALTER TABLE user ADD COLUMN last_name VARCHAR(100)")
+        if "job_title" not in existing:
+            alters.append("ALTER TABLE user ADD COLUMN job_title VARCHAR(200)")
+        if "phone" not in existing:
+            alters.append("ALTER TABLE user ADD COLUMN phone VARCHAR(40)")
+        if "company_country" not in existing:
+            alters.append("ALTER TABLE user ADD COLUMN company_country VARCHAR(100)")
+        if "profile_photo_path" not in existing:
+            alters.append("ALTER TABLE user ADD COLUMN profile_photo_path VARCHAR(500)")
+        if "is_profile_complete" not in existing:
+            alters.append("ALTER TABLE user ADD COLUMN is_profile_complete BOOLEAN")
+            backfill_profile_complete = True
+        if not alters:
+            return
+        with db.engine.begin() as conn:
+            for stmt in alters:
+                conn.execute(text(stmt))
+            if backfill_profile_complete:
+                conn.execute(text("UPDATE user SET is_profile_complete = 1 WHERE is_profile_complete IS NULL"))
     except Exception:
         pass
 
@@ -2212,30 +2557,8 @@ def _run_pipeline_background(run_id: int) -> None:
         run.status = "succeeded" if rc == 0 else "failed"
         db.session.commit()
 
-# Company list
-COMPANIES = [
-    "Navitas (Portugal, Nordics) -Portugal",
-    "Navitas (Portugal, Nordics) - Norway and Finland",
-    "Caerus Architects",
-    "SD Nordics",
-    "CTS-VDC",
-    "CTS Nordics AS Norway",
-    "CTS Sweden",
-    "CTS Denmark",
-    "QEC",
-    "CTS Finland OY",
-    "Velox",
-    "Mecwide",
-    "Porvelox",
-    "DC Piping",
-    "MC Prefab",
-    "Gapit Nordics",
-    "Nordic EPOD",
-    "CTS EU Portugal (CTS Nordics Eng)",
-    "BIMMS",
-    "Commissioning Services",
-    "NEP Switchboards AS Norway"
-]
+# Registration dropdown: exact template.json top-level keys only
+COMPANIES = list(TEMPLATES.keys())
 
 # Utility: Calculate emissions from excel data (veritabanından faktör çeker)
 def calculate_emissions_from_excel(file_path, template_name):
@@ -2448,6 +2771,22 @@ app.jinja_env.filters['get_emission_factor_name'] = get_emission_factor_name
 def index():
     return render_template('index.html')
 
+@app.route('/who-we-are')
+def who_we_are():
+    return render_template('who_we_are.html')
+
+@app.route('/platform')
+def platform():
+    return render_template('platform.html')
+
+@app.route('/methodology')
+def methodology():
+    return render_template('methodology.html')
+
+@app.route('/trust')
+def trust():
+    return render_template('trust.html')
+
 @app.route('/assets/mouse-symbol')
 def mouse_symbol_image():
     symbol_path = APP_DIR / "images" / "Symbol for mouse.png"
@@ -2458,40 +2797,292 @@ def mouse_symbol_image():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        email = request.form['email']
-        password = request.form['password']
-        
-        user = User.query.filter_by(email=email).first()
+        email = (request.form.get('email') or '').strip().lower()
+        password = request.form.get('password') or ''
+        if not _email_domain_allowed(email):
+            flash('Only CTS company email addresses are allowed')
+            return render_template('login.html')
+
+        user = User.query.filter(db.func.lower(User.email) == email).first()
         if user and check_password_hash(user.password_hash, password):
             login_user(user)
+            if not _user_profile_complete(user):
+                return redirect(url_for('profile_setup'))
             return redirect(url_for('dashboard'))
-        else:
-            flash('Invalid email or password')
-    
+        flash('Invalid email or password')
+
     return render_template('login.html')
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        email = request.form['email']
-        password = request.form['password']
-        company_name = request.form['company_name']
-        
-        if User.query.filter_by(email=email).first():
+        email = (request.form.get('email') or '').strip().lower()
+        password = request.form.get('password') or ''
+        company_name = (request.form.get('company_name') or '').strip()
+
+        if not _email_domain_allowed(email):
+            flash('Only CTS company email addresses are allowed')
+            return render_template('register.html', companies=COMPANIES)
+
+        if company_name not in TEMPLATES:
+            flash('Invalid company selection')
+            return render_template('register.html', companies=COMPANIES)
+
+        if User.query.filter(db.func.lower(User.email) == email).first():
             flash('Email already registered')
             return render_template('register.html', companies=COMPANIES)
-        
+
         user = User(
             email=email,
             password_hash=generate_password_hash(password),
-            company_name=company_name
+            company_name=company_name,
+            is_profile_complete=False,
         )
         db.session.add(user)
         db.session.commit()
-        
+
         flash('Registration successful! Please login.')
-        return redirect(url_for('login'))  
+        return redirect(url_for('login'))
     return render_template('register.html', companies=COMPANIES)
+
+
+@app.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    _ensure_db_tables()
+    generic_ok = "If the email exists, a reset link will be sent."
+    if request.method == "POST":
+        email = (request.form.get("email") or "").strip().lower()
+        client_ip = _client_ip_for_rate_limit()
+        if not _forgot_pw_rate_allow_ip(client_ip):
+            _audit_password_reset("password_reset_request_blocked", reason="rate_limit_ip", ip=client_ip)
+            flash("Too many password reset attempts. Please try again later.")
+            return redirect(url_for("forgot_password"))
+        if not _email_domain_allowed(email):
+            flash("Only CTS company email addresses are allowed")
+            return render_template("forgot_password.html")
+        if not _forgot_pw_rate_allow_email(email):
+            _audit_password_reset("password_reset_request_blocked", reason="rate_limit_email", ip=client_ip, email=email)
+            flash("Too many password reset attempts. Please try again later.")
+            return redirect(url_for("forgot_password"))
+        user = User.query.filter(db.func.lower(User.email) == email).first()
+        if user:
+            _delete_expired_password_reset_tokens()
+            raw = secrets.token_urlsafe(32)
+            token_hash = _hash_password_reset_token(raw)
+            for old in PasswordResetToken.query.filter_by(user_id=user.id).all():
+                db.session.delete(old)
+            db.session.add(
+                PasswordResetToken(
+                    user_id=user.id,
+                    token_hash=token_hash,
+                    expires_at=datetime.utcnow() + timedelta(hours=1),
+                    used=False,
+                )
+            )
+            db.session.commit()
+            reset_url = f"{PUBLIC_APP_BASE_URL}/reset-password/{raw}"
+            body = (
+                "You requested a password reset.\n\n"
+                "Click the link below to create a new password:\n\n"
+                f"{reset_url}\n\n"
+                "This link expires in 1 hour.\n\n"
+                "If you did not request this, ignore this email.\n"
+            )
+            _send_plain_email(str(user.email), "Password reset request", body)
+            _audit_password_reset("password_reset_requested", ip=client_ip, email=email, user_id=user.id)
+        else:
+            _audit_password_reset("password_reset_requested", ip=client_ip, email=email, user_found="false")
+        flash(generic_ok)
+        return redirect(url_for("forgot_password"))
+    return render_template("forgot_password.html")
+
+
+@app.route("/reset-password/<token>", methods=["GET", "POST"])
+def reset_password(token):
+    _ensure_db_tables()
+    raw = (token or "").strip()
+    if len(raw) < 20:
+        flash("This reset link is invalid or has expired.")
+        return redirect(url_for("login"))
+    th = _hash_password_reset_token(raw)
+    row = (
+        PasswordResetToken.query.filter_by(token_hash=th, used=False)
+        .filter(PasswordResetToken.expires_at > datetime.utcnow())
+        .first()
+    )
+    if request.method == "GET":
+        if not row:
+            flash("This reset link is invalid or has expired.")
+            return redirect(url_for("login"))
+        return render_template("reset_password.html", token=raw)
+
+    if not row:
+        flash("This reset link is invalid or has expired.")
+        return redirect(url_for("login"))
+
+    p1 = request.form.get("password") or ""
+    p2 = request.form.get("password_confirm") or ""
+    if not _password_reset_meets_policy(p1):
+        flash("Password must be at least 8 characters and include at least one letter and one number.")
+        return render_template("reset_password.html", token=raw)
+    if p1 != p2:
+        flash("Passwords do not match.")
+        return render_template("reset_password.html", token=raw)
+
+    user = User.query.filter_by(id=row.user_id).first()
+    if not user:
+        flash("This reset link is invalid or has expired.")
+        return redirect(url_for("login"))
+
+    client_ip = _client_ip_for_rate_limit()
+    user.password_hash = generate_password_hash(p1)
+    row.used = True
+    db.session.commit()
+    _audit_password_reset("password_reset_completed", ip=client_ip, user_id=user.id)
+    flash("Password updated successfully.")
+    return redirect(url_for("login"))
+
+
+@app.route("/profile/setup", methods=["GET", "POST"])
+@login_required
+def profile_setup():
+    _ensure_db_tables()
+    if _user_profile_complete(current_user):
+        return redirect(url_for("dashboard"))
+
+    companies = list(TEMPLATES.keys())
+    resolved_company = _resolve_template_company_name(current_user.company_name or "") or (current_user.company_name or "").strip()
+    show_logo_upload = bool(resolved_company) and not _company_has_logo_for_key(resolved_company)
+
+    if request.method == "POST":
+        first_name = (request.form.get("first_name") or "").strip()
+        last_name = (request.form.get("last_name") or "").strip()
+        job_title = (request.form.get("job_title") or "").strip()
+        phone = (request.form.get("phone") or "").strip()
+        co = (request.form.get("company_name") or "").strip()
+        country_code = (request.form.get("company_country") or "").strip().upper()
+
+        if not first_name or not last_name or not job_title:
+            flash("First name, last name, and job title are required.")
+            return render_template(
+                "profile_setup.html",
+                companies=companies,
+                iso_countries=ISO_COUNTRIES,
+                show_logo_upload=show_logo_upload,
+                resolved_company=resolved_company,
+            )
+
+        if co not in TEMPLATES:
+            flash("Invalid company selection.")
+            return render_template(
+                "profile_setup.html",
+                companies=companies,
+                iso_countries=ISO_COUNTRIES,
+                show_logo_upload=show_logo_upload,
+                resolved_company=resolved_company,
+            )
+
+        valid_codes = {c for c, _n in ISO_COUNTRIES}
+        if country_code not in valid_codes:
+            flash("Please select a valid country.")
+            return render_template(
+                "profile_setup.html",
+                companies=companies,
+                iso_countries=ISO_COUNTRIES,
+                show_logo_upload=show_logo_upload,
+                resolved_company=resolved_company,
+            )
+
+        logo_rel_to_set: str | None = None
+        if show_logo_upload:
+            lfile = request.files.get("company_logo")
+            if lfile and lfile.filename:
+                logo_rel_to_set = _save_company_logo_png(lfile, co)
+                if not logo_rel_to_set:
+                    flash("Company logo must be a PNG file.")
+                    return render_template(
+                        "profile_setup.html",
+                        companies=companies,
+                        iso_countries=ISO_COUNTRIES,
+                        show_logo_upload=show_logo_upload,
+                        resolved_company=resolved_company,
+                    )
+
+        current_user.first_name = first_name
+        current_user.last_name = last_name
+        current_user.job_title = job_title
+        current_user.phone = phone or None
+        current_user.company_name = co
+        current_user.company_country = country_code
+
+        pfile = request.files.get("profile_photo")
+        rel_photo = _save_profile_photo_file(pfile, int(current_user.id))
+        if rel_photo:
+            current_user.profile_photo_path = rel_photo
+
+        if logo_rel_to_set:
+            row = Company.query.filter_by(company_name=co).first()
+            if not row:
+                row = Company(company_name=co, created_by_user_id=current_user.id)
+                db.session.add(row)
+            row.company_logo_path = logo_rel_to_set
+            row.created_by_user_id = row.created_by_user_id or current_user.id
+
+        current_user.is_profile_complete = True
+        db.session.commit()
+        flash("Profile saved.")
+        return redirect(url_for("dashboard"))
+
+    return render_template(
+        "profile_setup.html",
+        companies=companies,
+        iso_countries=ISO_COUNTRIES,
+        show_logo_upload=show_logo_upload,
+        resolved_company=resolved_company,
+    )
+
+
+@app.route("/profile", methods=["GET", "POST"])
+@login_required
+def profile_page():
+    _ensure_db_tables()
+    if not _user_profile_complete(current_user):
+        return redirect(url_for("profile_setup"))
+
+    if request.method == "POST":
+        current_user.first_name = (request.form.get("first_name") or "").strip() or None
+        current_user.last_name = (request.form.get("last_name") or "").strip() or None
+        current_user.job_title = (request.form.get("job_title") or "").strip() or None
+        current_user.phone = (request.form.get("phone") or "").strip() or None
+
+        if current_user.is_admin:
+            country_code = (request.form.get("company_country") or "").strip().upper()
+            valid_codes = {c for c, _n in ISO_COUNTRIES}
+            if country_code in valid_codes:
+                current_user.company_country = country_code
+
+        pfile = request.files.get("profile_photo")
+        rel_photo = _save_profile_photo_file(pfile, int(current_user.id))
+        if rel_photo:
+            current_user.profile_photo_path = rel_photo
+
+        db.session.commit()
+        flash("Profile updated.")
+        return redirect(url_for("profile_page"))
+
+    cc = (current_user.company_country or "").strip().upper()
+    country_readonly_label = cc
+    for code, name in ISO_COUNTRIES:
+        if code == cc:
+            country_readonly_label = f"{name} ({code})"
+            break
+
+    return render_template(
+        "profile.html",
+        iso_countries=ISO_COUNTRIES,
+        company_display=(current_user.company_name or ""),
+        country_readonly_label=country_readonly_label,
+    )
 
 
 
@@ -2676,6 +3267,9 @@ def dashboard():
         companies = _list_template_companies_for_user()
         default_company = (companies[0]["key"] if companies else None)
 
+    rk = _resolve_template_company_name(current_user.company_name or "") if not current_user.is_admin else None
+    company_logo_rel = _company_logo_static_rel(rk) if rk else None
+
     return render_template(
         "dashboard.html",
         user=current_user,
@@ -2684,6 +3278,7 @@ def dashboard():
         mapping_runs=mapping_runs,
         total_mapping_runs=total_mapping_runs,
         recent_mapping_runs_count=recent_mapping_runs_count,
+        company_logo_rel=company_logo_rel,
     )
 
 

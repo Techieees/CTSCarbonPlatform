@@ -80,6 +80,79 @@
   filter: drop-shadow(0 12px 28px rgba(14, 165, 233, 0.16));
 }
 
+/* Full screen busy state (batch mapping, data entry save) */
+html.cts-busy-overlay-open,
+html.cts-busy-overlay-open body {
+  overflow: hidden;
+}
+
+.cts-busy-overlay[hidden] {
+  display: none !important;
+}
+
+.cts-busy-overlay:not([hidden]) {
+  display: grid;
+  position: fixed;
+  inset: 0;
+  z-index: 20050;
+  place-items: center;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.cts-busy-overlay__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(11, 18, 32, 0.52);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+body.dark-mode .cts-busy-overlay__backdrop {
+  background: rgba(2, 6, 23, 0.78);
+}
+
+.cts-busy-overlay__content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  max-width: min(92vw, 480px);
+  text-align: center;
+}
+
+/* Parallax vars are only set inside [data-parallax-scope]; undefined var() breaks the orb keyframes */
+.cts-busy-overlay .hero-premium-orb {
+  --hero-parallax-x: 0px;
+  --hero-parallax-y: 0px;
+}
+
+.cts-busy-overlay__text {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: rgba(248, 250, 252, 0.95);
+  text-shadow: 0 1px 18px rgba(0, 0, 0, 0.35);
+}
+
+.hero-premium-orb--busy {
+  width: clamp(260px, 48vw, 400px);
+  max-width: min(100%, 400px);
+  margin-inline: 0;
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow:
+    0 28px 90px rgba(37, 99, 235, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  animation-duration: 9s;
+}
+
+.hero-premium-orb--busy img {
+  width: 64%;
+}
+
 .hero-premium-orb::before,
 .hero-premium-orb::after {
   content: "";
@@ -244,7 +317,7 @@
 
 @media (max-width: 767.98px), (pointer: coarse) {
   .cursor-light,
-  .hero-premium-orb,
+  .hero-premium-orb:not(.hero-premium-orb--busy),
   :is(button, .btn, a.button):not(.btn-close):not(.navbar-toggler)::before,
   :is(button, .btn, a.button):not(.btn-close):not(.navbar-toggler)::after,
   :is(.card, .lp-feature, .mock, .list-group-item, .lp-kicker, .lp-stat)::before,
@@ -268,7 +341,7 @@
     opacity: 0.35;
   }
 
-  .hero-premium-orb,
+  .hero-premium-orb:not(.hero-premium-orb--busy),
   .hero-logo-background,
   .hero-logo-grid,
   :is(button, .btn, a.button):not(.btn-close):not(.navbar-toggler),
@@ -277,4 +350,5 @@
     transition: none !important;
     transform: none !important;
   }
+
 }

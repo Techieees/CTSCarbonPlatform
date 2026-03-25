@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import 'macros/ui_illustrations.html' as illu %}
 
 {% block title %}Admin • Batch Mapping{% endblock %}
 
@@ -12,14 +13,14 @@
       </p>
     </div>
     <div class="d-flex flex-wrap gap-2 align-items-center">
-      <button type="button" class="btn btn-success" id="mapEverythingBtn" {% if not batches %}disabled{% endif %} title="Map every batch that is not yet mapped">
-        <i class="fas fa-play me-1"></i>Map everything
+      <button type="button" class="btn btn-success d-inline-flex align-items-center" id="mapEverythingBtn" {% if not batches %}disabled{% endif %} title="Map every batch that is not yet mapped">
+        {{ illu.illu_play('me-1') }}Map everything
       </button>
-      <a class="btn btn-ghost" href="{{ url_for('admin_mapping_runs') }}">
-        <i class="fas fa-list me-1"></i>Mapping runs
+      <a class="btn btn-ghost d-inline-flex align-items-center" href="{{ url_for('admin_mapping_runs') }}">
+        {{ illu.illu_list('me-1') }}Mapping runs
       </a>
-      <a class="btn btn-ghost" href="{{ url_for('admin') }}">
-        <i class="fas fa-arrow-left me-1"></i>Admin
+      <a class="btn btn-ghost d-inline-flex align-items-center" href="{{ url_for('admin') }}">
+        {{ illu.illu_arrow_left('me-1') }}Admin
       </a>
     </div>
   </div>
@@ -86,14 +87,14 @@
               </td>
               <td class="text-end js-actions-cell text-nowrap">
                 {% if b.mappable and not b.mapped %}
-                <button type="button" class="btn btn-sm btn-primary js-map-batch">
-                  <i class="fas fa-bolt me-1"></i>Map now
+                <button type="button" class="btn btn-sm btn-primary d-inline-flex align-items-center js-map-batch">
+                  {{ illu.illu_btn_bolt('me-1') }}Map now
                 </button>
                 {% elif b.mappable and b.mapped %}
                 <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="This batch was already mapped">Mapped</button>
                 {% if b.download_run_id %}
-                <a class="btn btn-sm btn-ghost" href="{{ url_for('api_mapping_download', run_id=b.download_run_id) }}" target="_blank" rel="noopener" title="Download Excel">
-                  <i class="fas fa-download"></i>
+                <a class="btn btn-sm btn-ghost d-inline-flex align-items-center justify-content-center" href="{{ url_for('api_mapping_download', run_id=b.download_run_id) }}" target="_blank" rel="noopener" title="Download Excel">
+                  {{ illu.illu_btn_download() }}
                 </a>
                 {% endif %}
                 {% endif %}
@@ -105,7 +106,7 @@
       </div>
       {% else %}
       <div class="text-center py-5 text-muted">
-        <i class="fas fa-inbox fa-2x mb-3 d-block opacity-50"></i>
+        <span class="d-block mb-3">{{ illu.illu_inbox_empty() }}</span>
         No uploaded data batches yet.
       </div>
       {% endif %}
@@ -132,6 +133,9 @@
   function esc(s) {
     return String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
+
+  const ILLU_DL = '<span class="dash-admin-illu dash-admin-illu--btn" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 4v11M9 14l3 3 3-3M5 20h14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></span>';
+  const ILLU_MAP_NOW = '<span class="dash-admin-illu dash-admin-illu--btn me-1" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L6 12h5l-1 9 8-12h-5l1-7z" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round" fill="currentColor" fill-opacity="0.05"/></svg></span>';
 
   function formatUtc(iso) {
     if (!iso) return '';
@@ -165,7 +169,7 @@
     const runId = data.run_id;
     const dlHref = runId ? mappingDownloadTmpl.replace('__RUN_ID__', encodeURIComponent(runId)) : '';
     const dl = dlHref
-      ? '<a class="btn btn-sm btn-ghost" href="' + esc(dlHref) + '" target="_blank" rel="noopener" title="Download Excel"><i class="fas fa-download"></i></a>'
+      ? '<a class="btn btn-sm btn-ghost d-inline-flex align-items-center justify-content-center" href="' + esc(dlHref) + '" target="_blank" rel="noopener" title="Download Excel">' + ILLU_DL + '</a>'
       : '';
     actionsCell.innerHTML =
       '<button type="button" class="btn btn-sm btn-outline-secondary" disabled title="This batch was already mapped">Mapped</button>' + dl;
@@ -206,7 +210,7 @@
       if (!result.ok) {
         if (btn) {
           btn.disabled = false;
-          btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Map now';
+          btn.innerHTML = ILLU_MAP_NOW + 'Map now';
         }
         return result;
       }
@@ -240,7 +244,7 @@
     } catch (e) {
       if (btn) {
         btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Map now';
+        btn.innerHTML = ILLU_MAP_NOW + 'Map now';
       }
       return { ok: false, error: e.message || 'Mapping failed' };
     }
@@ -271,8 +275,17 @@
         sheet_name: row.getAttribute('data-sheet'),
         entry_group: row.getAttribute('data-entry-group'),
       };
-      const r = await mapBatchRow(row, batch);
-      if (!r.ok && r.error) alert(r.error);
+      if (typeof showCtsBusyOverlay === 'function') {
+        showCtsBusyOverlay('Mapping this batch…');
+      }
+      try {
+        const r = await mapBatchRow(row, batch);
+        if (!r.ok && r.error) alert(r.error);
+      } finally {
+        if (typeof hideCtsBusyOverlay === 'function') {
+          hideCtsBusyOverlay();
+        }
+      }
     });
   });
 
@@ -286,29 +299,38 @@
       return;
     }
     mapAllBtn.disabled = true;
+    if (typeof showCtsBusyOverlay === 'function') {
+      showCtsBusyOverlay('Mapping batches…');
+    }
     let okCount = 0;
     let failCount = 0;
     const total = pending.length;
 
-    for (let i = 0; i < pending.length; i++) {
-      const b = pending[i];
-      progressEl.textContent = 'Mapping ' + (i + 1) + '/' + total + ': ' + b.sheet_name + '…';
-      const row = rowByUidSafe(b.batch_uid);
-      if (!row) {
-        failCount++;
-        continue;
+    try {
+      for (let i = 0; i < pending.length; i++) {
+        const b = pending[i];
+        progressEl.textContent = 'Mapping ' + (i + 1) + '/' + total + ': ' + b.sheet_name + '…';
+        const row = rowByUidSafe(b.batch_uid);
+        if (!row) {
+          failCount++;
+          continue;
+        }
+        const r = await mapBatchRow(row, b);
+        if (r.ok) okCount++;
+        else failCount++;
       }
-      const r = await mapBatchRow(row, b);
-      if (r.ok) okCount++;
-      else failCount++;
-    }
 
-    progressEl.textContent =
-      failCount > 0
-        ? 'Done: ' + okCount + ' mapped, ' + failCount + ' failed or skipped.'
-        : 'Done: ' + okCount + ' batch(es) mapped.';
-    mapAllBtn.disabled = false;
-    applyFilter();
+      progressEl.textContent =
+        failCount > 0
+          ? 'Done: ' + okCount + ' mapped, ' + failCount + ' failed or skipped.'
+          : 'Done: ' + okCount + ' batch(es) mapped.';
+    } finally {
+      if (typeof hideCtsBusyOverlay === 'function') {
+        hideCtsBusyOverlay();
+      }
+      mapAllBtn.disabled = false;
+      applyFilter();
+    }
   });
 })();
 </script>

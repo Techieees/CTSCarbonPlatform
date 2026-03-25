@@ -2,7 +2,7 @@
   const root = document.documentElement;
   const BUTTON_SELECTOR = "button, .btn, a.button";
   const BUTTON_EXCLUDE_SELECTOR = ".btn-close, .navbar-toggler";
-  const INTERACTIVE_SELECTOR = ".card, .glass-card, .lp-feature, .mock, .lp-cta, .logo-marquee, .list-group-item, .lp-kicker, .lp-stat";
+  const INTERACTIVE_SELECTOR = ".card, .glass-card, .lp-feature, .mock, .lp-cta, .logo-marquee, .list-group-item, .lp-kicker, .lp-stat, .prod-kpi-card, .prod-dash, .prod-table-wrap, .prod-chart-panel, .prod-week-strip, .prod-flow-step, [data-spotlight-host]";
   const PARALLAX_SELECTOR = "[data-parallax-scope]";
 
   const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -158,8 +158,9 @@
       return;
     }
 
-    const radius = 240;
-    const peakOpacity = 0.28;
+    const isProdPage = scope.classList?.contains("prod-page");
+    const radius = isProdPage ? 340 : 240;
+    const peakOpacity = isProdPage ? 0.58 : 0.28;
     let closestImage = null;
     let closestDistance = Number.POSITIVE_INFINITY;
 
@@ -318,7 +319,10 @@
     ensureCursorLight();
     centerGlobalPointer();
     initInteractiveTracking();
-    document.querySelectorAll(PARALLAX_SELECTOR).forEach(initParallaxScope);
+    document.querySelectorAll(PARALLAX_SELECTOR).forEach((scope) => {
+      if (scope.matches?.("[data-spotlight-root]")) return;
+      initParallaxScope(scope);
+    });
 
     window.addEventListener(
       "mouseleave",
