@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}Who We Are{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/who_we_are.css') }}">
+{% endblock %}
+
+{# Reusable profile card: name, role, excerpt; optional full_text, image_url, img_alt (accessibility). #}
+{# Photos: put files under static/images/team/ then add to each call, for example:
+     image_url=url_for('static', filename='images/team/surname.jpg'), img_alt='Firstname Surname'
+   Square or portrait originals both work; the frame is fixed (see who_we_are.css). #}
+{% macro wwa_profile_card(name, role, excerpt, full_text='', image_url='', img_alt='') %}
+<article class="wwa-profile-card">
+  <div class="wwa-profile-card__media">
+    {% if image_url %}
+    <img class="wwa-profile-card__photo" src="{{ image_url }}" alt="{{ img_alt if img_alt else name }}">
+    {% else %}
+    {# REPLACE PLACEHOLDER: add image_url=url_for('static', filename='images/team/your-file.jpg') on the macro call, or put <img class="wwa-profile-card__photo" src="..." alt=""> here. #}
+    <div class="wwa-profile-card__photo-placeholder" role="img" aria-label="Profile photo placeholder"></div>
+    {% endif %}
+  </div>
+  <div class="wwa-profile-card__body">
+    {# EDIT: name #}
+    <h3 class="wwa-profile-card__name">{{ name }}</h3>
+    {# EDIT: role #}
+    <p class="wwa-profile-card__role">{{ role }}</p>
+    {# EDIT: description (short) #}
+    <p class="wwa-profile-card__excerpt">{{ excerpt }}</p>
+    <details class="wwa-profile-card__more">
+      <summary class="wwa-profile-card__more-toggle">Read more</summary>
+      <div class="wwa-profile-card__full">
+        {# EDIT: full text (optional longer bio) #}
+        {% if full_text %}
+        <p>{{ full_text }}</p>
+        {% else %}
+        <p>Full profile text placeholder. Replace with a longer biography or remove this details block if not needed.</p>
+        {% endif %}
+      </div>
+    </details>
+  </div>
+</article>
+{% endmacro %}
+
+{% block content %}
+<div class="page-who-we-are">
+  <section class="page-who-we-are__hero" aria-labelledby="wwa-hero-title">
+    <div class="container">
+      <h1 class="page-who-we-are__hero-title" id="wwa-hero-title">Who We Are</h1>
+      {# EDIT: hero subtitle #}
+      <p class="page-who-we-are__hero-lead">AAAAAAAAAAAAAAA.</p>
+    </div>
+  </section>
+
+  <section class="page-who-we-are__section" aria-labelledby="wwa-leadership-title">
+    <div class="container">
+      <h2 class="page-who-we-are__section-title" id="wwa-leadership-title">Leadership</h2>
+      {# EDIT: section intro (optional) #}
+      <p class="page-who-we-are__section-intro">AAAAAAAAAAAAAAA</p>
+      <div class="row g-4">
+        {# PHOTO: add image_url (and optional img_alt) to the macro call in this column. #}
+        <div class="col-md-6">
+          {{ wwa_profile_card(
+            'Barry Reilly',
+            'CEO',
+            'AAAAAAAAAAAAAAA',
+            'BBBBBBBBBBBBBBB.'
+          ) }}
+        </div>
+        {# PHOTO: add image_url (and optional img_alt) to the macro call in this column. #}
+        <div class="col-md-6">
+          {{ wwa_profile_card(
+            'Graham Langton',
+            'Vice President Head of Sustainability',
+            'AAAAAAAAAAAAAAA.',
+            'BBBBBBBBBBBBBBB.'
+          ) }}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page-who-we-are__section" aria-labelledby="wwa-team-title">
+    <div class="container">
+      <h2 class="page-who-we-are__section-title" id="wwa-team-title">Sustainability team</h2>
+      {# EDIT: section intro #}
+      <p class="page-who-we-are__section-intro">AAAAAAAAAAAAAAA.</p>
+      <div class="row g-4">
+        {# PHOTO: add image_url (and optional img_alt) to the macro call in this column. #}
+        <div class="col-md-6 col-lg-4">
+          {{ wwa_profile_card(
+            'Sean Higgins',
+            'Head of Corporate Sustainability',
+            'AAAAAAAAAAAAAAA.'
+          ) }}
+        </div>
+        {# PHOTO: add image_url (and optional img_alt) to the macro call in this column. #}
+        <div class="col-md-6 col-lg-4">
+          {{ wwa_profile_card(
+            'Aideeen Boyle',
+            'Sustainability Coordinator',
+            'AAAAAAAAAAAAAAA.'
+          ) }}
+        </div>
+        {# PHOTO: add image_url (and optional img_alt) to the macro call in this column. #}
+        <div class="col-md-6 col-lg-4">
+          {{ wwa_profile_card(
+            'Marta Gulman',
+            'Group Carbon Accounting',
+            'AAAAAAAAAAAAAAA.'
+          ) }}
+        </div>
+        {# PHOTO: add image_url (and optional img_alt) to the macro call in this column. #}
+        <div class="col-md-6 col-lg-4">
+          {{ wwa_profile_card(
+            'Florian Demir',
+            'Sustainability Data Analyst | Platform Designer & Creator',
+            'AAAAAAAAAAAAAAA.'
+          ) }}
+        </div>
+        {# PHOTO: add image_url (and optional img_alt) to the macro call in this column. #}
+        <div class="col-md-6 col-lg-4">
+          {{ wwa_profile_card(
+            'James Tipper',
+            'LCA Specialist',
+            'AAAAAAAAAAAAAAA.'
+          ) }}
+        </div>
+        {# PHOTO: add image_url (and optional img_alt) to the macro call in this column. #}
+        <div class="col-md-6 col-lg-4">
+          {{ wwa_profile_card(
+            'Andrew Behan',
+            'Sustainability Communications and Design Specialist',
+            'AAAAAAAAAAAAAAA.'
+          ) }}
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

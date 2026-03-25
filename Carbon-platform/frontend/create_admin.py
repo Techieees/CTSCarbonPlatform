@@ -5,21 +5,26 @@ Create an admin user
 
 import argparse
 
-from app import app, db, User
+from app import app, db, User, _ensure_db_tables
 from werkzeug.security import generate_password_hash
 
 def create_admin_user(email, password, company_name="Admin"):
     """Create an admin user"""
     with app.app_context():
-        #  Create a database
         db.create_all()
-        
-        #  Check if the user already exists
-        existing_user = User.query.filter_by(email=email).first()
+        _ensure_db_tables()
+
+        email_norm = (email or "").strip().lower()
+        existing_user = User.query.filter(db.func.lower(User.email) == email_norm).first()
         if existing_user:
             existing_user.password_hash = generate_password_hash(password)
             existing_user.company_name = company_name
             existing_user.is_admin = True
+            existing_user.is_profile_complete = True
+            if not (existing_user.first_name or "").strip():
+                existing_user.first_name = "Admin"
+            if not (existing_user.last_name or "").strip():
+                existing_user.last_name = "User"
             db.session.commit()
             print("Existing user updated successfully!")
             print(f"Email: {email}")
@@ -29,10 +34,13 @@ def create_admin_user(email, password, company_name="Admin"):
         
         #  Create a new admin user
         admin_user = User(
-            email=email,
+            email=email_norm,
             password_hash=generate_password_hash(password),
             company_name=company_name,
-            is_admin=True
+            is_admin=True,
+            is_profile_complete=True,
+            first_name="Admin",
+            last_name="User",
         )
         
         db.session.add(admin_user)

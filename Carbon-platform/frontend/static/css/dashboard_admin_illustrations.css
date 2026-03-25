@@ -1,0 +1,114 @@
+/* Platform-wide minimal geometric illustrations (neutral stroke / soft fill) */
+.dash-admin-illu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  color: var(--muted-2);
+}
+
+.dash-admin-illu svg {
+  flex-shrink: 0;
+}
+
+.dash-admin-illu--nav svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.dash-admin-illu--input svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.dash-admin-illu--btn {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+}
+
+.dash-admin-illu--btn svg {
+  width: 0.95em;
+  height: 0.95em;
+}
+
+.dash-admin-illu--toolbar svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.dash-admin-illu--title svg {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.dash-admin-illu--header svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.dash-admin-illu--hero svg {
+  width: 3rem;
+  height: 3rem;
+}
+
+.dash-admin-illu--stat {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 0 auto;
+  min-height: 2rem;
+  color: var(--muted-2);
+}
+
+.dash-admin-illu--stat svg {
+  width: 2rem;
+  height: 2rem;
+}
+
+.dash-admin-illu--card-stat svg {
+  width: 2rem;
+  height: 2rem;
+}
+
+/* Inline in card headers / flex rows — avoid margin:auto from --card-stat */
+.card-header .dash-admin-illu--card-stat,
+.d-flex.align-items-center > .dash-admin-illu--card-stat {
+  margin: 0;
+  min-height: 0;
+}
+
+.dash-admin-illu--empty svg {
+  width: 3rem;
+  height: 3rem;
+}
+
+.dash-admin-illu--check-tiny svg {
+  width: 12px;
+  height: 12px;
+}
+
+.dash-admin-illu--lp-icon svg {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+@keyframes dash-admin-illu-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.dash-admin-illu--spin svg {
+  animation: dash-admin-illu-spin 0.85s linear infinite;
+}
+
+body.dark-mode .dash-admin-illu {
+  color: rgba(148, 163, 184, 0.72);
+}
+
+.report-empty-state .dash-admin-illu svg {
+  width: 2rem;
+  height: 2rem;
+  color: var(--chart-axis-color, var(--muted-2));
+}

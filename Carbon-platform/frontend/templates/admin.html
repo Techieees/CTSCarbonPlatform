@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import 'macros/ui_illustrations.html' as illu %}
 
 {% block title %}Admin Panel - GHG Data Collection System{% endblock %}
 
@@ -8,8 +9,8 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
-                    <h4 class="mb-0">
-                        <i class="fas fa-cog me-2"></i>Administration Panel
+                    <h4 class="mb-0 d-flex align-items-center">
+                        {{ illu.illu_header_cog() }}<span class="ms-2">Administration Panel</span>
                     </h4>
                 </div>
                 <div class="card-body">
@@ -24,7 +25,7 @@
         <div class="col-md-3">
             <div class="card text-center">
                 <div class="card-body">
-                    <i class="fas fa-users" style="font-size: 2rem; color: var(--secondary-color);"></i>
+                    {{ illu.illu_card_users() }}
                     <h4 class="mt-2">{{ users|length }}</h4>
                     <p class="text-muted mb-0">Total Users</p>
                 </div>
@@ -33,7 +34,7 @@
         <div class="col-md-3">
             <div class="card text-center">
                 <div class="card-body">
-                    <i class="fas fa-file-excel" style="font-size: 2rem; color: var(--success-color);"></i>
+                    {{ illu.illu_lp_spreadsheet() }}
                     <h4 class="mt-2">{{ mapping_runs|length }}</h4>
                     <p class="text-muted mb-0">Total Mapping Runs</p>
                 </div>
@@ -42,7 +43,7 @@
         <div class="col-md-3">
             <div class="card text-center">
                 <div class="card-body">
-                    <i class="fas fa-building" style="font-size: 2rem; color: var(--warning-color);"></i>
+                    {{ illu.illu_card_building() }}
                     <h4 class="mt-2">{{ users|selectattr('company_name')|map(attribute='company_name')|unique|list|length }}</h4>
                     <p class="text-muted mb-0">Active Companies</p>
                 </div>
@@ -51,7 +52,7 @@
         <div class="col-md-3">
             <div class="card text-center">
                 <div class="card-body">
-                    <i class="fas fa-calendar-check" style="font-size: 2rem; color: var(--accent-color);"></i>
+                    {{ illu.illu_card_calendar() }}
                     <h4 class="mt-2">{{ recent_admin_submissions_count }}</h4>
                     <p class="text-muted mb-0">This Week</p>
                 </div>
@@ -64,8 +65,8 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h4 class="mb-0">
-                        <i class="fas fa-chart-bar me-2"></i>Company Mapping Coverage
+                    <h4 class="mb-0 d-flex align-items-center">
+                        {{ illu.illu_header_chart() }}<span class="ms-2">Company Mapping Coverage</span>
                     </h4>
                     <form id="monthForm" class="d-flex align-items-center gap-2">
                         <label for="monthSelect" class="form-label mb-0 me-2">Month:</label>
@@ -114,8 +115,8 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
-                    <h5 class="mb-0">
-                        <i class="fas fa-users me-2"></i>User Management
+                    <h5 class="mb-0 d-flex align-items-center">
+                        {{ illu.illu_card_users() }}<span class="ms-2">User Management</span>
                     </h5>
                 </div>
                 <div class="card-body">
@@ -134,12 +135,10 @@
                                 {% for user in users %}
                                 <tr>
                                     <td>
-                                        <i class="fas fa-envelope me-2 text-muted"></i>
-                                        {{ user.email }}
+                                        <span class="d-inline-flex align-items-center">{{ illu.illu_input_envelope() }}<span class="ms-2">{{ user.email }}</span></span>
                                     </td>
                                     <td>
-                                        <i class="fas fa-building me-2 text-primary"></i>
-                                        {{ user.company_name }}
+                                        <span class="d-inline-flex align-items-center">{{ illu.illu_table_building() }}<span class="ms-2">{{ user.company_name }}</span></span>
                                     </td>
                                     <td>
                                         {% if user.is_admin %}
@@ -150,11 +149,11 @@
                                     </td>
                                     <td>{{ user.created_at.strftime('%Y-%m-%d') if user.created_at else '' }}</td>
                                     <td>
-                                        <button class="btn btn-sm btn-outline-info js-view-user" data-user-id="{{ user.id }}">
-                                            <i class="fas fa-eye me-1"></i>View
+                                        <button class="btn btn-sm btn-outline-info d-inline-flex align-items-center js-view-user" data-user-id="{{ user.id }}">
+                                            {{ illu.illu_btn_view() }}<span class="ms-1">View</span>
                                         </button>
-                                        <button class="btn btn-sm btn-outline-warning js-edit-user" data-user-id="{{ user.id }}">
-                                            <i class="fas fa-edit me-1"></i>Edit
+                                        <button class="btn btn-sm btn-outline-warning d-inline-flex align-items-center js-edit-user" data-user-id="{{ user.id }}">
+                                            {{ illu.illu_btn_edit() }}<span class="ms-1">Edit</span>
                                         </button>
                                     </td>
                                 </tr>
@@ -172,8 +171,8 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
-                    <h5 class="mb-0">
-                        <i class="fas fa-bolt me-2"></i>Recent Mapping Runs
+                    <h5 class="mb-0 d-flex align-items-center gap-2">
+                        {{ illu.illu_btn_bolt() }}Recent Mapping Runs
                     </h5>
                 </div>
                 <div class="card-body">
@@ -192,12 +191,10 @@
                                 {% for submission in mapping_runs[:20] %}
                                 <tr>
                                     <td>
-                                        <i class="fas fa-building me-2 text-primary"></i>
-                                        {{ submission.company_name }}
+                                        <span class="d-inline-flex align-items-center">{{ illu.illu_table_building() }}<span class="ms-2">{{ submission.company_name }}</span></span>
                                     </td>
                                     <td>
-                                        <i class="fas fa-file-excel me-2 text-success"></i>
-                                        {{ submission.sheet_name }}
+                                        <span class="d-inline-flex align-items-center">{{ illu.illu_table_file() }}<span class="ms-2">{{ submission.sheet_name }}</span></span>
                                     </td>
                                     <td>{{ submission.created_at.strftime('%Y-%m-%d %H:%M') if submission.created_at else '' }}</td>
                                     <td>
@@ -211,8 +208,8 @@
                                     </td>
                                     <td>
                                         {% if submission.status == 'succeeded' and submission.output_path %}
-                                        <a class="btn btn-sm btn-outline-success" href="{{ url_for('api_mapping_download', run_id=submission.id) }}">
-                                            <i class="fas fa-download me-1"></i>Download
+                                        <a class="btn btn-sm btn-outline-success d-inline-flex align-items-center" href="{{ url_for('api_mapping_download', run_id=submission.id) }}">
+                                            {{ illu.illu_btn_download('me-1') }}Download
                                         </a>
                                         {% endif %}
                                     </td>
@@ -260,6 +257,7 @@
 
 {% block scripts %}
 <script>
+const ILLU_SPINNER = '<span class="dash-admin-illu dash-admin-illu--card-stat dash-admin-illu--spin" aria-hidden="true" role="status"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="16" r="12" stroke="currentColor" stroke-width="1.25" stroke-opacity="0.2" fill="none"/><path d="M16 4a12 12 0 0112 12" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" fill="none"/></svg></span>';
 document.querySelectorAll('.js-view-user').forEach((btn) => {
     btn.addEventListener('click', () => viewUser(Number(btn.getAttribute('data-user-id') || '0')));
 });
@@ -271,7 +269,7 @@ document.querySelectorAll('.js-edit-user').forEach((btn) => {
 function viewUser(userId) {
     document.getElementById('userDetails').innerHTML = `
         <div class="text-center py-4">
-            <i class="fas fa-spinner fa-spin" style="font-size: 2rem; color: var(--secondary-color);"></i>
+            ${ILLU_SPINNER}
             <p class="mt-3">Loading user details...</p>
         </div>
     `;

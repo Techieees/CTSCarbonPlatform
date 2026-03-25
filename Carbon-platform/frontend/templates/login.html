@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import 'macros/ui_illustrations.html' as illu %}
 
 {% block title %}Login - GHG Data Collection System{% endblock %}
 
@@ -9,36 +10,44 @@
             <div class="card">
                 <div class="card-body p-5">
                     <div class="text-center mb-4">
-                        <i class="fas fa-sign-in-alt" style="font-size: 3rem; color: var(--secondary-color);"></i>
+                        {{ illu.illu_hero_login() }}
                         <h2 class="mt-3">Welcome Back</h2>
                         <p class="text-muted">Sign in to your account</p>
                     </div>
                     
-                    <form method="POST">
+                    <form method="POST" id="loginForm">
                         <div class="mb-3">
                             <label for="email" class="form-label">Email Address</label>
                             <div class="input-group">
-                                <span class="input-group-text">
-                                    <i class="fas fa-envelope"></i>
+                                <span class="input-group-text d-inline-flex align-items-center justify-content-center">
+                                    {{ illu.illu_input_envelope() }}
                                 </span>
-                                <input type="email" class="form-control" id="email" name="email" required>
+                                <input type="email" class="form-control" id="email" name="email" required autocomplete="username">
                             </div>
+                            <div class="form-text">Only CTS company email addresses are allowed (@cts-nordics.com).</div>
                         </div>
                         
                         <div class="mb-4">
                             <label for="password" class="form-label">Password</label>
                             <div class="input-group">
-                                <span class="input-group-text">
-                                    <i class="fas fa-lock"></i>
+                                <span class="input-group-text d-inline-flex align-items-center justify-content-center">
+                                    {{ illu.illu_input_lock() }}
                                 </span>
-                                <input type="password" class="form-control" id="password" name="password" required>
+                                <input type="password" class="form-control" id="password" name="password" required autocomplete="current-password">
+                                <button class="btn btn-outline-secondary d-inline-flex align-items-center justify-content-center" type="button" id="togglePwLogin" aria-label="Show or hide password" tabindex="0">
+                                    <span id="togglePwLoginEyeOpen">{{ illu.illu_eye_open() }}</span>
+                                    <span id="togglePwLoginEyeShut" class="d-none">{{ illu.illu_eye_shut() }}</span>
+                                </button>
                             </div>
                         </div>
                         
                         <div class="d-grid">
-                            <button type="submit" class="btn btn-primary btn-lg">
-                                <i class="fas fa-sign-in-alt me-2"></i>Sign In
+                            <button type="submit" class="btn btn-primary btn-lg d-inline-flex align-items-center justify-content-center">
+                                {{ illu.illu_nav_signin('me-2') }}Sign In
                             </button>
+                        </div>
+                        <div class="text-center mt-2">
+                            <a href="{{ url_for('forgot_password') }}" class="text-decoration-none small">Forgot password?</a>
                         </div>
                     </form>
                     
@@ -52,4 +61,38 @@
         </div>
     </div>
 </div>
-{% endblock %} 
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var form = document.getElementById('loginForm');
+  var email = document.getElementById('email');
+  var pw = document.getElementById('password');
+  var btn = document.getElementById('togglePwLogin');
+  var openEl = document.getElementById('togglePwLoginEyeOpen');
+  var shutEl = document.getElementById('togglePwLoginEyeShut');
+  if (btn && pw && openEl && shutEl) {
+    btn.addEventListener('click', function () {
+      if (pw.type === 'password') {
+        pw.type = 'text';
+        openEl.classList.add('d-none');
+        shutEl.classList.remove('d-none');
+      } else {
+        pw.type = 'password';
+        shutEl.classList.add('d-none');
+        openEl.classList.remove('d-none');
+      }
+    });
+  }
+  if (form && email) {
+    form.addEventListener('submit', function (e) {
+      var v = (email.value || '').trim().toLowerCase();
+      if (!v.endsWith('@cts-nordics.com')) {
+        e.preventDefault();
+        alert('Only CTS company email addresses are allowed');
+      }
+    });
+  }
+})();
+</script>
+{% endblock %}

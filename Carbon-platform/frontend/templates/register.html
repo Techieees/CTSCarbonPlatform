@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import 'macros/ui_illustrations.html' as illu %}
 
 {% block title %}Register - GHG Data Collection System{% endblock %}
 
@@ -9,29 +10,34 @@
             <div class="card">
                 <div class="card-body p-5">
                     <div class="text-center mb-4">
-                        <i class="fas fa-user-plus" style="font-size: 3rem; color: var(--secondary-color);"></i>
+                        {{ illu.illu_hero_register() }}
                         <h2 class="mt-3">Create Account</h2>
                         <p class="text-muted">Join our GHG data collection platform</p>
                     </div>
                     
-                    <form method="POST">
+                    <form method="POST" id="registerForm">
                         <div class="mb-3">
                             <label for="email" class="form-label">Email Address</label>
                             <div class="input-group">
-                                <span class="input-group-text">
-                                    <i class="fas fa-envelope"></i>
+                                <span class="input-group-text d-inline-flex align-items-center justify-content-center">
+                                    {{ illu.illu_input_envelope() }}
                                 </span>
-                                <input type="email" class="form-control" id="email" name="email" required>
+                                <input type="email" class="form-control" id="email" name="email" required autocomplete="username">
                             </div>
+                            <div class="form-text">Only CTS company email addresses are allowed (@cts-nordics.com).</div>
                         </div>
                         
                         <div class="mb-3">
                             <label for="password" class="form-label">Password</label>
                             <div class="input-group">
-                                <span class="input-group-text">
-                                    <i class="fas fa-lock"></i>
+                                <span class="input-group-text d-inline-flex align-items-center justify-content-center">
+                                    {{ illu.illu_input_lock() }}
                                 </span>
-                                <input type="password" class="form-control" id="password" name="password" required>
+                                <input type="password" class="form-control" id="password" name="password" required minlength="8" autocomplete="new-password">
+                                <button class="btn btn-outline-secondary d-inline-flex align-items-center justify-content-center" type="button" id="togglePwReg" aria-label="Show or hide password">
+                                    <span id="togglePwRegEyeOpen">{{ illu.illu_eye_open() }}</span>
+                                    <span id="togglePwRegEyeShut" class="d-none">{{ illu.illu_eye_shut() }}</span>
+                                </button>
                             </div>
                             <div class="form-text">Password must be at least 8 characters long</div>
                         </div>
@@ -39,8 +45,8 @@
                         <div class="mb-4">
                             <label for="company_name" class="form-label">Company Name</label>
                             <div class="input-group">
-                                <span class="input-group-text">
-                                    <i class="fas fa-building"></i>
+                                <span class="input-group-text d-inline-flex align-items-center justify-content-center">
+                                    {{ illu.illu_input_building() }}
                                 </span>
                                 <select class="form-select" id="company_name" name="company_name" required>
                                     <option value="">Select your company</option>
@@ -52,8 +58,8 @@
                         </div>
                         
                         <div class="d-grid">
-                            <button type="submit" class="btn btn-primary btn-lg">
-                                <i class="fas fa-user-plus me-2"></i>Create Account
+                            <button type="submit" class="btn btn-primary btn-lg d-inline-flex align-items-center justify-content-center">
+                                {{ illu.illu_btn_user_plus('me-2') }}Create Account
                             </button>
                         </div>
                     </form>
@@ -68,4 +74,38 @@
         </div>
     </div>
 </div>
-{% endblock %} 
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var form = document.getElementById('registerForm');
+  var email = document.getElementById('email');
+  var pw = document.getElementById('password');
+  var btn = document.getElementById('togglePwReg');
+  var openEl = document.getElementById('togglePwRegEyeOpen');
+  var shutEl = document.getElementById('togglePwRegEyeShut');
+  if (btn && pw && openEl && shutEl) {
+    btn.addEventListener('click', function () {
+      if (pw.type === 'password') {
+        pw.type = 'text';
+        openEl.classList.add('d-none');
+        shutEl.classList.remove('d-none');
+      } else {
+        pw.type = 'password';
+        shutEl.classList.add('d-none');
+        openEl.classList.remove('d-none');
+      }
+    });
+  }
+  if (form && email) {
+    form.addEventListener('submit', function (e) {
+      var v = (email.value || '').trim().toLowerCase();
+      if (!v.endsWith('@cts-nordics.com')) {
+        e.preventDefault();
+        alert('Only CTS company email addresses are allowed');
+      }
+    });
+  }
+})();
+</script>
+{% endblock %}

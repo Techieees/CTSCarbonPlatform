@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+{% import 'macros/ui_illustrations.html' as illu %}
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -16,14 +17,15 @@
     </script>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/favicon.svg') }}">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/saas.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/global-effects.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/chart-system.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard_admin_illustrations.css') }}">
+    {% block extra_head %}{% endblock %}
 </head>
 <body>
     <div class="app-shell">
-    {% set is_marketing = (request.endpoint == 'index' and not current_user.is_authenticated) %}
+    {% set is_marketing = (request.endpoint in ('index', 'platform', 'methodology', 'trust', 'who_we_are') and not current_user.is_authenticated) %}
     <nav class="navbar navbar-expand-lg navbar-light saas-nav">
         <div class="container">
             <a class="navbar-brand d-flex align-items-center gap-2" href="{{ url_for('index') }}">
@@ -38,10 +40,11 @@
             <div class="collapse navbar-collapse" id="navbarNav">
                 {% if is_marketing %}
                 <ul class="navbar-nav ms-auto align-items-lg-center gap-lg-2">
-                    <li class="nav-item"><a class="nav-link" href="#product">Product</a></li>
-                    <li class="nav-item"><a class="nav-link" href="#features">Features</a></li>
-                    <li class="nav-item"><a class="nav-link" href="#security">Security</a></li>
-                    <li class="nav-item"><a class="nav-link" href="#cta">Get started</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}">Home</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('platform') }}">Platform</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('methodology') }}">Methodology</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('trust') }}">Trust</a></li>
+                    <li class="nav-item"><a class="nav-link text-nowrap" href="{{ url_for('who_we_are') }}">Who We Are</a></li>
                     <li class="nav-item">
                         <div class="theme-toggle" title="Toggle dark mode">
                             <label class="theme-toggle__switch" for="darkModeToggle">
@@ -51,58 +54,75 @@
                             <span class="theme-toggle__label">Dark Mode</span>
                         </div>
                     </li>
-                    <li class="nav-item ms-lg-2"><a class="btn btn-ghost" href="{{ url_for('login') }}">Sign in</a></li>
+                    <li class="nav-item ms-lg-2"><a class="btn btn-ghost" href="{{ url_for('login') }}">Login</a></li>
                     <li class="nav-item"><a class="btn btn-primary" href="{{ url_for('register') }}">Create account</a></li>
                 </ul>
                 {% else %}
                 <ul class="navbar-nav ms-auto align-items-lg-center">
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('home') }}">
-                            <i class="fas fa-home me-1"></i>Home
+                        <a class="nav-link d-inline-flex align-items-center" href="{{ url_for('home') }}">
+                            {{ illu.illu_nav_home('me-1') }}Home
                         </a>
                     </li>
 
                     {% if current_user.is_authenticated %}
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="dataDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fas fa-database me-1"></i>Data
+                        <a class="nav-link dropdown-toggle d-inline-flex align-items-center" href="#" id="dataDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            {{ illu.illu_nav_data('me-1') }}Data
                         </a>
                         <ul class="dropdown-menu" aria-labelledby="dataDropdown">
-                            <li><a class="dropdown-item" href="{{ url_for('dashboard') }}"><i class="fas fa-pen-to-square me-1"></i>Data Entry</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('mapping_runs') }}"><i class="fas fa-bolt me-1"></i>Mappings</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('admin_report' if current_user.is_admin else 'report') }}"><i class="fas fa-file-alt me-1"></i>Report</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('carbon_accounting') }}"><i class="fas fa-chart-bar me-1"></i>Carbon Accounting</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('dashboard') }}">{{ illu.illu_nav_pen_entry('me-2') }}Data Entry</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('mapping_runs') }}">{{ illu.illu_nav_bolt('me-2') }}Mappings</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('admin_report' if current_user.is_admin else 'report') }}">{{ illu.illu_nav_file('me-2') }}Report</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('carbon_accounting') }}">{{ illu.illu_nav_chart('me-2') }}Carbon Accounting</a></li>
+                        </ul>
+                    </li>
+                    {% endif %}
+
+                    {% if current_user.is_authenticated %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" id="accountDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            {% set _purl = nav_profile_photo_url() %}
+                            {% if _purl %}
+                            <img src="{{ _purl }}" alt="" width="28" height="28" class="rounded-circle me-1 flex-shrink-0" style="object-fit:cover;">
+                            {% else %}
+                            {{ illu.illu_nav_user('me-1') }}
+                            {% endif %}
+                            Account
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="accountDropdown">
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('profile_page') }}">{{ illu.illu_nav_id('me-2') }}Profile</a></li>
                         </ul>
                     </li>
                     {% endif %}
 
                     {% if current_user.is_authenticated and current_user.is_admin %}
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('manage_emission_factors') }}">
-                            <i class="fas fa-sliders me-1"></i>Emission Factors
+                        <a class="nav-link d-inline-flex align-items-center" href="{{ url_for('manage_emission_factors') }}">
+                            {{ illu.illu_nav_sliders('me-1') }}Emission Factors
                         </a>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="adminDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fas fa-cog me-1"></i>Admin
+                        <a class="nav-link dropdown-toggle d-inline-flex align-items-center" href="#" id="adminDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            {{ illu.illu_nav_cog('me-1') }}Admin
                         </a>
                         <ul class="dropdown-menu" aria-labelledby="adminDropdown">
-                            <li><a class="dropdown-item" href="{{ url_for('admin') }}"><i class="fas fa-cog me-1"></i>Admin</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('admin_report') }}"><i class="fas fa-file-alt me-1"></i>Admin Report</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('admin_mapping_runs') }}"><i class="fas fa-bolt me-1"></i>Mapping Runs</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('admin_mapping_panel') }}"><i class="fas fa-layer-group me-1"></i>Batch mapping</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('admin') }}">{{ illu.illu_nav_cog('me-2') }}Admin</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('admin_report') }}">{{ illu.illu_nav_file('me-2') }}Admin Report</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('admin_mapping_runs') }}">{{ illu.illu_nav_bolt('me-2') }}Mapping Runs</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('admin_mapping_panel') }}">{{ illu.illu_nav_layers('me-2') }}Batch mapping</a></li>
                         </ul>
                     </li>
                     {% endif %}
 
                     <li class="nav-item">
                         {% if current_user.is_authenticated %}
-                            <a class="nav-link" href="{{ url_for('logout') }}">
-                                <i class="fas fa-sign-out-alt me-1"></i>Logout
+                            <a class="nav-link d-inline-flex align-items-center" href="{{ url_for('logout') }}">
+                                {{ illu.illu_nav_signout('me-1') }}Logout
                             </a>
                         {% else %}
-                            <a class="nav-link" href="{{ url_for('login') }}">
-                                <i class="fas fa-sign-in-alt me-1"></i>Login
+                            <a class="nav-link d-inline-flex align-items-center" href="{{ url_for('login') }}">
+                                {{ illu.illu_nav_signin('me-1') }}Login
                             </a>
                         {% endif %}
                     </li>
@@ -149,7 +169,18 @@
     </footer>
     </div>
 
+    <div id="ctsBusyOverlay" class="cts-busy-overlay" hidden aria-hidden="true" aria-busy="false" role="status" aria-live="polite">
+      <div class="cts-busy-overlay__backdrop" aria-hidden="true"></div>
+      <div class="cts-busy-overlay__content">
+        <div class="hero-premium-orb hero-premium-orb--busy" aria-hidden="true">
+          <img src="{{ url_for('mouse_symbol_image') }}" alt="" width="220" height="220" decoding="async" />
+        </div>
+        <p class="cts-busy-overlay__text" id="ctsBusyOverlayText"></p>
+      </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/busy-overlay.js') }}"></script>
     <script src="{{ url_for('static', filename='js/saas.js') }}"></script>
     <script src="{{ url_for('static', filename='js/global-effects.js') }}"></script>
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>

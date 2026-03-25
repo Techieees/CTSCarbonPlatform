@@ -369,7 +369,8 @@ main{ flex: 1 0 auto; }
 }
 
 /* Ensure hero content stays above logo layer */
-.lp-hero .container{
+.lp-hero .container,
+.prod-header .container{
   position: relative;
   z-index: 2;
 }

@@ -41,6 +41,15 @@ def pick_first_existing(*paths: Path) -> Path:
 
 SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production")
 
+# Outbound email (password reset). Leave MAIL_SERVER empty to disable sending (link logged only in debug).
+MAIL_SERVER = os.getenv("MAIL_SERVER", "").strip()
+MAIL_PORT = int(os.getenv("MAIL_PORT", "587"))
+MAIL_USERNAME = os.getenv("MAIL_USERNAME", "").strip()
+MAIL_PASSWORD = os.getenv("MAIL_PASSWORD", "").strip()
+MAIL_DEFAULT_SENDER = os.getenv("MAIL_DEFAULT_SENDER", "noreply@cts-nordics.com").strip()
+# Public site URL for reset links (no trailing slash), e.g. https://ctscarbonplatform.com
+PUBLIC_APP_BASE_URL = os.getenv("PUBLIC_APP_BASE_URL", "http://127.0.0.1:5000").rstrip("/")
+
 # Frontend runtime paths
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
 FRONTEND_INSTANCE_DIR = FRONTEND_DIR / "instance"

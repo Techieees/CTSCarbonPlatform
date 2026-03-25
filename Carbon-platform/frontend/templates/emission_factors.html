@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% import 'macros/ui_illustrations.html' as illu %}
 {% block content %}
 <div class="container-fluid mt-4 px-3 px-md-4">
   <div class="row justify-content-center">
@@ -13,22 +14,22 @@
             <div class="d-flex flex-wrap gap-2">
               <form method="post" action="{{ url_for('import_emission_factors_mapping') }}" enctype="multipart/form-data" class="d-flex align-items-center gap-2">
                 <input class="form-control" type="file" name="excel_file" accept=".xlsx,.xlsm" style="max-width: 320px;">
-                <button class="btn btn-ghost" type="submit" title="Import Excel (same multi-sheet structure)">
-                  <i class="fas fa-file-import me-1"></i>Import Excel
+                <button class="btn btn-ghost d-inline-flex align-items-center" type="submit" title="Import Excel (same multi-sheet structure)">
+                  {{ illu.illu_btn_import('me-1') }}Import Excel
                 </button>
               </form>
               <a
                 href="{{ url_for('reload_emission_factors_mapping', search=search, sheet=sheet, scope=scope, ef_source=ef_source, page=factors.page) }}"
-                class="btn btn-ghost"
+                class="btn btn-ghost d-inline-flex align-items-center"
                 title="Reload from CTS_Emission_factors_short_list.xlsx"
               >
-                <i class="fas fa-rotate me-1"></i>Reload
+                {{ illu.illu_btn_rotate('me-1') }}Reload
               </a>
               <a
                 href="{{ url_for('export_emission_factors', search=search, sheet=sheet, scope=scope, ef_source=ef_source) }}"
-                class="btn btn-ghost"
+                class="btn btn-ghost d-inline-flex align-items-center"
               >
-                <i class="fas fa-download me-1"></i>Export Excel
+                {{ illu.illu_btn_download('me-1') }}Export Excel
               </a>
             </div>
           </div>
@@ -73,8 +74,8 @@
             </div>
 
             <div class="col-12 d-flex flex-wrap gap-2 mt-2">
-              <button type="submit" class="btn btn-primary">
-                <i class="fas fa-filter me-1"></i>Apply filters
+              <button type="submit" class="btn btn-primary d-inline-flex align-items-center">
+                {{ illu.illu_btn_filter('me-1') }}Apply filters
               </button>
               <a class="btn btn-ghost" href="{{ url_for('manage_emission_factors') }}">
                 Reset
@@ -119,14 +120,14 @@
                   <td>{{ ef.ef_source }}</td>
                   <td>{{ ef.get('Emission Factor Category') or '' }}</td>
                   <td class="text-end" style="min-width: 160px;">
-                    <button type="button" class="btn btn-ghost btn-sm" data-bs-toggle="modal" data-bs-target="#efEdit{{ loop.index }}">
-                      <i class="fas fa-pen me-1"></i>Edit
+                    <button type="button" class="btn btn-ghost btn-sm d-inline-flex align-items-center" data-bs-toggle="modal" data-bs-target="#efEdit{{ loop.index }}">
+                      {{ illu.illu_pen_small('me-1') }}Edit
                     </button>
                     <form method="post" action="{{ url_for('delete_emission_factor_mapping') }}" class="d-inline" onsubmit="return confirm('Delete ef_id {{ ef.ef_id }} from sheet {{ ef.sheet }}?');">
                       <input type="hidden" name="sheet" value="{{ ef.sheet }}">
                       <input type="hidden" name="ef_id" value="{{ ef.ef_id }}">
-                      <button type="submit" class="btn btn-ghost btn-sm">
-                        <i class="fas fa-trash me-1"></i>Delete
+                      <button type="submit" class="btn btn-ghost btn-sm d-inline-flex align-items-center">
+                        {{ illu.illu_btn_trash('me-1') }}Delete
                       </button>
                     </form>
                   </td>
@@ -192,8 +193,8 @@
                         </div>
                         <div class="modal-footer">
                           <button type="button" class="btn btn-ghost" data-bs-dismiss="modal">Cancel</button>
-                          <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-save me-1"></i>Save
+                          <button type="submit" class="btn btn-primary d-inline-flex align-items-center">
+                            {{ illu.illu_btn_save('me-1') }}Save
                           </button>
                         </div>
                       </form>

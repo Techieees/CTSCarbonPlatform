@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% import 'macros/ui_illustrations.html' as illu %}
 {% block content %}
 <div class="container py-4">
   <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
@@ -6,8 +7,8 @@
       <h2 class="mb-1">Overview</h2>
       <div class="text-muted">Reporting year: {{ year }}</div>
     </div>
-    <a class="btn btn-ghost" href="{{ url_for('dashboard') }}">
-      <i class="fas fa-tachometer-alt me-1"></i>Dashboard
+    <a class="btn btn-ghost d-inline-flex align-items-center" href="{{ url_for('dashboard') }}">
+      {{ illu.illu_nav_speed('me-1') }}Dashboard
     </a>
   </div>
 
@@ -20,12 +21,12 @@
               <div class="text-muted">Total emissions</div>
               <div class="display-6 mt-1">{{ totals.total }} <span class="text-muted fs-5">tCO₂e</span></div>
             </div>
-            <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 44px; height: 44px; background: rgba(16,185,129,.12); color: rgba(16,185,129,1);">
-              <i class="fas fa-leaf"></i>
+            <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 44px; height: 44px; background: var(--bs-tertiary-bg); color: var(--muted-2);">
+              <span class="d-inline-flex" style="font-size:1.2rem;line-height:0;">{{ illu.illu_nav_leaf() }}</span>
             </div>
           </div>
-          <a href="{{ url_for('carbon_accounting') }}" class="btn btn-primary mt-3">
-            <i class="fas fa-chart-pie me-1"></i>Open Carbon Accounting
+          <a href="{{ url_for('carbon_accounting') }}" class="btn btn-primary mt-3 d-inline-flex align-items-center">
+            {{ illu.illu_nav_chart_pie('me-1') }}Open Carbon Accounting
           </a>
         </div>
       </div>
@@ -77,7 +78,7 @@
     <div class="col-12">
       <div class="card">
         <div class="card-header">
-          <h5 class="mb-0"><i class="fas fa-building me-2"></i>Company totals (latest per sheet)</h5>
+          <h5 class="mb-0 d-flex align-items-center gap-2">{{ illu.illu_title_building() }}Company totals (latest per sheet)</h5>
         </div>
         <div class="card-body">
           {% if company_rows %}
@@ -117,7 +118,7 @@
     <div class="col-12">
       <div class="card">
         <div class="card-header">
-          <h5 class="mb-0"><i class="fas fa-table me-2"></i>Category totals (latest)</h5>
+          <h5 class="mb-0 d-flex align-items-center gap-2">{{ illu.illu_card_table() }}Category totals (latest)</h5>
         </div>
         <div class="card-body">
           {% if breakdown %}

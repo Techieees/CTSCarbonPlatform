@@ -1,0 +1,171 @@
+/* Who We Are — page scoped only; uses tokens from saas.css */
+.page-who-we-are {
+  padding-bottom: var(--s-16);
+}
+
+.page-who-we-are__hero {
+  padding: var(--s-20) 0 var(--s-16);
+  border-bottom: 1px solid var(--border);
+}
+
+.page-who-we-are__hero-title {
+  font-size: clamp(2rem, 4vw, 2.75rem);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin: 0 0 var(--s-4);
+  line-height: 1.15;
+}
+
+.page-who-we-are__hero-lead {
+  font-size: 1.125rem;
+  color: var(--muted);
+  max-width: 36rem;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.page-who-we-are__section {
+  padding-top: var(--s-12);
+}
+
+.page-who-we-are__section-title {
+  font-size: 1.35rem;
+  font-weight: 650;
+  color: var(--ink);
+  margin: 0 0 var(--s-2);
+  letter-spacing: -0.01em;
+}
+
+.page-who-we-are__section-intro {
+  color: var(--muted);
+  max-width: 40rem;
+  margin: 0 0 var(--s-8);
+  line-height: 1.6;
+}
+
+/* Reusable profile card */
+.wwa-profile-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  transition:
+    box-shadow 0.2s var(--ease),
+    border-color 0.2s var(--ease),
+    transform 0.2s var(--ease);
+}
+
+.wwa-profile-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: rgba(37, 99, 235, 0.22);
+  transform: translateY(-2px);
+}
+
+body.dark-mode .wwa-profile-card:hover {
+  border-color: rgba(96, 165, 250, 0.28);
+}
+
+/* Fixed frame: square or slight portrait; photos crop with object-fit cover */
+.wwa-profile-card__media {
+  aspect-ratio: 5 / 6;
+  flex-shrink: 0;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.wwa-profile-card__photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 20%;
+  display: block;
+}
+
+.wwa-profile-card__photo-placeholder {
+  width: 100%;
+  height: 100%;
+  min-height: 10rem;
+  background: var(--bg-soft);
+}
+
+.wwa-profile-card__body {
+  padding: var(--s-6) var(--s-5) var(--s-4);
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: var(--s-2);
+  min-width: 0; /* lets long single-line role text respect column width in grid/flex */
+}
+
+.wwa-profile-card__name {
+  font-size: 1.05rem;
+  font-weight: 650;
+  color: var(--ink);
+  margin: 0;
+  line-height: 1.3;
+}
+
+.wwa-profile-card__role {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.wwa-profile-card__excerpt {
+  font-size: 0.9375rem;
+  color: var(--muted-2);
+  margin: 0;
+  line-height: 1.55;
+  flex: 1;
+}
+
+.wwa-profile-card__more {
+  margin-top: var(--s-3);
+  border-top: 1px solid var(--border);
+  padding-top: var(--s-3);
+}
+
+.wwa-profile-card__more-toggle {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--primary);
+  cursor: pointer;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.wwa-profile-card__more-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.wwa-profile-card__more[open] .wwa-profile-card__more-toggle {
+  color: var(--ink);
+}
+
+.wwa-profile-card__full {
+  margin-top: var(--s-3);
+  font-size: 0.9375rem;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.wwa-profile-card__full p:last-child {
+  margin-bottom: 0;
+}
+
+@media (max-width: 767.98px) {
+  .page-who-we-are__hero {
+    padding: var(--s-12) 0 var(--s-10);
+  }
+}

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import 'macros/ui_illustrations.html' as illu %}
 
 {% block title %}GHG Data Collection System - Home{% endblock %}
 
@@ -100,7 +101,7 @@
                         <div class="gc-body">
                             <div class="gc-row">
                                 <div class="gc-label">Subsidiaries</div>
-                                <div class="gc-value">28</div>
+                                <div class="gc-value">24</div>
                             </div>
                             <div class="gc-row">
                                 <div class="gc-label">Latest cycle</div>
@@ -172,17 +173,17 @@
 
         <div class="lp-features">
             <div class="lp-feature" data-reveal>
-                <div class="icon" aria-hidden="true"><i class="fas fa-shield-alt"></i></div>
+                <div class="icon" aria-hidden="true">{{ illu.illu_lp_shield() }}</div>
                 <h3>Secure & reliable</h3>
                 <p>Authentication, role-based access, and controlled workbook access across companies.</p>
             </div>
             <div class="lp-feature" data-reveal>
-                <div class="icon" aria-hidden="true"><i class="fas fa-file-excel"></i></div>
+                <div class="icon" aria-hidden="true">{{ illu.illu_lp_spreadsheet() }}</div>
                 <h3>Excel-native workflows</h3>
                 <p>Work directly against workbook schemas, validate structure, and keep data entry consistent.</p>
             </div>
             <div class="lp-feature" data-reveal>
-                <div class="icon" aria-hidden="true"><i class="fas fa-chart-bar"></i></div>
+                <div class="icon" aria-hidden="true">{{ illu.illu_lp_chart() }}</div>
                 <h3>Reporting that holds up</h3>
                 <p>Aggregate outputs with a clear trail from raw inputs to final results.</p>
             </div>
@@ -199,9 +200,9 @@
                     A consistent submission process with validations that reduce clarification loops.
                 </p>
                 <ul class="lp-bullets">
-                    <li><span class="check" aria-hidden="true"><i class="fas fa-check" style="font-size:12px;"></i></span>Schema-driven data capture</li>
-                    <li><span class="check" aria-hidden="true"><i class="fas fa-check" style="font-size:12px;"></i></span>Quality checks before storage</li>
-                    <li><span class="check" aria-hidden="true"><i class="fas fa-check" style="font-size:12px;"></i></span>Consistent exports for downstream accounting</li>
+                    <li><span class="check" aria-hidden="true">{{ illu.illu_check_tiny() }}</span>Schema-driven data capture</li>
+                    <li><span class="check" aria-hidden="true">{{ illu.illu_check_tiny() }}</span>Quality checks before storage</li>
+                    <li><span class="check" aria-hidden="true">{{ illu.illu_check_tiny() }}</span>Consistent exports for downstream accounting</li>
                 </ul>
             </div>
 
@@ -240,9 +241,9 @@
                     Give every company exactly what they need no more, no less. Keep runs and workbook access organized with clean permissions.
                 </p>
                 <ul class="lp-bullets">
-                    <li><span class="check" aria-hidden="true"><i class="fas fa-check" style="font-size:12px;"></i></span>Role-based admin controls</li>
-                    <li><span class="check" aria-hidden="true"><i class="fas fa-check" style="font-size:12px;"></i></span>Controlled downloads and uploads</li>
-                    <li><span class="check" aria-hidden="true"><i class="fas fa-check" style="font-size:12px;"></i></span>Traceable pipeline runs and logs</li>
+                    <li><span class="check" aria-hidden="true">{{ illu.illu_check_tiny() }}</span>Role-based admin controls</li>
+                    <li><span class="check" aria-hidden="true">{{ illu.illu_check_tiny() }}</span>Controlled downloads and uploads</li>
+                    <li><span class="check" aria-hidden="true">{{ illu.illu_check_tiny() }}</span>Traceable pipeline runs and logs</li>
                 </ul>
             </div>
 
@@ -259,7 +260,7 @@
                         </div>
                         <div class="ui-row">
                             <div class="ui-bar"></div>
-                            <span class="ui-chip">Company-scoped</span>
+                            <span class="ui-chip">Scope</span>
                         </div>
                         <div class="ui-row">
                             <div class="ui-bar short"></div>

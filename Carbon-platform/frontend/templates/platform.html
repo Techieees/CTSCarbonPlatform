@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Platform{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/platform.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-platform">
+  <section class="page-platform__hero" aria-labelledby="platform-hero-title">
+    <div class="container">
+      <h1 class="page-platform__hero-title" id="platform-hero-title">Platform</h1>
+      <p class="page-platform__hero-lead">AAAAAAAAAAAAAAA.</p>
+    </div>
+  </section>
+
+  <section class="page-platform__section" aria-labelledby="platform-s1">
+    <div class="container">
+      <h2 class="page-platform__section-title" id="platform-s1">Data Collection</h2>
+      <p class="page-platform__section-body">AAAAAAAAAAAAAAA.</p>
+    </div>
+  </section>
+
+  <section class="page-platform__section" aria-labelledby="platform-s2">
+    <div class="container">
+      <h2 class="page-platform__section-title" id="platform-s2">Data Validation</h2>
+      <p class="page-platform__section-body">AAAAAAAAAAAAAAA.</p>
+    </div>
+  </section>
+
+  <section class="page-platform__section" aria-labelledby="platform-s3">
+    <div class="container">
+      <h2 class="page-platform__section-title" id="platform-s3">Calculation</h2>
+      <p class="page-platform__section-body">AAAAAAAAAAAAAAA.</p>
+    </div>
+  </section>
+
+  <section class="page-platform__section" aria-labelledby="platform-s4">
+    <div class="container">
+      <h2 class="page-platform__section-title" id="platform-s4">Reporting Outputs</h2>
+      <p class="page-platform__section-body">AAAAAAAAAAAAAAA.</p>
+    </div>
+  </section>
+</div>
+{% endblock %}
