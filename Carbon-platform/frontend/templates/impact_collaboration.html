@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Impact{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/impact.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-impact page-impact--subpage">
+  <section class="page-impact__hero page-impact__hero--sub" aria-labelledby="impact-s4">
+    <div class="container">
+      <h1 class="page-impact__hero-title" id="impact-s4">Industry Collaboration</h1>
+    </div>
+  </section>
+
+  <section class="page-impact__section page-impact__section--sub">
+    <div class="container page-impact__container-wide">
+      <div class="page-impact__prose vstack gap-4">
+        <p class="page-impact__section-body">CTS Group are delighted to be a Visionary member of the iMasons Climate Accord(iCA)</p>
+        <p class="page-impact__section-body">This global coalition of digital infrastructure companies are working together to cut carbon emissions from data center power, materials, and equipment.</p>
+        <p class="page-impact__section-body">It develops open standards, reporting frameworks, and practical tools to help members measure and reduce carbon.</p>
+        <p class="page-impact__section-body">Progress is driven through international Working Groups, each focused on specific, time-bound goals set by the iCA Governing Body.</p>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

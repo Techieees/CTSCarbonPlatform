@@ -9,12 +9,12 @@
     <div>
       <h2 class="mb-1">Admin • Batch mapping</h2>
       <p class="text-muted mb-0 small">
-        One row per upload batch (<span class="text-secondary">company</span> + <span class="text-secondary">sheet</span> + <span class="text-secondary">entry_group</span>). Map batches individually or run all pending at once.
+        One row per upload batch (<span class="text-secondary">company</span> + <span class="text-secondary">sheet</span> + <span class="text-secondary">entry_group</span>). Booklet sheets use <span class="text-secondary">Map</span>; Klarakarbon and Travel use <span class="text-secondary">Append &amp; Run pipeline</span>.
       </p>
     </div>
     <div class="d-flex flex-wrap gap-2 align-items-center">
-      <button type="button" class="btn btn-success d-inline-flex align-items-center" id="mapEverythingBtn" {% if not batches %}disabled{% endif %} title="Map every batch that is not yet mapped">
-        {{ illu.illu_play('me-1') }}Map everything
+      <button type="button" class="btn btn-success d-inline-flex align-items-center" id="mapEverythingBtn" {% if not batches %}disabled{% endif %} title="Run every pending batch action">
+        {{ illu.illu_play('me-1') }}Run all pending
       </button>
       <a class="btn btn-ghost d-inline-flex align-items-center" href="{{ url_for('admin_mapping_runs') }}">
         {{ illu.illu_list('me-1') }}Mapping runs
@@ -62,6 +62,7 @@
               data-sheet="{{ b.sheet_name | e }}"
               data-entry-group="{{ b.entry_group | e }}"
               data-mappable="{{ '1' if b.mappable else '0' }}"
+              data-action-type="{{ b.action_type | e }}"
               data-mapped="{{ '1' if b.mapped else '0' }}"
               data-filter-kind="{% if b.mapped %}mapped{% elif b.mappable %}unmapped{% else %}legacy{% endif %}"
             >
@@ -78,6 +79,8 @@
                     {% if b.mapped_at %}{{ b.mapped_at.strftime('%Y-%m-%d %H:%M') }} UTC{% endif %}
                     {% if b.mapped_by %}<span class="d-block text-truncate" style="max-width: 14rem;" title="{{ b.mapped_by | e }}">by {{ b.mapped_by }}</span>{% endif %}
                   </div>
+                {% elif b.mappable and b.action_type == 'append_run' %}
+                  <span class="badge text-bg-info">Ready</span>
                 {% elif b.mappable %}
                   <span class="badge text-bg-warning text-dark">Not mapped</span>
                 {% else %}
@@ -88,15 +91,13 @@
               <td class="text-end js-actions-cell text-nowrap">
                 {% if b.mappable and not b.mapped %}
                 <button type="button" class="btn btn-sm btn-primary d-inline-flex align-items-center js-map-batch">
-                  {{ illu.illu_btn_bolt('me-1') }}Map now
+                  {{ illu.illu_btn_bolt('me-1') }}{{ b.action_label }}
                 </button>
                 {% elif b.mappable and b.mapped %}
                 <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="This batch was already mapped">Mapped</button>
-                {% if b.download_run_id %}
-                <a class="btn btn-sm btn-ghost d-inline-flex align-items-center justify-content-center" href="{{ url_for('api_mapping_download', run_id=b.download_run_id) }}" target="_blank" rel="noopener" title="Download Excel">
+                <a class="btn btn-sm btn-ghost d-inline-flex align-items-center justify-content-center" href="{{ url_for('api_mapping_download_merged') }}" target="_blank" rel="noopener" title="Download merged Excel">
                   {{ illu.illu_btn_download() }}
                 </a>
-                {% endif %}
                 {% endif %}
               </td>
             </tr>
@@ -115,13 +116,21 @@
 </div>
 
 <script type="application/json" id="adminBatchesJson">{{ batches_json | tojson }}</script>
+<script type="application/json" id="adminMappingUrlsJson">{{ {'runUrl': url_for('api_mapping_run'), 'appendRunUrl': url_for('api_pipeline_append_run'), 'mergedDownloadUrl': url_for('api_mapping_download_merged')} | tojson }}</script>
 {% endblock %}
 
 {% block scripts %}
 <script>
 (function () {
-  const runUrl = {{ url_for('api_mapping_run') | tojson }};
-  const mappingDownloadTmpl = {{ url_for('api_mapping_download', run_id='__RUN_ID__') | tojson }};
+  let URLS = { runUrl: '', appendRunUrl: '', mergedDownloadUrl: '' };
+  try {
+    URLS = JSON.parse(document.getElementById('adminMappingUrlsJson')?.textContent || '{}');
+  } catch (e) {
+    URLS = { runUrl: '', appendRunUrl: '', mergedDownloadUrl: '' };
+  }
+  const runUrl = URLS.runUrl || '';
+  const appendRunUrl = URLS.appendRunUrl || '';
+  const mergedDownloadUrl = URLS.mergedDownloadUrl || '';
 
   let BATCHES = [];
   try {
@@ -166,13 +175,32 @@
       (by ? '<span class="d-block text-truncate" style="max-width:14rem;" title="' + by + '">by ' + by + '</span>' : '') +
       '</div>';
 
-    const runId = data.run_id;
-    const dlHref = runId ? mappingDownloadTmpl.replace('__RUN_ID__', encodeURIComponent(runId)) : '';
-    const dl = dlHref
-      ? '<a class="btn btn-sm btn-ghost d-inline-flex align-items-center justify-content-center" href="' + esc(dlHref) + '" target="_blank" rel="noopener" title="Download Excel">' + ILLU_DL + '</a>'
+    const dl = mergedDownloadUrl
+      ? '<a class="btn btn-sm btn-ghost d-inline-flex align-items-center justify-content-center" href="' + esc(mergedDownloadUrl) + '" target="_blank" rel="noopener" title="Download merged Excel">' + ILLU_DL + '</a>'
       : '';
     actionsCell.innerHTML =
       '<button type="button" class="btn btn-sm btn-outline-secondary" disabled title="This batch was already mapped">Mapped</button>' + dl;
+  }
+
+  function applyRowPipelineUI(row, data, actionLabel) {
+    if (!row) return;
+    const statusCell = row.querySelector('.js-status-cell');
+    const actionsCell = row.querySelector('.js-actions-cell');
+    if (!statusCell || !actionsCell) return;
+
+    row.setAttribute('data-mapped', '1');
+    row.setAttribute('data-filter-kind', 'mapped');
+
+    const processedAt = formatUtc(data.processed_at);
+    statusCell.innerHTML =
+      '<span class="badge text-bg-success">Pipeline complete</span>' +
+      '<div class="text-muted mt-1 js-mapped-meta small">' + (processedAt ? esc(processedAt) : 'Processed') + '</div>';
+
+    const dl = mergedDownloadUrl
+      ? '<a class="btn btn-sm btn-ghost d-inline-flex align-items-center justify-content-center" href="' + esc(mergedDownloadUrl) + '" target="_blank" rel="noopener" title="Download merged Excel">' + ILLU_DL + '</a>'
+      : '';
+    actionsCell.innerHTML =
+      '<button type="button" class="btn btn-sm btn-outline-secondary" disabled title="This pipeline action already ran">' + esc(actionLabel || 'Processed') + '</button>' + dl;
   }
 
   async function callMappingApi(company, sheet, entryGroup) {
@@ -191,26 +219,45 @@
     return { ok: true, data };
   }
 
+  async function callAppendRunApi(company, sheet, entryGroup) {
+    const res = await fetch(appendRunUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ company, sheet, entry_group: entryGroup }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { ok: false, error: data.error || ('Request failed (' + res.status + ')'), data };
+    }
+    return { ok: true, data };
+  }
+
   async function mapBatchRow(row, batch) {
     const company = batch.company_name || row.getAttribute('data-company') || '';
     const sheet = batch.sheet_name || row.getAttribute('data-sheet') || '';
     const entryGroup = batch.entry_group || row.getAttribute('data-entry-group') || '';
-    if (!company || !sheet || !entryGroup) return { ok: false, error: 'Invalid batch' };
+    const actionType = batch.action_type || row.getAttribute('data-action-type') || 'map';
+    const actionLabel = batch.action_label || (actionType === 'append_run' ? 'Append & Run pipeline' : 'Map');
+    if (!company || !sheet) return { ok: false, error: 'Invalid batch' };
 
     const statusCell = row.querySelector('.js-status-cell');
     const actionsCell = row.querySelector('.js-actions-cell');
     const btn = row.querySelector('.js-map-batch');
     if (btn) {
       btn.disabled = true;
-      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Mapping…';
+      btn.innerHTML = actionType === 'append_run'
+        ? '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Running…'
+        : '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Mapping…';
     }
 
     try {
-      const result = await callMappingApi(company, sheet, entryGroup);
+      const result = actionType === 'append_run'
+        ? await callAppendRunApi(company, sheet, entryGroup)
+        : await callMappingApi(company, sheet, entryGroup);
       if (!result.ok) {
         if (btn) {
           btn.disabled = false;
-          btn.innerHTML = ILLU_MAP_NOW + 'Map now';
+          btn.innerHTML = ILLU_MAP_NOW + actionLabel;
         }
         return result;
       }
@@ -222,7 +269,10 @@
             '<div class="text-muted mt-1 js-mapped-meta small">' + (ma ? esc(ma) : 'Already mapped') + '</div>';
         }
         if (actionsCell) {
-          actionsCell.innerHTML = '<button type="button" class="btn btn-sm btn-outline-secondary" disabled>Mapped</button>';
+          const dl = mergedDownloadUrl
+            ? '<a class="btn btn-sm btn-ghost d-inline-flex align-items-center justify-content-center" href="' + esc(mergedDownloadUrl) + '" target="_blank" rel="noopener" title="Download merged Excel">' + ILLU_DL + '</a>'
+            : '';
+          actionsCell.innerHTML = '<button type="button" class="btn btn-sm btn-outline-secondary" disabled>Mapped</button>' + dl;
         }
         row.setAttribute('data-mapped', '1');
         row.setAttribute('data-filter-kind', 'mapped');
@@ -233,7 +283,11 @@
         }
         return { ok: true, alreadyMapped: true };
       }
-      applyRowMappedUI(row, result.data || {});
+      if (actionType === 'append_run') {
+        applyRowPipelineUI(row, result.data || {}, actionLabel);
+      } else {
+        applyRowMappedUI(row, result.data || {});
+      }
       const uid = batch.batch_uid || row.getAttribute('data-batch-uid');
       if (uid) {
         const mem = BATCHES.find((x) => x.batch_uid === uid);
@@ -244,7 +298,7 @@
     } catch (e) {
       if (btn) {
         btn.disabled = false;
-        btn.innerHTML = ILLU_MAP_NOW + 'Map now';
+        btn.innerHTML = ILLU_MAP_NOW + actionLabel;
       }
       return { ok: false, error: e.message || 'Mapping failed' };
     }
@@ -274,9 +328,11 @@
         company_name: row.getAttribute('data-company'),
         sheet_name: row.getAttribute('data-sheet'),
         entry_group: row.getAttribute('data-entry-group'),
+        action_type: row.getAttribute('data-action-type'),
+        action_label: row.querySelector('.js-map-batch')?.textContent?.trim() || '',
       };
       if (typeof showCtsBusyOverlay === 'function') {
-        showCtsBusyOverlay('Mapping this batch…');
+        showCtsBusyOverlay(batch.action_type === 'append_run' ? 'Appending sources and running pipeline…' : 'Mapping this batch…');
       }
       try {
         const r = await mapBatchRow(row, batch);
@@ -300,7 +356,7 @@
     }
     mapAllBtn.disabled = true;
     if (typeof showCtsBusyOverlay === 'function') {
-      showCtsBusyOverlay('Mapping batches…');
+      showCtsBusyOverlay('Running batch actions…');
     }
     let okCount = 0;
     let failCount = 0;
@@ -309,7 +365,7 @@
     try {
       for (let i = 0; i < pending.length; i++) {
         const b = pending[i];
-        progressEl.textContent = 'Mapping ' + (i + 1) + '/' + total + ': ' + b.sheet_name + '…';
+        progressEl.textContent = 'Running ' + (i + 1) + '/' + total + ': ' + b.sheet_name + '…';
         const row = rowByUidSafe(b.batch_uid);
         if (!row) {
           failCount++;
@@ -322,8 +378,8 @@
 
       progressEl.textContent =
         failCount > 0
-          ? 'Done: ' + okCount + ' mapped, ' + failCount + ' failed or skipped.'
-          : 'Done: ' + okCount + ' batch(es) mapped.';
+          ? 'Done: ' + okCount + ' completed, ' + failCount + ' failed or skipped.'
+          : 'Done: ' + okCount + ' batch action(s) completed.';
     } finally {
       if (typeof hideCtsBusyOverlay === 'function') {
         hideCtsBusyOverlay();

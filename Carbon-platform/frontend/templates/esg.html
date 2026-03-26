@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block title %}ESG{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/csrd.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-csrd">
+  <section class="page-csrd__hero" aria-labelledby="esg-hero-title">
+    <div class="container">
+      <h1 class="page-csrd__hero-title" id="esg-hero-title">Environmental, Social &amp; Governance</h1>
+      <p class="page-csrd__hero-lead">ESG brings together how we manage environmental impact, social responsibility, and corporate governance. It supports transparent reporting and long-term value for stakeholders.</p>
+    </div>
+  </section>
+  <section class="container pt-4 pb-5">
+    <p class="page-csrd__hero-lead mb-3"><a class="link-primary text-decoration-none" href="{{ url_for('csrd') }}">CSRD</a> — European sustainability reporting requirements relevant to our disclosures.</p>
+  </section>
+</div>
+{% endblock %}

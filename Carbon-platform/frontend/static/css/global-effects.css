@@ -103,13 +103,11 @@ html.cts-busy-overlay-open body {
 .cts-busy-overlay__backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(11, 18, 32, 0.52);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(11, 18, 32, 0.16);
 }
 
 body.dark-mode .cts-busy-overlay__backdrop {
-  background: rgba(2, 6, 23, 0.78);
+  background: rgba(2, 6, 23, 0.24);
 }
 
 .cts-busy-overlay__content {

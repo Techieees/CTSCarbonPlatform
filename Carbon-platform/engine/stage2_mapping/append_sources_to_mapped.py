@@ -15,6 +15,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from config import STAGE1_KLARAKARBON_OUTPUT_DIR, STAGE2_OUTPUT_DIR, STAGE2_TRAVEL_DIR
+from company_slug import company_slug
 
 
 
@@ -25,7 +26,40 @@ OUTPUT_DIR = STAGE2_OUTPUT_DIR
 
 # External source workbooks now resolve from DATA_DIR-backed locations.
 TRAVEL_PATH = STAGE2_TRAVEL_DIR / "analysis_summary.xlsx"
-KLARAKARBON_PATH = STAGE1_KLARAKARBON_OUTPUT_DIR / "klarakarbon_categories_mapped_FINAL.xlsx"
+
+
+def _infer_company_name(base_wb: Path) -> Optional[str]:
+    try:
+        xls = pd.ExcelFile(base_wb)
+    except Exception:
+        return None
+
+    for sheet_name in xls.sheet_names:
+        try:
+            df = pd.read_excel(xls, sheet_name=sheet_name)
+        except Exception:
+            continue
+        if df is None or df.empty:
+            continue
+        lowmap = {str(c).strip().lower(): c for c in df.columns}
+        company_col = lowmap.get("company")
+        if company_col is None:
+            continue
+        values = [str(v).strip() for v in df[company_col].dropna().tolist() if str(v).strip()]
+        unique_values = list(dict.fromkeys(values))
+        if len(unique_values) == 1:
+            return unique_values[0]
+    return None
+
+
+def resolve_klarakarbon_path_for_company(company_name: Optional[str], base_wb: Optional[Path] = None) -> Optional[Path]:
+    resolved_company = str(company_name or "").strip()
+    if not resolved_company and base_wb is not None:
+        resolved_company = str(_infer_company_name(base_wb) or "").strip()
+    if not resolved_company:
+        return None
+    candidate = STAGE1_KLARAKARBON_OUTPUT_DIR / company_slug(resolved_company) / "klarakarbon_categories_mapped_FINAL.xlsx"
+    return candidate if candidate.exists() else None
 
 
 def find_latest_final_workbook(base_dir: Path) -> Optional[Path]:
@@ -145,8 +179,9 @@ def write_with_openpyxl_append(target_path: Path, klar_df: pd.DataFrame, travel_
     try:
         with pd.ExcelWriter(target_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
             # Append/replace our two sheets
-            klar_df.to_excel(writer, sheet_name="Klarakarbon", index=False)
-            _style_sheet(writer, "Klarakarbon", klar_df)
+            if not klar_df.empty:
+                klar_df.to_excel(writer, sheet_name="Klarakarbon", index=False)
+                _style_sheet(writer, "Klarakarbon", klar_df)
             travel_df.to_excel(writer, sheet_name="Travel", index=False)
             _style_sheet(writer, "Travel", travel_df)
 
@@ -180,27 +215,31 @@ def write_with_openpyxl_append(target_path: Path, klar_df: pd.DataFrame, travel_
                     except Exception:
                         continue
                 # Append/replace new sheets with styling
-                klar_df.to_excel(writer, sheet_name="Klarakarbon", index=False)
-                _style_sheet(writer, "Klarakarbon", klar_df)
+                if not klar_df.empty:
+                    klar_df.to_excel(writer, sheet_name="Klarakarbon", index=False)
+                    _style_sheet(writer, "Klarakarbon", klar_df)
                 travel_df.to_excel(writer, sheet_name="Travel", index=False)
                 _style_sheet(writer, "Travel", travel_df)
         except Exception:
             # If we fail to read original, write at least the two new sheets (styled)
             with pd.ExcelWriter(ts_path, engine="openpyxl") as writer:
-                klar_df.to_excel(writer, sheet_name="Klarakarbon", index=False)
-                _style_sheet(writer, "Klarakarbon", klar_df)
+                if not klar_df.empty:
+                    klar_df.to_excel(writer, sheet_name="Klarakarbon", index=False)
+                    _style_sheet(writer, "Klarakarbon", klar_df)
                 travel_df.to_excel(writer, sheet_name="Travel", index=False)
                 _style_sheet(writer, "Travel", travel_df)
         return ts_path
 
 
-def main() -> None:
+def main(company_name: Optional[str] = None) -> None:
     base_wb = find_latest_final_workbook(BASE_DIR)
     if base_wb is None:
         print("No final workbook found under output/.")
         return
 
-    klar_df = concat_all_sheets(KLARAKARBON_PATH, limit_first_n=None)
+    active_company = str(company_name or "").strip() or str(_infer_company_name(base_wb) or "").strip()
+    klar_path = resolve_klarakarbon_path_for_company(company_name, base_wb)
+    klar_df = concat_all_sheets(klar_path, limit_first_n=None) if klar_path else pd.DataFrame()
     # Create 'co2e' in tonnes from 'co2e (kg)' if present (do NOT rename original)
     if not klar_df.empty:
         try:
@@ -347,6 +386,12 @@ def main() -> None:
         else:
             # If Cost Center not found, still create Source_file as CTS Nordics default
             travel_df["Source_file"] = "CTS Nordics"
+
+        if active_company and "Source_file" in travel_df.columns:
+            try:
+                travel_df = travel_df[travel_df["Source_file"].astype(str).str.strip() == active_company].copy()
+            except Exception:
+                pass
 
         # ---- Build Reporting period (month, year) as yyyy-mm-dd with day fixed to 09 ----
         def _detect_col(df: pd.DataFrame, names: List[str]) -> Optional[str]:

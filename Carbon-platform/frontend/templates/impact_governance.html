@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Impact{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/impact.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-impact page-impact--subpage">
+  <section class="page-impact__hero page-impact__hero--sub" aria-labelledby="impact-s10">
+    <div class="container">
+      <h1 class="page-impact__hero-title" id="impact-s10">Governance</h1>
+    </div>
+  </section>
+
+  <section class="page-impact__section page-impact__section--sub">
+    <div class="container page-impact__container-wide">
+      <div class="page-impact__prose vstack gap-4">
+        <p class="page-impact_section_body">Overall responsibility for the Sustainability and ESG rests with our senior leadership and sustainability team, ensuring its integration across operations, governance, and corporate decision-making to drive long-term resilience and accountability.</p>
+        <p class="page-impact_section_body">We have various working and steering groups across the business. These include: </p>
+        <p class="page-impact_section_body"><b>1.</b>Sustainability Project Working Group</p>
+        <p class="page-impact_section_body"><b>2.</b>Corporate Sustainability Working Group</p>
+        <p class="page-impact_section_body"><b>3.</b>Carbon Accounting Working Forum</p>
+        <p class="page-impact_section_body"><b>4.</b>Corporate Sustainability Steering Committee</p>
+        <p class="page-impact_section_body"></p>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Impact{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/impact.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-impact page-impact--subpage">
+  <section class="page-impact__hero page-impact__hero--sub" aria-labelledby="impact-s5">
+    <div class="container">
+      <h1 class="page-impact__hero-title" id="impact-s5">Corporate Sustainability</h1>
+    </div>
+  </section>
+
+  <section class="page-impact__section page-impact__section--sub">
+    <div class="container page-impact__container-wide">
+      <div class="page-impact__prose vstack gap-4">
+        <p class="page-impact__section-body">To support our long-term Sustainability and ESG goals, we’re implementing a structured corporate sustainability approach focused on governance, compliance, and continuous improvement.</p>
+        <p class= "page-impact__section_body">Central to this is identifying material ESG topics through our Double Materiality Assessment in 2025, in line with evolving regulations and leading frameworks.</p>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Life Cycle Assessment{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/lca.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-lca">
+  <section class="page-lca__hero" aria-labelledby="lca-intro-title">
+    <div class="container">
+      <h1 class="page-lca__hero-title" id="lca-intro-title">Life Cycle Assessment</h1>
+      <p class="page-lca__hero-lead">Life Cycle Assessment (LCA) quantifies environmental impacts across a product’s life cycle, from raw materials to end of life, using structured methods such as ISO 14044.</p>
+    </div>
+  </section>
+  <section class="container pt-4 pb-5">
+    <p class="page-lca__hero-lead mb-3">
+      <a class="btn btn-primary" href="{{ url_for('lca_tool') }}">LCA tool</a>
+    </p>
+  </section>
+</div>
+{% endblock %}

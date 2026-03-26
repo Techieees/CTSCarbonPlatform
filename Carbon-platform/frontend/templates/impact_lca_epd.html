@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Impact{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/impact.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-impact page-impact--subpage">
+  <section class="page-impact__hero page-impact__hero--sub" aria-labelledby="impact-s3">
+    <div class="container">
+      <h1 class="page-impact__hero-title" id="impact-s3">Life Cycle Assessment & Environmental Product Declaration</h1>
+    </div>
+  </section>
+
+  <section class="page-impact__section page-impact__section--sub">
+    <div class="container page-impact__container-wide">
+      <div class="page-impact__prose vstack gap-4">
+        <p class="page-impact__section-body">We completed a full Life Cycle Assesment (LCA) of our prefabricated NordicEPOD to measure its environmental impact.</p>
+        <p class="page-impact__section-body">The LCA followed ISO 14044:2006 and is independetly verified to ensure accuracy and credibility</p>
+        <p class="page-impact__section-body"> An Environmental Product Declaration (EPD) was developed in line with ISO 14025:2010, EN 21930, and 15804:2012+A2:2019, carried out by Asplan Viak, assessed emboided carbon across the product's life cycle, focusing on material extraction, manufacturing, and transport (A1-A3).</p>
+        <p class="page-impact_section-body">Verification by an accredited third party, will confirm compliance with global standards.</p>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

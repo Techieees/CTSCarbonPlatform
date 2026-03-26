@@ -523,10 +523,11 @@ function ensureAppendRow() {
 function updateButtonState() {
   const hasSheet = Boolean(currentSheet);
   const hasEditable = gridRows.some(row => row.is_editable);
+  const isKlarakarbon = String(currentSheet || '').trim().toLowerCase() === 'klarakarbon';
   elAddRow.disabled = !hasSheet;
   elClear.disabled = !hasSheet || !hasEditable;
   elSave.disabled = !hasSheet || !hasEditable;
-  if (elMap) elMap.disabled = !hasSheet;
+  if (elMap) elMap.disabled = !hasSheet || isKlarakarbon;
 }
 
 function formatCreatedAt(value) {
@@ -897,7 +898,9 @@ async function selectSheet(sheet, flashEntryGroups = null) {
   }));
   ensureAppendRow();
   elTitle.textContent = sheet;
-  elMeta.textContent = `${currentHeaders.length} columns • sticky headers • last 7 days editable`;
+  elMeta.textContent = sheet === 'Klarakarbon'
+    ? `${currentHeaders.length} columns • sticky headers • paste from Excel • saved like booklet entries`
+    : `${currentHeaders.length} columns • sticky headers • last 7 days editable`;
   renderGrid();
   if (flashEntryGroups?.length) flashSavedEntryGroups(flashEntryGroups);
   setStatus('');

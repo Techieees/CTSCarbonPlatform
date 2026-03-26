@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}Impact{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/impact.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-impact">
+  <section class="page-impact__hero" aria-labelledby="impact-hero-title">
+    <div class="container">
+      <h1 class="page-impact__hero-title" id="impact-hero-title">Impact</h1>
+      <p class="page-impact__hero-lead">Practical sustainability built into how we design and deliver Data Centers.</p>
+    </div>
+  </section>
+
+  <section class="page-impact__section" aria-label="Impact">
+    <div class="container">
+      <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+        <div class="col">
+          <a href="{{ url_for('impact_approach') }}" class="card h-100 shadow-sm border text-decoration-none text-reset">
+            <div class="card-body p-4">
+              <h3 class="page-impact__section-title mb-0">Our Approach</h3>
+            </div>
+          </a>
+        </div>
+        <div class="col">
+          <a href="{{ url_for('impact_operations') }}" class="card h-100 shadow-sm border text-decoration-none text-reset">
+            <div class="card-body p-4">
+              <h3 class="page-impact__section-title mb-0">Operational Sustainability</h3>
+            </div>
+          </a>
+        </div>
+        <div class="col">
+          <a href="{{ url_for('impact_lca_epd') }}" class="card h-100 shadow-sm border text-decoration-none text-reset">
+            <div class="card-body p-4">
+              <h3 class="page-impact__section-title mb-0">Life Cycle Assessment & Environmental Product Declaration</h3>
+            </div>
+          </a>
+        </div>
+        <div class="col">
+          <a href="{{ url_for('impact_collaboration') }}" class="card h-100 shadow-sm border text-decoration-none text-reset">
+            <div class="card-body p-4">
+              <h3 class="page-impact__section-title mb-0">Industry Collaboration</h3>
+            </div>
+          </a>
+        </div>
+        <div class="col">
+          <a href="{{ url_for('impact_corporate') }}" class="card h-100 shadow-sm border text-decoration-none text-reset">
+            <div class="card-body p-4">
+              <h3 class="page-impact__section-title mb-0">Corporate Sustainability</h3>
+            </div>
+          </a>
+        </div>
+        <div class="col">
+          <a href="{{ url_for('impact_materiality') }}" class="card h-100 shadow-sm border text-decoration-none text-reset">
+            <div class="card-body p-4">
+              <h3 class="page-impact__section-title mb-0">Double Materiality Assesment aligned to CSRD/ESRS</h3>
+            </div>
+          </a>
+        </div>
+        <div class="col">
+          <a href="{{ url_for('impact_carbon') }}" class="card h-100 shadow-sm border text-decoration-none text-reset">
+            <div class="card-body p-4">
+              <h3 class="page-impact__section-title mb-0">Carbon Accounting Programme</h3>
+            </div>
+          </a>
+        </div>
+        <div class="col">
+          <a href="{{ url_for('impact_stakeholders') }}" class="card h-100 shadow-sm border text-decoration-none text-reset">
+            <div class="card-body p-4">
+              <h3 class="page-impact__section-title mb-0">Stakeholder Engagement</h3>
+            </div>
+          </a>
+        </div>
+        <div class="col">
+          <a href="{{ url_for('impact_sdgs') }}" class="card h-100 shadow-sm border text-decoration-none text-reset">
+            <div class="card-body p-4">
+              <h3 class="page-impact__section-title mb-0">United Nations Sustainability Development Goals</h3>
+            </div>
+          </a>
+        </div>
+        <div class="col">
+          <a href="{{ url_for('impact_governance') }}" class="card h-100 shadow-sm border text-decoration-none text-reset">
+            <div class="card-body p-4">
+              <h3 class="page-impact__section-title mb-0">Governance</h3>
+            </div>
+          </a>
+        </div>
+        <div class="col">
+          <a href="{{ url_for('impact_reporting') }}" class="card h-100 shadow-sm border text-decoration-none text-reset">
+            <div class="card-body p-4">
+              <h3 class="page-impact__section-title mb-0"> Reporting </h3>
+            </div>
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+{% endblock %}

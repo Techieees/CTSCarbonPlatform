@@ -1,0 +1,126 @@
+/* Impact page — scoped; tokens from saas.css */
+.page-impact {
+  padding-bottom: var(--s-16);
+}
+
+.page-impact__hero {
+  padding: var(--s-20) 0 var(--s-16);
+  border-bottom: 1px solid var(--border);
+}
+
+.page-impact__hero-title {
+  font-size: clamp(2rem, 4vw, 2.75rem);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin: 0 0 var(--s-4);
+  line-height: 1.15;
+  text-align: left;
+}
+
+.page-impact__hero-lead {
+  font-size: 1.125rem;
+  color: var(--muted);
+  max-width: 40rem;
+  margin: 0;
+  line-height: 1.6;
+  text-align: left;
+}
+
+.page-impact__section {
+  padding-top: var(--s-12);
+}
+
+.page-impact__section-title {
+  font-size: 1.35rem;
+  font-weight: 650;
+  color: var(--ink);
+  margin: 0 0 var(--s-3);
+  letter-spacing: -0.01em;
+  text-align: left;
+}
+
+.page-impact__section-body {
+  color: var(--muted);
+  max-width: 40rem;
+  margin: 0;
+  line-height: 1.6;
+  text-align: left;
+}
+
+/* Subpages: calmer layout, one prose column, no card chrome */
+.page-impact--subpage .page-impact__hero--sub {
+  border-bottom: none;
+  padding: var(--s-20) 0 var(--s-10);
+}
+
+.page-impact__section--sub {
+  padding-top: var(--s-6);
+  padding-bottom: var(--s-16);
+}
+
+.page-impact__container-wide {
+  max-width: 48rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+@media (min-width: 992px) {
+  .page-impact__container-wide {
+    max-width: 56rem;
+  }
+}
+
+.page-impact__prose {
+  padding-top: var(--s-2);
+}
+
+.page-impact__prose .page-impact__section-body,
+.page-impact__prose .page-impact_section-body,
+.page-impact__prose .page-impact__section_body,
+.page-impact__prose .page-impact_section_body {
+  max-width: none;
+  line-height: 1.7;
+  text-align: left;
+  color: var(--muted);
+}
+
+@supports (color: color-mix(in srgb, red, blue)) {
+  .page-impact__prose .page-impact__section-body,
+  .page-impact__prose .page-impact_section-body,
+  .page-impact__prose .page-impact__section_body,
+  .page-impact__prose .page-impact_section_body {
+    color: color-mix(in srgb, var(--ink) 68%, var(--muted) 32%);
+  }
+
+  .page-impact__pill .page-impact__section-body {
+    color: color-mix(in srgb, var(--ink) 68%, var(--muted) 32%);
+  }
+}
+
+.page-impact__pills {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.page-impact__pill {
+  border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+  background: transparent;
+  border-radius: 9999px;
+  padding: var(--s-4) var(--s-6);
+}
+
+body.dark-mode .page-impact__pill {
+  border-color: color-mix(in srgb, var(--border) 90%, transparent);
+}
+
+@media (max-width: 767.98px) {
+  .page-impact__hero {
+    padding: var(--s-12) 0 var(--s-10);
+  }
+
+  .page-impact--subpage .page-impact__hero--sub {
+    padding: var(--s-12) 0 var(--s-8);
+  }
+}

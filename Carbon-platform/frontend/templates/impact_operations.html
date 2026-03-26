@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Impact{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/impact.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-impact page-impact--subpage">
+  <section class="page-impact__hero page-impact__hero--sub" aria-labelledby="impact-s2">
+    <div class="container">
+      <h1 class="page-impact__hero-title" id="impact-s2">Operational Sustainability</h1>
+    </div>
+  </section>
+
+  <section class="page-impact__section page-impact__section--sub">
+    <div class="container page-impact__container-wide">
+      <div class="page-impact__prose">
+        <p class="page-impact__section-body">Our Data Center projects are built with sustainability at every stage from design and procurement to construction and operations. We integrate green building principles, energy efficiency, and circular economy practices to reduce impact, enhance performance, and meet our ESG goals.
+          From 2025, all our new Data Centers will achieve a <b> LEED Gold </b> certification </p>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}
