@@ -46,31 +46,31 @@
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('trust') }}">Trust</a></li>
                     <li class="nav-item"><a class="nav-link text-nowrap" href="{{ url_for('who_we_are') }}">Who We Are</a></li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="impactDropdownMarketing" role="button" data-bs-toggle="dropdown" aria-expanded="false">Impact</a>
+                        <a class="nav-link dropdown-toggle d-inline-flex align-items-center" href="#" id="impactDropdownMarketing" role="button" data-bs-toggle="dropdown" aria-expanded="false">{{ illu.illu_nav_chart_pie('me-1') }}Impact</a>
                         <ul class="dropdown-menu" aria-labelledby="impactDropdownMarketing">
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact') }}">Impact Overview</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_operations') }}">Operational Sustainability</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_lca_epd') }}">LCA &amp; EPD</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_collaboration') }}">Industry Collaboration</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_corporate') }}">Corporate Sustainability</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_materiality') }}">Double Materiality</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_carbon') }}">Carbon Accounting</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_stakeholders') }}">Stakeholder Engagement</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact') }}">{{ illu.illu_nav_chart_pie('me-2') }}Impact Overview</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_operations') }}">{{ illu.illu_nav_speed('me-2') }}Operational Sustainability</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_lca_epd') }}">{{ illu.illu_nav_layers('me-2') }}LCA &amp; EPD</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_collaboration') }}">{{ illu.illu_nav_layers('me-2') }}Industry Collaboration</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_corporate') }}">{{ illu.illu_nav_file('me-2') }}Corporate Sustainability</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_materiality') }}">{{ illu.illu_nav_chart_pie('me-2') }}Double Materiality</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_carbon') }}">{{ illu.illu_nav_chart('me-2') }}Carbon Accounting</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_stakeholders') }}">{{ illu.illu_nav_user('me-2') }}Stakeholder Engagement</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="esgDropdownMarketing" role="button" data-bs-toggle="dropdown" aria-expanded="false">ESG</a>
+                        <a class="nav-link dropdown-toggle d-inline-flex align-items-center" href="#" id="esgDropdownMarketing" role="button" data-bs-toggle="dropdown" aria-expanded="false">{{ illu.illu_nav_leaf('me-1') }}ESG</a>
                         <ul class="dropdown-menu" aria-labelledby="esgDropdownMarketing">
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('esg') }}">Overview</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('csrd') }}">CSRD</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('csrd_policies') }}">Policies</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('esg') }}">{{ illu.illu_nav_leaf('me-2') }}Overview</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('csrd') }}">{{ illu.illu_nav_file('me-2') }}CSRD</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('csrd_policies') }}">{{ illu.illu_nav_file('me-2') }}Policies</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="lcaDropdownMarketing" role="button" data-bs-toggle="dropdown" aria-expanded="false">LCA</a>
+                        <a class="nav-link dropdown-toggle d-inline-flex align-items-center" href="#" id="lcaDropdownMarketing" role="button" data-bs-toggle="dropdown" aria-expanded="false">{{ illu.illu_nav_layers('me-1') }}LCA</a>
                         <ul class="dropdown-menu" aria-labelledby="lcaDropdownMarketing">
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('lca') }}">Overview</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('lca_tool') }}">Tool</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('lca') }}">{{ illu.illu_nav_layers('me-2') }}Overview</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('lca_tool') }}">{{ illu.illu_nav_speed('me-2') }}Tool</a></li>
                         </ul>
                     </li>
                     <li class="nav-item">
@@ -93,31 +93,33 @@
                         </a>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle d-inline-flex align-items-center" href="#" id="impactDropdownApp" role="button" data-bs-toggle="dropdown" aria-expanded="false">Impact</a>
+                        <a class="nav-link dropdown-toggle d-inline-flex align-items-center" href="#" id="impactDropdownApp" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            {{ illu.illu_nav_chart_pie('me-1') }}Impact
+                        </a>
                         <ul class="dropdown-menu" aria-labelledby="impactDropdownApp">
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact') }}">Impact Overview</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_operations') }}">Operational Sustainability</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_lca_epd') }}">LCA &amp; EPD</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_collaboration') }}">Industry Collaboration</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_corporate') }}">Corporate Sustainability</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_materiality') }}">Double Materiality</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_carbon') }}">Carbon Accounting</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_stakeholders') }}">Stakeholder Engagement</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact') }}">{{ illu.illu_nav_chart_pie('me-2') }}Impact Overview</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_operations') }}">{{ illu.illu_nav_speed('me-2') }}Operational Sustainability</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_lca_epd') }}">{{ illu.illu_nav_layers('me-2') }}LCA &amp; EPD</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_collaboration') }}">{{ illu.illu_nav_layers('me-2') }}Industry Collaboration</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_corporate') }}">{{ illu.illu_nav_file('me-2') }}Corporate Sustainability</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_materiality') }}">{{ illu.illu_nav_chart_pie('me-2') }}Double Materiality</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_carbon') }}">{{ illu.illu_nav_chart('me-2') }}Carbon Accounting</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_stakeholders') }}">{{ illu.illu_nav_user('me-2') }}Stakeholder Engagement</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle d-inline-flex align-items-center" href="#" id="esgDropdownApp" role="button" data-bs-toggle="dropdown" aria-expanded="false">ESG</a>
+                        <a class="nav-link dropdown-toggle d-inline-flex align-items-center" href="#" id="esgDropdownApp" role="button" data-bs-toggle="dropdown" aria-expanded="false">{{ illu.illu_nav_leaf('me-1') }}ESG</a>
                         <ul class="dropdown-menu" aria-labelledby="esgDropdownApp">
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('esg') }}">Overview</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('csrd') }}">CSRD</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('csrd_policies') }}">Policies</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('esg') }}">{{ illu.illu_nav_leaf('me-2') }}Overview</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('csrd') }}">{{ illu.illu_nav_file('me-2') }}CSRD</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('csrd_policies') }}">{{ illu.illu_nav_file('me-2') }}Policies</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle d-inline-flex align-items-center" href="#" id="lcaDropdownApp" role="button" data-bs-toggle="dropdown" aria-expanded="false">LCA</a>
+                        <a class="nav-link dropdown-toggle d-inline-flex align-items-center" href="#" id="lcaDropdownApp" role="button" data-bs-toggle="dropdown" aria-expanded="false">{{ illu.illu_nav_layers('me-1') }}LCA</a>
                         <ul class="dropdown-menu" aria-labelledby="lcaDropdownApp">
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('lca') }}">Overview</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('lca_tool') }}">Tool</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('lca') }}">{{ illu.illu_nav_layers('me-2') }}Overview</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('lca_tool') }}">{{ illu.illu_nav_speed('me-2') }}Tool</a></li>
                         </ul>
                     </li>
 
@@ -239,7 +241,7 @@
     </div>
 
     {% if current_user.is_authenticated and current_user.is_admin %}
-    <div class="modal fade" id="adminUploadNotificationsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal fade admin-upload-notification-modal" id="adminUploadNotificationsModal" tabindex="-1" aria-hidden="true">
       <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header">
@@ -262,16 +264,47 @@
     {% if current_user.is_authenticated and current_user.is_admin %}
     <script>
       (function () {
+        const STORAGE_KEY = 'adminUploadPopupSeenSignature:v1';
+        const LOGIN_PATH = '{{ url_for("login") }}';
+
         function esc(s) {
           return String(s ?? '').replace(/[&<>"']/g, function (c) {
             return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
           });
         }
 
+        function buildSignature(notifications) {
+          return notifications.map(function (item) {
+            return [
+              item.company_name || '',
+              item.category || '',
+              item.upload_timestamp || '',
+              String(item.row_count || 0)
+            ].join('|');
+          }).join('||');
+        }
+
+        function shouldResetSeenStateForLoginReferrer() {
+          try {
+            if (!document.referrer) return false;
+            const ref = new URL(document.referrer, window.location.origin);
+            return ref.origin === window.location.origin && ref.pathname === LOGIN_PATH;
+          } catch (e) {
+            return false;
+          }
+        }
+
         async function loadAdminUploadNotifications() {
           const body = document.getElementById('adminUploadNotificationsBody');
           const modalEl = document.getElementById('adminUploadNotificationsModal');
           if (!body || !modalEl || typeof bootstrap === 'undefined') return;
+
+          try {
+            if (shouldResetSeenStateForLoginReferrer()) {
+              window.sessionStorage.removeItem(STORAGE_KEY);
+            }
+          } catch (e) {
+          }
 
           try {
             const res = await fetch('{{ url_for("api_admin_upload_notifications") }}', {
@@ -281,24 +314,39 @@
             if (!res.ok) return;
             const notifications = Array.isArray(data.notifications) ? data.notifications : [];
             if (!notifications.length) return;
+            const signature = buildSignature(notifications);
+
+            try {
+              if (window.sessionStorage.getItem(STORAGE_KEY) === signature) {
+                return;
+              }
+            } catch (e) {
+            }
 
             body.innerHTML = notifications.map(function (item) {
               const mappedLine = item.mapped && item.mapped_by_admin && item.mapping_timestamp
-                ? '<div class="small text-muted mt-2">Mapped by ' + esc(item.mapped_by_admin) + ' at ' + esc(item.mapping_timestamp) + '</div>'
+                ? '<div class="small admin-upload-notification-meta mt-2">Mapped by ' + esc(item.mapped_by_admin) + ' at ' + esc(item.mapping_timestamp) + '</div>'
                 : '';
               return '' +
-                '<div class="border rounded-4 p-3">' +
+                '<div class="admin-upload-notification-card rounded-4 p-3">' +
                   '<div class="fw-semibold mb-1">' + esc(item.company_name) + '</div>' +
-                  '<div class="small text-muted">uploaded by ' + esc(item.uploaded_by_user) + '</div>' +
-                  '<div class="small mt-2">category: ' + esc(item.category) + '</div>' +
-                  '<div class="small">rows: ' + esc(item.row_count) + '</div>' +
-                  '<div class="small">uploaded: ' + esc(item.upload_timestamp) + '</div>' +
-                  '<div class="mt-2"><span class="fw-semibold">Status:</span> ' + esc(item.mapping_status) + '</div>' +
+                  '<div class="small admin-upload-notification-meta">uploaded by ' + esc(item.uploaded_by_user) + '</div>' +
+                  '<div class="small admin-upload-notification-detail mt-2">category: ' + esc(item.category) + '</div>' +
+                  '<div class="small admin-upload-notification-detail">rows: ' + esc(item.row_count) + '</div>' +
+                  '<div class="small admin-upload-notification-detail">uploaded: ' + esc(item.upload_timestamp) + '</div>' +
+                  '<div class="mt-2 admin-upload-notification-status"><span class="fw-semibold">Status:</span> ' + esc(item.mapping_status) + '</div>' +
                   mappedLine +
                 '</div>';
             }).join('');
 
             const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modalEl.addEventListener('hidden.bs.modal', function onHidden() {
+              try {
+                window.sessionStorage.setItem(STORAGE_KEY, signature);
+              } catch (e) {
+              }
+              modalEl.removeEventListener('hidden.bs.modal', onHidden);
+            });
             modal.show();
           } catch (e) {
           }
