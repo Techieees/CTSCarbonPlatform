@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Impact{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/impact.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-impact page-impact--subpage">
+  <section class="page-impact__hero page-impact__hero--sub" aria-labelledby="impact-s9">
+    <div class="container">
+      <h1 class="page-impact__hero-title" id="impact-s9">United Nations Sustainability Development Goals</h1>
+    </div>
+  </section>
+
+  <section class="page-impact__section page-impact__section--sub">
+    <div class="container page-impact__container-wide">
+      <div class="page-impact__prose vstack gap-4">
+        <p class="page-impact_section_body">As part of our commitment to sustainability, we have aligned our sustainability programme with a select number of SDGs that are most relevant to our business.</p>
+        <p class="page-impact_section_body">These goals provide a global framework for responsible business practices and sustainable development.</p>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

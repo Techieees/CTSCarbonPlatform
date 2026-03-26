@@ -49,9 +49,18 @@ from config import (
     SECRET_KEY,
     STAGE1_INPUT_BACKUP_DIR,
     STAGE1_INPUT_DIR,
+    STAGE1_KLARAKARBON_OUTPUT_DIR,
     STAGE2_EF_XLSX,
     STAGE2_MAPPING_DIR,
     STAGE2_OUTPUT_DIR,
+    STAGE2_TRAVEL_DIR,
+)
+from company_slug import company_slug
+from preprocess_jobs import (
+    klarakarbon_entry_headers,
+    klarakarbon_company_supported,
+    run_travel_preprocess,
+    validate_travel_upload,
 )
 
 APP_DIR = Path(__file__).resolve().parent
@@ -71,6 +80,7 @@ ISO_COUNTRIES_PATH = APP_DIR / "data" / "iso_countries.json"
 ALLOWED_EMAIL_DOMAIN = "cts-nordics.com"
 PROFILE_PHOTO_ALLOWED_EXT = frozenset({".png", ".jpg", ".jpeg", ".webp"})
 COMPANY_LOGO_ALLOWED_EXT = frozenset({".png"})
+TRAVEL_ALLOWED_EXT = frozenset({".xlsb"})
 
 
 def _email_domain_allowed(email: str) -> bool:
@@ -253,6 +263,9 @@ TEMPLATES = _load_templates_from_json()
 TEMPLATE_INDEX = _build_template_index()
 print("Templates loaded:", len(TEMPLATES))
 
+KLARAKARBON_SHEET_NAME = "Klarakarbon"
+TRAVEL_SHEET_NAME = "Travel"
+
 # ---- Stage2 mapping (web single-company runner) ----
 STAGE2_MAPPING_OUTPUT_DIR = STAGE2_OUTPUT_DIR
 _STAGE2_MAP_LOCK = threading.Lock()
@@ -363,6 +376,27 @@ _ENDPOINTS_WITHOUT_PROFILE = frozenset(
         "trust",
         "forgot_password",
         "reset_password",
+        "impact",
+        "impact_approach",
+        "impact_operations",
+        "impact_lca_epd",
+        "impact_collaboration",
+        "impact_corporate",
+        "impact_materiality",
+        "impact_carbon",
+        "impact_stakeholders",
+        "impact_sdgs",
+        "impact_governance",
+        "impact_reporting",
+        "esg",
+        "csrd",
+        "lca",
+        "lca_tool",
+        "csrd_policies",
+        "csrd_policy_add",
+        "csrd_policy_update",
+        "csrd_policy_delete",
+        "csrd_policy_file",
     }
 )
 
@@ -496,10 +530,32 @@ class DataEntry(db.Model):
     company_name = db.Column(db.String(200), nullable=False)
     sheet_name = db.Column(db.String(200), nullable=False)
     entry_group = db.Column(db.String(32), nullable=False, default="")
+    uploaded_by_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
     row_index = db.Column(db.Integer, nullable=False, default=1)
     column_name = db.Column(db.String(200), nullable=False)
     value = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class CsrdPolicy(db.Model):
+    __tablename__ = "csrd_policies"
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(500), nullable=False)
+    short_description = db.Column(db.Text, nullable=False)
+    # Relative to FRONTEND_UPLOAD_DIR, e.g. csrd_policies/<uuid>_<name>.pdf
+    file_relpath = db.Column(db.String(600), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+def _csrd_policy_upload_dir() -> Path:
+    d = FRONTEND_UPLOAD_DIR / "csrd_policies"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _csrd_filename_is_pdf(filename: str) -> bool:
+    return Path(secure_filename(filename or "")).suffix.lower() == ".pdf"
 
 
 def _ensure_db_tables() -> None:
@@ -679,6 +735,8 @@ def _resolve_template_sheet_name(company_name: str, sheet_name: str) -> str | No
     company_key = _resolve_template_company_name(company_name)
     if not company_key:
         return None
+    if str(sheet_name or "").strip().lower() == KLARAKARBON_SHEET_NAME.lower():
+        return KLARAKARBON_SHEET_NAME
     company_entry = TEMPLATE_INDEX.get(_normalize_template_key(company_key)) or {}
     sheets = company_entry.get("sheets") or {}
     if not isinstance(sheets, dict):
@@ -703,13 +761,20 @@ def _get_template_company_sheets(company_name: str) -> list[str]:
     resolved_company = _resolve_template_company_name(company_name)
     if not resolved_company:
         return []
-    return list((TEMPLATES.get(resolved_company) or {}).keys())
+    sheets = list((TEMPLATES.get(resolved_company) or {}).keys())
+    if klarakarbon_company_supported(resolved_company) and KLARAKARBON_SHEET_NAME not in sheets:
+        sheets.append(KLARAKARBON_SHEET_NAME)
+    return sheets
 
 
 def _get_template_sheet_headers(company_name: str, sheet_name: str) -> list[str]:
     resolved_company = _resolve_template_company_name(company_name)
+    if not resolved_company:
+        return []
+    if str(sheet_name or "").strip().lower() == KLARAKARBON_SHEET_NAME.lower():
+        return list(klarakarbon_entry_headers(resolved_company))
     resolved_sheet = _resolve_template_sheet_name(company_name, sheet_name)
-    if not resolved_company or not resolved_sheet:
+    if not resolved_sheet:
         return []
     return list((TEMPLATES.get(resolved_company) or {}).get(resolved_sheet) or [])
 
@@ -960,6 +1025,7 @@ def _upsert_data_entries(company_name: str, sheet_name: str, headers: list[str],
                     company_name=company_name,
                     sheet_name=sheet_name,
                     entry_group=effective_entry_group,
+                    uploaded_by_user_id=getattr(current_user, "id", None),
                     row_index=effective_row_index,
                     column_name=column_name,
                     value=vv,
@@ -1043,10 +1109,34 @@ def _load_data_entries_dataframe_for_entry_groups(
     return pd.DataFrame(values, columns=headers)
 
 
+def _batch_action_type_for_sheet(sheet_name: str) -> str:
+    sheet_key = str(sheet_name or "").strip().lower()
+    if sheet_key in {KLARAKARBON_SHEET_NAME.lower(), TRAVEL_SHEET_NAME.lower()}:
+        return "append_run"
+    return "map"
+
+
+def _batch_action_label_for_sheet(sheet_name: str) -> str:
+    return "Append & Run pipeline" if _batch_action_type_for_sheet(sheet_name) == "append_run" else "Map"
+
+
+def _display_name_for_user(user: "User | None") -> str:
+    if user is None:
+        return "Unknown"
+    first = str(getattr(user, "first_name", "") or "").strip()
+    last = str(getattr(user, "last_name", "") or "").strip()
+    full = " ".join(part for part in [first, last] if part).strip()
+    if full:
+        return full
+    email = str(getattr(user, "email", "") or "").strip()
+    if email and "@" in email:
+        return email.split("@", 1)[0]
+    return email or "Unknown"
+
+
 def _list_admin_data_entry_batches() -> list[dict[str, object]]:
     """
-    Uploaded data: exactly one row per (company, sheet, entry_group batch).
-    Uses trimmed names in GROUP BY so whitespace variants do not duplicate rows.
+    Uploaded data grouped to one row per (company, sheet).
     """
     from sqlalchemy import func
 
@@ -1054,29 +1144,33 @@ def _list_admin_data_entry_batches() -> list[dict[str, object]]:
 
     co_company = func.trim(func.coalesce(DataEntry.company_name, ""))
     co_sheet = func.trim(func.coalesce(DataEntry.sheet_name, ""))
-    co_group = func.trim(func.coalesce(DataEntry.entry_group, ""))
 
     rows = (
         db.session.query(
             co_company.label("company_name"),
             co_sheet.label("sheet_name"),
-            co_group.label("entry_group"),
             func.max(DataEntry.created_at).label("uploaded_at"),
             func.count(func.distinct(DataEntry.row_index)).label("row_count"),
         )
-        .group_by(co_company, co_sheet, co_group)
+        .group_by(co_company, co_sheet)
         .order_by(func.max(DataEntry.created_at).desc())
         .limit(500)
         .all()
     )
 
-    seen_keys: set[tuple[str, str, str]] = set()
+    latest_merged_workbook = _find_latest_merged_mapping_workbook()
+    latest_merged_mtime = None
+    try:
+        latest_merged_mtime = latest_merged_workbook.stat().st_mtime if latest_merged_workbook else None
+    except Exception:
+        latest_merged_mtime = None
+
+    seen_keys: set[tuple[str, str]] = set()
     out: list[dict[str, object]] = []
     for r in rows:
         company = str(r.company_name or "").strip()
         sheet = str(r.sheet_name or "").strip()
-        eg = str(r.entry_group or "").strip()
-        dedup_key = (company, sheet, eg)
+        dedup_key = (company, sheet)
         if dedup_key in seen_keys:
             continue
         seen_keys.add(dedup_key)
@@ -1084,39 +1178,108 @@ def _list_admin_data_entry_batches() -> list[dict[str, object]]:
         if _is_hidden_schema_sheet(sheet):
             continue
 
-        mapped_run = None
-        if eg:
-            mapped_run = (
-                MappingRun.query.filter_by(
-                    company_name=company,
-                    sheet_name=sheet,
-                    status="succeeded",
-                    source_entry_group=eg,
-                )
-                .order_by(MappingRun.created_at.desc())
-                .first()
+        action_type = _batch_action_type_for_sheet(sheet)
+        mapped_run = (
+            MappingRun.query.filter_by(
+                company_name=company,
+                sheet_name=sheet,
+                status="succeeded",
             )
+            .order_by(MappingRun.created_at.desc())
+            .first()
+        )
         mapper_email = ""
+        mapped_at_dt = getattr(mapped_run, "created_at", None) if mapped_run else None
+        is_mapped = False
+
+        if action_type == "map":
+            if mapped_run is not None and mapped_at_dt is not None:
+                try:
+                    is_mapped = bool(r.uploaded_at) and mapped_at_dt >= r.uploaded_at
+                except Exception:
+                    is_mapped = True
+        else:
+            mapped_run = (
+                mapped_run
+            )
+            if latest_merged_mtime is not None and getattr(r, "uploaded_at", None) is not None:
+                try:
+                    is_mapped = latest_merged_mtime >= r.uploaded_at.timestamp()
+                except Exception:
+                    is_mapped = False
+
         if mapped_run is not None:
             u = db.session.get(User, mapped_run.user_id)
             if u is not None:
                 mapper_email = str(getattr(u, "email", "") or "")
-        uid = hashlib.sha1(f"{company}\x00{sheet}\x00{eg}".encode("utf-8")).hexdigest()[:16]
+        latest_entry = (
+            DataEntry.query.filter_by(company_name=company, sheet_name=sheet)
+            .order_by(DataEntry.created_at.desc(), DataEntry.id.desc())
+            .first()
+        )
+        uploaded_by_user_id = int(getattr(latest_entry, "uploaded_by_user_id", 0) or 0)
+        uploaded_by_name = ""
+        if uploaded_by_user_id:
+            uploaded_user = db.session.get(User, uploaded_by_user_id)
+            uploaded_by_name = _display_name_for_user(uploaded_user)
+        uid = hashlib.sha1(f"{company}\x00{sheet}".encode("utf-8")).hexdigest()[:16]
         out.append(
             {
                 "batch_uid": uid,
                 "company_name": company,
                 "sheet_name": sheet,
-                "entry_group": eg,
+                "entry_group": "",
                 "uploaded_at": r.uploaded_at,
                 "row_count": int(r.row_count or 0),
-                "mappable": bool(eg),
-                "mapped": mapped_run is not None,
-                "mapped_at": getattr(mapped_run, "created_at", None) if mapped_run else None,
+                "mappable": True,
+                "action_type": action_type,
+                "action_label": _batch_action_label_for_sheet(sheet),
+                "mapped": is_mapped,
+                "mapped_at": mapped_at_dt,
                 "mapped_by": mapper_email,
+                "uploaded_by_user": uploaded_by_name,
                 "download_run_id": str(getattr(mapped_run, "id", "") or "") if mapped_run else "",
             }
         )
+
+    travel_path = STAGE2_TRAVEL_DIR / "analysis_summary.xlsx"
+    if travel_path.exists():
+        companies_for_travel = sorted({str(b.get("company_name") or "").strip() for b in out if str(b.get("company_name") or "").strip()})
+        uploaded_at = None
+        try:
+            uploaded_at = datetime.utcfromtimestamp(travel_path.stat().st_mtime)
+        except Exception:
+            uploaded_at = None
+        existing_travel = {(str(b.get("company_name") or "").strip(), str(b.get("sheet_name") or "").strip()) for b in out}
+        for company in companies_for_travel:
+            key = (company, TRAVEL_SHEET_NAME)
+            if key in existing_travel:
+                continue
+            uid = hashlib.sha1(f"{company}\x00{TRAVEL_SHEET_NAME}".encode("utf-8")).hexdigest()[:16]
+            is_mapped = False
+            if latest_merged_mtime is not None and uploaded_at is not None:
+                try:
+                    is_mapped = latest_merged_mtime >= uploaded_at.timestamp()
+                except Exception:
+                    is_mapped = False
+            out.append(
+                {
+                    "batch_uid": uid,
+                    "company_name": company,
+                    "sheet_name": TRAVEL_SHEET_NAME,
+                    "entry_group": "",
+                    "uploaded_at": uploaded_at,
+                    "row_count": 0,
+                    "mappable": True,
+                    "action_type": "append_run",
+                    "action_label": _batch_action_label_for_sheet(TRAVEL_SHEET_NAME),
+                    "mapped": is_mapped,
+                    "mapped_at": None,
+                    "mapped_by": "",
+                    "uploaded_by_user": "System",
+                    "download_run_id": "",
+                }
+            )
     return out
 
 
@@ -1134,10 +1297,13 @@ def _batches_for_admin_mapping_json(batches: list[dict[str, object]]) -> list[di
                 "entry_group": str(b.get("entry_group") or ""),
                 "row_count": int(b.get("row_count") or 0),
                 "mappable": bool(b.get("mappable")),
+                "action_type": str(b.get("action_type") or ""),
+                "action_label": str(b.get("action_label") or ""),
                 "mapped": bool(b.get("mapped")),
                 "uploaded_at": ua.isoformat() + "Z" if isinstance(ua, datetime) else "",
                 "mapped_at": ma.isoformat() + "Z" if isinstance(ma, datetime) else "",
                 "mapped_by": str(b.get("mapped_by") or ""),
+                "uploaded_by_user": str(b.get("uploaded_by_user") or ""),
                 "download_run_id": str(b.get("download_run_id") or ""),
             }
         )
@@ -1186,11 +1352,16 @@ def _ensure_data_entry_columns() -> None:
             return
 
         existing_columns = {col["name"] for col in inspector.get_columns("data_entry")}
-        if "entry_group" in existing_columns:
+        alters: list[str] = []
+        if "entry_group" not in existing_columns:
+            alters.append("ALTER TABLE data_entry ADD COLUMN entry_group VARCHAR(32) DEFAULT ''")
+        if "uploaded_by_user_id" not in existing_columns:
+            alters.append("ALTER TABLE data_entry ADD COLUMN uploaded_by_user_id INTEGER")
+        if not alters:
             return
-
         with db.engine.begin() as conn:
-            conn.execute(text("ALTER TABLE data_entry ADD COLUMN entry_group VARCHAR(32) DEFAULT ''"))
+            for stmt in alters:
+                conn.execute(text(stmt))
     except Exception:
         pass
 
@@ -1826,7 +1997,8 @@ def _company_candidate_keys(raw_company_name: str) -> list[str]:
 
 
 def _count_company_schema_sheets(company_name: str) -> int:
-    return int(len(_get_template_company_sheets(company_name)))
+    sheets = [s for s in _get_template_company_sheets(company_name) if str(s).strip() != KLARAKARBON_SHEET_NAME]
+    return int(len(sheets))
 
 
 HIDDEN_SCHEMA_SHEETS = {"readme", "company information"}
@@ -2787,6 +2959,223 @@ def methodology():
 def trust():
     return render_template('trust.html')
 
+
+@app.route('/impact')
+def impact():
+    return render_template('impact.html')
+
+
+@app.route('/impact/approach')
+def impact_approach():
+    return render_template('impact_approach.html')
+
+
+@app.route('/impact/operations')
+def impact_operations():
+    return render_template('impact_operations.html')
+
+
+@app.route('/impact/lca-epd')
+def impact_lca_epd():
+    return render_template('impact_lca_epd.html')
+
+
+@app.route('/impact/collaboration')
+def impact_collaboration():
+    return render_template('impact_collaboration.html')
+
+
+@app.route('/impact/corporate')
+def impact_corporate():
+    return render_template('impact_corporate.html')
+
+
+@app.route('/impact/materiality')
+def impact_materiality():
+    return render_template('impact_materiality.html')
+
+
+@app.route('/impact/carbon')
+def impact_carbon():
+    return render_template('impact_carbon.html')
+
+
+@app.route('/impact/stakeholders')
+def impact_stakeholders():
+    return render_template('impact_stakeholders.html')
+
+
+@app.route('/impact/sdgs')
+def impact_sdgs():
+    return render_template('impact_sdgs.html')
+
+
+@app.route('/impact/governance')
+def impact_governance():
+    return render_template('impact_governance.html')
+
+
+@app.route('/impact/reporting')
+def impact_reporting():
+    return render_template('impact_reporting.html')
+
+
+@app.route('/esg', endpoint='esg')
+def esg():
+    return render_template('esg.html')
+
+
+@app.route('/esg/csrd', endpoint='csrd')
+def csrd():
+    return render_template('csrd_overview.html')
+
+
+@app.route('/lca')
+def lca():
+    return render_template('lca.html')
+
+
+@app.route('/lca/tool')
+def lca_tool():
+    return render_template('lca_tool.html')
+
+
+@app.route('/lca-tool')
+def lca_tool_legacy_redirect():
+    return redirect(url_for('lca_tool'), 301)
+
+
+@app.route('/csrd')
+def csrd_legacy_redirect():
+    return redirect(url_for('csrd_policies'), 301)
+
+
+@app.route('/esg/csrd/policies', endpoint='csrd_policies')
+@login_required
+def csrd_policies():
+    _ensure_db_tables()
+    edit_id = request.args.get('edit', type=int)
+    edit_policy = None
+    if edit_id and current_user.is_admin:
+        edit_policy = CsrdPolicy.query.get(edit_id)
+    policies = CsrdPolicy.query.order_by(CsrdPolicy.created_at.desc()).all()
+    return render_template(
+        'csrd_policies.html',
+        policies=policies,
+        edit_policy=edit_policy,
+    )
+
+
+@app.route('/esg/csrd/policies/add', methods=['POST'])
+@app.route('/csrd/add', methods=['POST'])
+@login_required
+def csrd_policy_add():
+    if not current_user.is_admin:
+        flash('Access denied')
+        return redirect(url_for('csrd_policies'))
+    _ensure_db_tables()
+    title = (request.form.get('title') or '').strip()
+    short_description = (request.form.get('short_description') or '').strip()
+    upload = request.files.get('file')
+    if not title or not short_description:
+        flash('Title and description are required.')
+        return redirect(url_for('csrd_policies'))
+    if not upload or not getattr(upload, 'filename', None):
+        flash('Please upload a PDF file.')
+        return redirect(url_for('csrd_policies'))
+    if not _csrd_filename_is_pdf(upload.filename):
+        flash('Only PDF files are allowed.')
+        return redirect(url_for('csrd_policies'))
+    upload_dir = _csrd_policy_upload_dir()
+    base = secure_filename(upload.filename) or 'policy.pdf'
+    if not base.lower().endswith('.pdf'):
+        base = f'{base}.pdf'
+    unique_name = f'{uuid.uuid4().hex}_{base}'
+    dest = upload_dir / unique_name
+    upload.save(str(dest))
+    rel = f'csrd_policies/{unique_name}'
+    row = CsrdPolicy(title=title, short_description=short_description, file_relpath=rel)
+    db.session.add(row)
+    db.session.commit()
+    flash('Policy saved.')
+    return redirect(url_for('csrd_policies'))
+
+
+@app.route('/esg/csrd/policies/<int:policy_id>/update', methods=['POST'])
+@app.route('/csrd/<int:policy_id>/update', methods=['POST'])
+@login_required
+def csrd_policy_update(policy_id: int):
+    if not current_user.is_admin:
+        flash('Access denied')
+        return redirect(url_for('csrd_policies'))
+    _ensure_db_tables()
+    row = CsrdPolicy.query.get_or_404(policy_id)
+    title = (request.form.get('title') or '').strip()
+    short_description = (request.form.get('short_description') or '').strip()
+    if not title or not short_description:
+        flash('Title and description are required.')
+        return redirect(url_for('csrd_policies', edit=policy_id))
+    row.title = title
+    row.short_description = short_description
+    upload = request.files.get('file')
+    if upload and getattr(upload, 'filename', None):
+        if not _csrd_filename_is_pdf(upload.filename):
+            flash('Only PDF files are allowed.')
+            return redirect(url_for('csrd_policies', edit=policy_id))
+        old_path = FRONTEND_UPLOAD_DIR / row.file_relpath
+        try:
+            if old_path.is_file():
+                old_path.unlink()
+        except Exception:
+            pass
+        upload_dir = _csrd_policy_upload_dir()
+        base = secure_filename(upload.filename) or 'policy.pdf'
+        if not base.lower().endswith('.pdf'):
+            base = f'{base}.pdf'
+        unique_name = f'{uuid.uuid4().hex}_{base}'
+        dest = upload_dir / unique_name
+        upload.save(str(dest))
+        row.file_relpath = f'csrd_policies/{unique_name}'
+    row.updated_at = datetime.utcnow()
+    db.session.commit()
+    flash('Policy updated.')
+    return redirect(url_for('csrd_policies'))
+
+
+@app.route('/esg/csrd/policies/<int:policy_id>/delete', methods=['POST'])
+@app.route('/csrd/<int:policy_id>/delete', methods=['POST'])
+@login_required
+def csrd_policy_delete(policy_id: int):
+    if not current_user.is_admin:
+        flash('Access denied')
+        return redirect(url_for('csrd_policies'))
+    _ensure_db_tables()
+    row = CsrdPolicy.query.get_or_404(policy_id)
+    disk_path = FRONTEND_UPLOAD_DIR / row.file_relpath
+    db.session.delete(row)
+    db.session.commit()
+    try:
+        if disk_path.is_file():
+            disk_path.unlink()
+    except Exception:
+        pass
+    flash('Policy removed.')
+    return redirect(url_for('csrd_policies'))
+
+
+@app.route('/esg/csrd/policies/<int:policy_id>/file')
+@app.route('/csrd/<int:policy_id>/file')
+@login_required
+def csrd_policy_file(policy_id: int):
+    _ensure_db_tables()
+    row = CsrdPolicy.query.get_or_404(policy_id)
+    path = FRONTEND_UPLOAD_DIR / row.file_relpath
+    if not path.is_file():
+        return ('File not found', 404)
+    dl_name = Path(row.file_relpath).name
+    return send_file(str(path), mimetype='application/pdf', as_attachment=False, download_name=dl_name)
+
+
 @app.route('/assets/mouse-symbol')
 def mouse_symbol_image():
     symbol_path = APP_DIR / "images" / "Symbol for mouse.png"
@@ -3087,162 +3476,172 @@ def profile_page():
 
 
 
+
+def _render_dashboard_admin_analytics():
+    company_filter = request.args.get('company', '').strip().lower()
+    template_filter = request.args.get('template', '').strip().lower()
+    include_categories = (request.args.get('include_categories', '1').strip() != '0')
+    all_time = (request.args.get('all_time', '').strip() in ('1', 'true', 'on', 'yes'))
+    date_from = _parse_date_yyyy_mm_dd(request.args.get('from'))
+    date_to = _parse_date_yyyy_mm_dd(request.args.get('to'))
+
+    # Default window: last 365 days (unless all_time is explicitly requested)
+    if not all_time and not date_from and not date_to:
+        date_to = datetime.now()
+        date_from = date_to - timedelta(days=365)
+
+    q = MappingRunSummary.query.order_by(MappingRunSummary.created_at.desc())
+    if company_filter:
+        q = q.filter(MappingRunSummary.company_name.ilike(f"%{company_filter}%"))
+    if template_filter:
+        q = q.filter(MappingRunSummary.sheet_name.ilike(f"%{template_filter}%"))
+
+    summaries = q.all()
+    # Only count the latest run per company+sheet
+    latest_summaries: list[MappingRunSummary] = []
+    seen_latest: set[tuple[str, str]] = set()
+    for s in summaries:
+        key = ((s.company_name or "").strip().lower(), (s.sheet_name or "").strip().lower())
+        if not key[0] or not key[1] or key in seen_latest:
+            continue
+        seen_latest.add(key)
+        latest_summaries.append(s)
+
+    company_totals = defaultdict(lambda: {"total": 0.0, "scope1": 0.0, "scope2": 0.0, "scope3": 0.0, "count": 0})
+    month_totals = defaultdict(float)  # YYYY-MM -> total
+    year_totals = defaultdict(float)   # YYYY -> total
+    category_totals = defaultdict(float)
+    run_cache: dict[str, MappingRun | None] = {}
+
+    grand = {"total": 0.0, "scope1": 0.0, "scope2": 0.0, "scope3": 0.0, "count": 0}
+    for sub in latest_summaries:
+        profile = _period_profile_for_summary(sub, run_cache=run_cache)
+        points = list(profile.get("points") or [])
+        if date_from:
+            points = [p for p in points if isinstance(p.get("date"), datetime) and p["date"] >= date_from]
+        if date_to:
+            points = [p for p in points if isinstance(p.get("date"), datetime) and p["date"] < (date_to + timedelta(days=1))]
+        if (date_from or date_to) and not points:
+            continue
+
+        total = _safe_float(sum(float(p.get("value") or 0.0) for p in points) if points else profile.get("total", 0.0))
+        scope_num = int(getattr(sub, "scope", 0) or 0)
+        s1 = total if scope_num == 1 else 0.0
+        s2 = total if scope_num == 2 else 0.0
+        s3 = total if scope_num == 3 else 0.0
+
+        company = (sub.company_name or "").strip() or "(unknown)"
+        company_totals[company]["total"] += total
+        company_totals[company]["scope1"] += s1
+        company_totals[company]["scope2"] += s2
+        company_totals[company]["scope3"] += s3
+        company_totals[company]["count"] += 1
+
+        grand["total"] += total
+        grand["scope1"] += s1
+        grand["scope2"] += s2
+        grand["scope3"] += s3
+        grand["count"] += 1
+
+        for point in points:
+            dt = point.get("date")
+            if not isinstance(dt, datetime):
+                continue
+            month_key = dt.strftime("%Y-%m")
+            year_key = dt.strftime("%Y")
+            month_totals[month_key] += float(point.get("value") or 0.0)
+            year_totals[year_key] += float(point.get("value") or 0.0)
+
+        if include_categories:
+            category_totals[str(sub.sheet_name or "(unknown)")] += total
+
+    company_rows = [
+        {
+            "company": k,
+            "total": round(v["total"], 2),
+            "scope1": round(v["scope1"], 2),
+            "scope2": round(v["scope2"], 2),
+            "scope3": round(v["scope3"], 2),
+            "count": v["count"],
+        }
+        for k, v in company_totals.items()
+    ]
+    company_rows.sort(key=lambda r: r["total"], reverse=True)
+
+    month_rows = [{"month": k, "total": round(v, 2)} for k, v in month_totals.items()]
+    month_rows.sort(key=lambda r: r["month"])
+
+    year_rows = [{"year": k, "total": round(v, 2)} for k, v in year_totals.items()]
+    year_rows.sort(key=lambda r: r["year"])
+
+    category_rows = [{"category": k, "total": round(v, 2)} for k, v in category_totals.items()]
+    category_rows.sort(key=lambda r: r["total"], reverse=True)
+
+    # Chart payloads (keep top N for readability)
+    top_companies = company_rows[:12]
+    top_categories = category_rows[:12]
+    chart_payload = {
+        "companies": {
+            "labels": [r["company"] for r in top_companies],
+            "values": [r["total"] for r in top_companies],
+        },
+        "months": {
+            "labels": [r["month"] for r in month_rows][-24:],
+            "values": [r["total"] for r in month_rows][-24:],
+        },
+        "years": {
+            "labels": [r["year"] for r in year_rows],
+            "values": [r["total"] for r in year_rows],
+        },
+        "categories": {
+            "labels": [r["category"] for r in top_categories],
+            "values": [r["total"] for r in top_categories],
+        },
+    }
+
+    return render_template(
+        "dashboard_admin.html",
+        user=current_user,
+        filters={
+            "company": request.args.get("company", ""),
+            "template": request.args.get("template", ""),
+            "from": request.args.get("from", ""),
+            "to": request.args.get("to", ""),
+            "include_categories": "1" if include_categories else "0",
+            "all_time": "1" if all_time else "0",
+        },
+        grand={
+            "total": round(grand["total"], 2),
+            "scope1": round(grand["scope1"], 2),
+            "scope2": round(grand["scope2"], 2),
+            "scope3": round(grand["scope3"], 2),
+            "count": grand["count"],
+            "companies": len(company_totals),
+        },
+        company_rows=company_rows,
+        month_rows=month_rows,
+        year_rows=year_rows,
+        category_rows=category_rows,
+        chart_payload=chart_payload,
+    )
+
+
+@app.route("/dashboard/analytics")
+@login_required
+def dashboard_analytics():
+    if not current_user.is_admin:
+        return redirect(url_for("dashboard"))
+    _ensure_db_tables()
+    _backfill_mapping_summaries()
+    return _render_dashboard_admin_analytics()
+
+
 @app.route('/dashboard')
 @login_required
 def dashboard():
     _ensure_db_tables()
     if current_user.is_admin:
-
         _backfill_mapping_summaries()
-
-
-        # Admin analytics dashboard (mapping-summary based)
-        company_filter = request.args.get('company', '').strip().lower()
-        template_filter = request.args.get('template', '').strip().lower()
-        include_categories = (request.args.get('include_categories', '1').strip() != '0')
-        all_time = (request.args.get('all_time', '').strip() in ('1', 'true', 'on', 'yes'))
-        date_from = _parse_date_yyyy_mm_dd(request.args.get('from'))
-        date_to = _parse_date_yyyy_mm_dd(request.args.get('to'))
-
-        # Default window: last 365 days (unless all_time is explicitly requested)
-        if not all_time and not date_from and not date_to:
-            date_to = datetime.now()
-            date_from = date_to - timedelta(days=365)
-
-        q = MappingRunSummary.query.order_by(MappingRunSummary.created_at.desc())
-        if company_filter:
-            q = q.filter(MappingRunSummary.company_name.ilike(f"%{company_filter}%"))
-        if template_filter:
-            q = q.filter(MappingRunSummary.sheet_name.ilike(f"%{template_filter}%"))
-
-        summaries = q.all()
-        # Only count the latest run per company+sheet
-        latest_summaries: list[MappingRunSummary] = []
-        seen_latest: set[tuple[str, str]] = set()
-        for s in summaries:
-            key = ((s.company_name or "").strip().lower(), (s.sheet_name or "").strip().lower())
-            if not key[0] or not key[1] or key in seen_latest:
-                continue
-            seen_latest.add(key)
-            latest_summaries.append(s)
-
-        company_totals = defaultdict(lambda: {"total": 0.0, "scope1": 0.0, "scope2": 0.0, "scope3": 0.0, "count": 0})
-        month_totals = defaultdict(float)  # YYYY-MM -> total
-        year_totals = defaultdict(float)   # YYYY -> total
-        category_totals = defaultdict(float)
-        run_cache: dict[str, MappingRun | None] = {}
-
-        grand = {"total": 0.0, "scope1": 0.0, "scope2": 0.0, "scope3": 0.0, "count": 0}
-        for sub in latest_summaries:
-            profile = _period_profile_for_summary(sub, run_cache=run_cache)
-            points = list(profile.get("points") or [])
-            if date_from:
-                points = [p for p in points if isinstance(p.get("date"), datetime) and p["date"] >= date_from]
-            if date_to:
-                points = [p for p in points if isinstance(p.get("date"), datetime) and p["date"] < (date_to + timedelta(days=1))]
-            if (date_from or date_to) and not points:
-                continue
-
-            total = _safe_float(sum(float(p.get("value") or 0.0) for p in points) if points else profile.get("total", 0.0))
-            scope_num = int(getattr(sub, "scope", 0) or 0)
-            s1 = total if scope_num == 1 else 0.0
-            s2 = total if scope_num == 2 else 0.0
-            s3 = total if scope_num == 3 else 0.0
-
-            company = (sub.company_name or "").strip() or "(unknown)"
-            company_totals[company]["total"] += total
-            company_totals[company]["scope1"] += s1
-            company_totals[company]["scope2"] += s2
-            company_totals[company]["scope3"] += s3
-            company_totals[company]["count"] += 1
-
-            grand["total"] += total
-            grand["scope1"] += s1
-            grand["scope2"] += s2
-            grand["scope3"] += s3
-            grand["count"] += 1
-
-            for point in points:
-                dt = point.get("date")
-                if not isinstance(dt, datetime):
-                    continue
-                month_key = dt.strftime("%Y-%m")
-                year_key = dt.strftime("%Y")
-                month_totals[month_key] += float(point.get("value") or 0.0)
-                year_totals[year_key] += float(point.get("value") or 0.0)
-
-            if include_categories:
-                category_totals[str(sub.sheet_name or "(unknown)")] += total
-
-        company_rows = [
-            {
-                "company": k,
-                "total": round(v["total"], 2),
-                "scope1": round(v["scope1"], 2),
-                "scope2": round(v["scope2"], 2),
-                "scope3": round(v["scope3"], 2),
-                "count": v["count"],
-            }
-            for k, v in company_totals.items()
-        ]
-        company_rows.sort(key=lambda r: r["total"], reverse=True)
-
-        month_rows = [{"month": k, "total": round(v, 2)} for k, v in month_totals.items()]
-        month_rows.sort(key=lambda r: r["month"])
-
-        year_rows = [{"year": k, "total": round(v, 2)} for k, v in year_totals.items()]
-        year_rows.sort(key=lambda r: r["year"])
-
-        category_rows = [{"category": k, "total": round(v, 2)} for k, v in category_totals.items()]
-        category_rows.sort(key=lambda r: r["total"], reverse=True)
-
-        # Chart payloads (keep top N for readability)
-        top_companies = company_rows[:12]
-        top_categories = category_rows[:12]
-        chart_payload = {
-            "companies": {
-                "labels": [r["company"] for r in top_companies],
-                "values": [r["total"] for r in top_companies],
-            },
-            "months": {
-                "labels": [r["month"] for r in month_rows][-24:],
-                "values": [r["total"] for r in month_rows][-24:],
-            },
-            "years": {
-                "labels": [r["year"] for r in year_rows],
-                "values": [r["total"] for r in year_rows],
-            },
-            "categories": {
-                "labels": [r["category"] for r in top_categories],
-                "values": [r["total"] for r in top_categories],
-            },
-        }
-
-        return render_template(
-            "dashboard_admin.html",
-            user=current_user,
-            filters={
-                "company": request.args.get("company", ""),
-                "template": request.args.get("template", ""),
-                "from": request.args.get("from", ""),
-                "to": request.args.get("to", ""),
-                "include_categories": "1" if include_categories else "0",
-                "all_time": "1" if all_time else "0",
-            },
-            grand={
-                "total": round(grand["total"], 2),
-                "scope1": round(grand["scope1"], 2),
-                "scope2": round(grand["scope2"], 2),
-                "scope3": round(grand["scope3"], 2),
-                "count": grand["count"],
-                "companies": len(company_totals),
-            },
-            company_rows=company_rows,
-            month_rows=month_rows,
-            year_rows=year_rows,
-            category_rows=category_rows,
-            chart_payload=chart_payload,
-        )
 
     mapping_runs = (
         MappingRun.query.filter_by(user_id=current_user.id)
@@ -3257,18 +3656,15 @@ def dashboard():
         MappingRun.created_at >= thirty_days_ago
     ).count()
 
-    all_companies = _list_template_companies_for_user() if current_user.is_admin else []
-    default_company = None
+    companies = _list_template_companies_for_user()
+    default_company = companies[0]["key"] if companies else None
 
-    if current_user.is_admin:
-        default_company = (all_companies[0]["key"] if all_companies else None)
-        companies = all_companies
+    if not current_user.is_admin:
+        rk = _resolve_template_company_name(current_user.company_name or "")
     else:
-        companies = _list_template_companies_for_user()
-        default_company = (companies[0]["key"] if companies else None)
-
-    rk = _resolve_template_company_name(current_user.company_name or "") if not current_user.is_admin else None
+        rk = _resolve_template_company_name(default_company) if default_company else None
     company_logo_rel = _company_logo_static_rel(rk) if rk else None
+    klarakarbon_supported = klarakarbon_company_supported(rk or "")
 
     return render_template(
         "dashboard.html",
@@ -3279,7 +3675,16 @@ def dashboard():
         total_mapping_runs=total_mapping_runs,
         recent_mapping_runs_count=recent_mapping_runs_count,
         company_logo_rel=company_logo_rel,
+        klarakarbon_company=rk,
+        klarakarbon_supported=klarakarbon_supported,
     )
+
+
+@app.route("/preprocess/klarakarbon/upload", methods=["POST"])
+@login_required
+def upload_klarakarbon_preprocess():
+    flash("Direct Klarakarbon Excel upload is disabled. Use the 'Klarakarbon' category in Data Entry.")
+    return redirect(url_for("dashboard"))
 
 
 def _user_can_access_company_file(company_file: Path) -> bool:
@@ -3480,6 +3885,8 @@ def api_mapping_run():
     resolved_sheet = _resolve_template_sheet_name(resolved_company, sheet)
     if not resolved_sheet:
         return jsonify({"error": "Sheet not found"}), 404
+    if resolved_sheet == KLARAKARBON_SHEET_NAME:
+        return jsonify({"error": "Klarakarbon entries are not mapped from the Data Entry page."}), 403
     headers, _rules = _get_data_entry_template_schema(resolved_company, resolved_sheet)
     if not headers:
         return jsonify({"error": "Sheet not found"}), 404
@@ -3589,6 +3996,114 @@ def api_mapping_run():
     if entry_group_filter:
         resp["entry_group"] = entry_group_filter
     return jsonify(resp)
+
+
+@app.route("/api/pipeline/append_run", methods=["POST"])
+@login_required
+def api_pipeline_append_run():
+    if not bool(getattr(current_user, "is_admin", False)):
+        return jsonify({"error": "Append & Run pipeline is only available for administrators"}), 403
+
+    payload = request.get_json(silent=True) or {}
+    company = (payload.get("company") or "").strip()
+    sheet = (payload.get("sheet") or "").strip()
+    if not company or not sheet:
+        return jsonify({"error": "company and sheet are required"}), 400
+    if not _user_can_access_company(company):
+        return jsonify({"error": "Access denied"}), 403
+
+    resolved_company = _resolve_template_company_name(company)
+    if not resolved_company:
+        return jsonify({"error": "Company not found"}), 404
+
+    sheet_key = str(sheet).strip()
+    if _batch_action_type_for_sheet(sheet_key) != "append_run":
+        return jsonify({"error": "This category must use the normal Map action."}), 400
+    if sheet_key == KLARAKARBON_SHEET_NAME:
+        resolved_sheet = KLARAKARBON_SHEET_NAME
+    elif sheet_key == TRAVEL_SHEET_NAME:
+        resolved_sheet = TRAVEL_SHEET_NAME
+    else:
+        return jsonify({"error": "Unsupported pipeline category."}), 400
+
+    try:
+        result = _run_append_and_pipeline(resolved_company, resolved_sheet)
+    except Exception as e:
+        return jsonify({"error": f"Pipeline failed: {e}"}), 500
+    return jsonify(result)
+
+
+def _find_latest_merged_mapping_workbook() -> Path | None:
+    patterns = [
+        "mapped_results_merged_*.xlsx",
+        "mapped_results_merged.xlsx",
+    ]
+    candidates: list[Path] = []
+    for pattern in patterns:
+        candidates.extend(STAGE2_OUTPUT_DIR.glob(pattern))
+    candidates = [p for p in candidates if p.is_file() and not p.name.startswith("~$")]
+    if not candidates:
+        return None
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return candidates[0]
+
+
+@app.route("/api/mapping/download_merged", methods=["GET"])
+@login_required
+def api_mapping_download_merged():
+    if not bool(getattr(current_user, "is_admin", False)):
+        flash("Access denied")
+        return redirect(url_for("dashboard"))
+    p = _find_latest_merged_mapping_workbook()
+    if p is None or not p.exists():
+        flash("Merged mapping output file not found.")
+        return redirect(url_for("admin_mapping_panel"))
+    return send_file(str(p), as_attachment=True, download_name=p.name)
+
+
+@app.route("/api/admin/upload_notifications", methods=["GET"])
+@login_required
+def api_admin_upload_notifications():
+    if not bool(getattr(current_user, "is_admin", False)):
+        return jsonify({"error": "Access denied"}), 403
+
+    _ensure_db_tables()
+    one_week_ago = datetime.utcnow() - timedelta(days=7)
+    batches = _list_admin_data_entry_batches()
+    notifications: list[dict[str, object]] = []
+    for b in batches:
+        uploaded_at = b.get("uploaded_at")
+        if not isinstance(uploaded_at, datetime):
+            continue
+        if uploaded_at < one_week_ago:
+            continue
+
+        mapped = bool(b.get("mapped"))
+        mapped_at = b.get("mapped_at")
+        mapped_by = str(b.get("mapped_by") or "").strip()
+        if mapped and mapped_at:
+            mapping_status = f"Mapped by {mapped_by or 'admin'} at {mapped_at.strftime('%Y-%m-%d %H:%M')}"
+        elif mapped:
+            mapping_status = "Mapped"
+        else:
+            mapping_status = "Not mapped yet"
+
+        notifications.append(
+            {
+                "company_name": str(b.get("company_name") or ""),
+                "uploaded_by_user": str(b.get("uploaded_by_user") or "Unknown"),
+                "upload_timestamp": uploaded_at.strftime("%Y-%m-%d %H:%M"),
+                "category": str(b.get("sheet_name") or ""),
+                "row_count": int(b.get("row_count") or 0),
+                "mapping_status": mapping_status,
+                "mapped_by_admin": mapped_by,
+                "mapping_timestamp": mapped_at.strftime("%Y-%m-%d %H:%M") if isinstance(mapped_at, datetime) else "",
+                "mapped": mapped,
+            }
+        )
+
+    notifications.sort(key=lambda item: str(item.get("upload_timestamp") or ""), reverse=True)
+    return jsonify({"notifications": notifications, "count": len(notifications)})
 
 
 @app.route("/api/mapping/download/<run_id>", methods=["GET"])
@@ -3737,6 +4252,57 @@ def admin():
         chart_data=chart_data,
         logos=[],
     )
+
+
+@app.route("/admin/preprocess/travel/upload", methods=["POST"])
+@login_required
+def upload_travel_preprocess():
+    if not current_user.is_admin:
+        flash("Access denied")
+        return redirect(url_for("dashboard"))
+
+    upload = request.files.get("travel_file")
+    if not upload or not getattr(upload, "filename", None):
+        flash("Please choose a Travel .xlsb file.")
+        return redirect(url_for("admin"))
+
+    ext = Path(secure_filename(upload.filename or "")).suffix.lower()
+    if ext not in TRAVEL_ALLOWED_EXT:
+        flash("Only .xlsb files are allowed for Travel uploads.")
+        return redirect(url_for("admin"))
+
+    run_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:10]}"
+    run_dir = FRONTEND_UPLOAD_DIR / "preprocess" / "travel" / run_id
+    raw_dir = run_dir / "raw"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+
+    safe_name = secure_filename(upload.filename or "travel_source.xlsb") or "travel_source.xlsb"
+    raw_path = raw_dir / safe_name
+    upload.save(str(raw_path))
+
+    validation_errors = validate_travel_upload(raw_path)
+    validation_path = run_dir / "validation.json"
+    if validation_errors:
+        validation_path.write_text(
+            json.dumps({"status": "failed", "errors": validation_errors}, indent=2),
+            encoding="utf-8",
+        )
+        flash(validation_errors[0])
+        return redirect(url_for("admin"))
+
+    validation_path.write_text(
+        json.dumps({"status": "passed", "file": raw_path.name}, indent=2),
+        encoding="utf-8",
+    )
+
+    threading.Thread(
+        target=run_travel_preprocess,
+        args=(run_dir, raw_path),
+        daemon=True,
+    ).start()
+    flash("Travel preprocessing started.")
+    return redirect(url_for("admin"))
+
 
 @app.route('/logout')
 @login_required
@@ -4199,6 +4765,68 @@ def _import_stage2_main_mapping():
     return importlib.import_module("main_mapping")
 
 
+def _import_stage2_append_sources():
+    if str(STAGE2_MAPPING_DIR) not in sys.path:
+        sys.path.insert(0, str(STAGE2_MAPPING_DIR))
+    import importlib
+    return importlib.import_module("append_sources_to_mapped")
+
+
+def _publish_klarakarbon_data_entry_output(company_name: str) -> Path:
+    headers, _rules = _get_data_entry_template_schema(company_name, KLARAKARBON_SHEET_NAME)
+    if not headers:
+        raise RuntimeError("Klarakarbon headers are not configured for this company.")
+    df = _load_data_entries_dataframe(company_name, KLARAKARBON_SHEET_NAME, headers)
+    if df.empty:
+        raise RuntimeError("No saved Klarakarbon rows found for this company.")
+    publish_dir = STAGE1_KLARAKARBON_OUTPUT_DIR / company_slug(company_name)
+    publish_dir.mkdir(parents=True, exist_ok=True)
+    publish_path = publish_dir / "klarakarbon_categories_mapped_FINAL.xlsx"
+    with pd.ExcelWriter(publish_path, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name=KLARAKARBON_SHEET_NAME[:31], index=False)
+    return publish_path
+
+
+def _run_append_and_pipeline(company_name: str, sheet_name: str) -> dict[str, object]:
+    sheet_key = str(sheet_name or "").strip()
+    if _batch_action_type_for_sheet(sheet_key) != "append_run":
+        raise RuntimeError("This sheet does not support append-and-run orchestration.")
+
+    published_path: Path | None = None
+    if sheet_key == KLARAKARBON_SHEET_NAME:
+        published_path = _publish_klarakarbon_data_entry_output(company_name)
+    elif sheet_key == TRAVEL_SHEET_NAME:
+        published_path = STAGE2_TRAVEL_DIR / "analysis_summary.xlsx"
+        if not published_path.exists():
+            raise RuntimeError("Travel analysis_summary.xlsx was not found. Upload Travel data first.")
+
+    append_src = _import_stage2_append_sources()
+    with _STAGE2_MAP_LOCK:
+        append_src.main(company_name=company_name)
+        proc = subprocess.run(
+            [sys.executable, str(STAGE2_MAPPING_DIR / "Run_Everything.py")],
+            cwd=str(STAGE2_MAPPING_DIR),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    if proc.returncode != 0:
+        detail = (proc.stdout or proc.stderr or "").strip()
+        if detail:
+            detail = detail[-1200:]
+        raise RuntimeError(detail or f"Run_Everything.py failed with exit code {proc.returncode}")
+
+    return {
+        "ok": True,
+        "company": company_name,
+        "sheet": sheet_key,
+        "action_type": "append_run",
+        "published_path": str(published_path) if published_path else "",
+        "processed_at": datetime.utcnow().isoformat() + "Z",
+    }
+
+
 def run_mapping(company_name: str, sheet_name: str, df: pd.DataFrame) -> tuple[pd.DataFrame, Path, Path]:
     """
     Run existing Stage2 mapping logic for a single company + single sheet dataframe.
@@ -4217,6 +4845,7 @@ def run_mapping(company_name: str, sheet_name: str, df: pd.DataFrame) -> tuple[p
         df_pre.to_excel(writer, sheet_name=str(sheet_name)[:31], index=False)
 
     mm = _import_stage2_main_mapping()
+    append_src = _import_stage2_append_sources()
 
     # Run Stage2 mapping under a lock (Stage2 writes to a shared output/ directory)
     start_ts = time.time() if "time" in globals() else None
@@ -4227,6 +4856,7 @@ def run_mapping(company_name: str, sheet_name: str, df: pd.DataFrame) -> tuple[p
         try:
             setattr(mm, "INPUT_WORKBOOK_NAME", str(input_xlsx))
             mm.process_all_sheets()
+            append_src.main(company_name=company_name)
         finally:
             try:
                 setattr(mm, "INPUT_WORKBOOK_NAME", orig)

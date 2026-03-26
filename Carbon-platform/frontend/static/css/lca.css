@@ -1,0 +1,61 @@
+/* LCA placeholder — scoped; tokens from saas.css */
+.page-lca {
+  padding-bottom: var(--s-16);
+}
+
+.page-lca__hero {
+  padding: var(--s-20) 0 var(--s-16);
+  border-bottom: 1px solid var(--border);
+}
+
+.page-lca__hero-title {
+  font-size: clamp(2rem, 4vw, 2.75rem);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin: 0 0 var(--s-4);
+  line-height: 1.15;
+}
+
+.page-lca__hero-lead {
+  font-size: 1.125rem;
+  color: var(--muted);
+  max-width: 42rem;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.page-lca__placeholder-wrap {
+  max-width: 960px;
+  margin: 0 auto;
+  padding-top: var(--s-12);
+}
+
+.page-lca__placeholder {
+  min-height: 280px;
+  border: 2px dashed var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s-10);
+}
+
+.page-lca__placeholder-inner {
+  width: 100%;
+  min-height: 220px;
+}
+
+.page-lca__placeholder-text {
+  margin: 0;
+  color: var(--muted);
+  font-size: 1.05rem;
+  text-align: center;
+}
+
+@media (max-width: 767.98px) {
+  .page-lca__hero {
+    padding: var(--s-12) 0 var(--s-10);
+  }
+}

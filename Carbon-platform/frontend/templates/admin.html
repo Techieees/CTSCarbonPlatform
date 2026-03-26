@@ -20,6 +20,27 @@
         </div>
     </div>
 
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0 d-flex align-items-center">
+                        {{ illu.illu_lp_spreadsheet() }}<span class="ms-2">Travel Preprocessing Upload</span>
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form method="post" action="{{ url_for('upload_travel_preprocess') }}" enctype="multipart/form-data" class="d-flex flex-column flex-md-row align-items-stretch align-items-md-center gap-2">
+                        <input class="form-control" type="file" name="travel_file" accept=".xlsb" required>
+                        <button class="btn btn-primary d-inline-flex align-items-center" type="submit">
+                            {{ illu.illu_btn_save('me-1') }}Start preprocess
+                        </button>
+                    </form>
+                    <p class="text-muted small mb-0 mt-2">Admin only. Upload a Travel Management `.xlsb` file to refresh `analysis_summary.xlsx` for Stage 2 source appending.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Statistics Cards -->
     <div class="row mb-4">
         <div class="col-md-3">

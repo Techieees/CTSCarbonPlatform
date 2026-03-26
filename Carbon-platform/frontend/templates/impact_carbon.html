@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}Impact{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/impact.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-impact page-impact--subpage">
+  <section class="page-impact__hero page-impact__hero--sub" aria-labelledby="impact-s7">
+    <div class="container">
+      <h1 class="page-impact__hero-title" id="impact-s7">Carbon Accounting Programme</h1>
+    </div>
+  </section>
+
+  <section class="page-impact__section page-impact__section--sub">
+    <div class="container page-impact__container-wide">
+      <div class="page-impact__prose vstack gap-4">
+        <p class="page-impact_section_body">Carbon accounting forms the foundation for understanding CTS Group’s climate impact.</p>
+        <p class="page-impact_section_body"> 2025 marked the beginning of our journey, where we are establishing the baseline data for our greenhouse gases, creating new systems, and developing dashboards for insights needed to take meaningful action.</p>
+        <p class="page-impact_section_body"> As we continue to grow, this work will enable us to set credible reduction targets, drive measurable progress, and ensure transparency and accountability in everything we do.</p>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

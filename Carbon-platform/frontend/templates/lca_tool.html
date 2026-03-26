@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Life Cycle Assessment{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/lca.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-lca">
+  <section class="page-lca__hero" aria-labelledby="lca-hero-title">
+    <div class="container">
+      <h1 class="page-lca__hero-title" id="lca-hero-title">Life Cycle Assessment</h1>
+      <p class="page-lca__hero-lead">Tool for evaluating environmental impact across the full lifecycle of Data Center components.</p>
+    </div>
+  </section>
+
+  <div class="container page-lca__placeholder-wrap">
+    <div id="lca-tool-root" class="page-lca__placeholder" role="region" aria-label="LCA tool area">
+      <div class="page-lca__placeholder-inner d-flex align-items-center justify-content-center">
+        <p class="page-lca__placeholder-text">LCA tool will be available here.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

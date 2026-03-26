@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}Impact{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/impact.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-impact page-impact--subpage">
+  <section class="page-impact__hero page-impact__hero--sub" aria-labelledby="impact-s1">
+    <div class="container">
+      <h1 class="page-impact__hero-title" id="impact-s1">Our Approach</h1>
+    </div>
+  </section>
+
+  <section class="page-impact__section page-impact__section--sub">
+    <div class="container page-impact__container-wide">
+      <div class="page-impact__prose vstack gap-4">
+        <p class="page-impact__section-body">Our approach to sustainability is designed to balance three key priorities: </p>
+        <div class="page-impact__pills">
+          <div class="page-impact__pill">
+            <p class="page-impact__section-body mb-0"><b>1.</b> Enchancing our Clients Value through Sustainability</p>
+          </div>
+          <div class="page-impact__pill">
+            <p class="page-impact__section-body mb-0"><b>2.</b> Driving Transparency and Action in our Value Chain</p>
+          </div>
+          <div class="page-impact__pill">
+            <p class="page-impact__section-body mb-0"><b>3.</b> Regulatory and Voluntary Commitments </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

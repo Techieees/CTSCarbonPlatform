@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}Impact{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/impact.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-impact page-impact--subpage">
+  <section class="page-impact__hero page-impact__hero--sub" aria-labelledby="impact-s6">
+    <div class="container">
+      <h1 class="page-impact__hero-title" id="impact-s6">Double Materiality Assesment aligned to CSRD/ESRS</h1>
+    </div>
+  </section>
+
+  <section class="page-impact__section page-impact__section--sub">
+    <div class="container page-impact__container-wide">
+      <div class="page-impact__prose vstack gap-4">
+        <p class="page-impact__section-body">CTS Group completed and signed off our first Double Materiality Assessment in Q3 2025, to identify the sustainability topics that matter most to our business, clients, and stakeholders, enabling our business to make informed decisions and strengthen client confidence.</p>
+        <p class="page-impact__section-body">Double Materiality Assessment was conducted across the entire Group, with all entities included in the process.</p>
+        <p class="page-impact__section-body">The assessment resulted in 5 material topics in line with European Standards. </p>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

@@ -25,7 +25,7 @@
 </head>
 <body>
     <div class="app-shell">
-    {% set is_marketing = (request.endpoint in ('index', 'platform', 'methodology', 'trust', 'who_we_are') and not current_user.is_authenticated) %}
+    {% set is_marketing = (request.endpoint in ('index', 'platform', 'methodology', 'trust', 'who_we_are', 'impact', 'impact_approach', 'impact_operations', 'impact_lca_epd', 'impact_collaboration', 'impact_corporate', 'impact_materiality', 'impact_carbon', 'impact_stakeholders', 'impact_sdgs', 'impact_governance', 'impact_reporting', 'esg', 'csrd', 'lca', 'lca_tool') and not current_user.is_authenticated) %}
     <nav class="navbar navbar-expand-lg navbar-light saas-nav">
         <div class="container">
             <a class="navbar-brand d-flex align-items-center gap-2" href="{{ url_for('index') }}">
@@ -45,6 +45,34 @@
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('methodology') }}">Methodology</a></li>
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('trust') }}">Trust</a></li>
                     <li class="nav-item"><a class="nav-link text-nowrap" href="{{ url_for('who_we_are') }}">Who We Are</a></li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="impactDropdownMarketing" role="button" data-bs-toggle="dropdown" aria-expanded="false">Impact</a>
+                        <ul class="dropdown-menu" aria-labelledby="impactDropdownMarketing">
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact') }}">Impact Overview</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_operations') }}">Operational Sustainability</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_lca_epd') }}">LCA &amp; EPD</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_collaboration') }}">Industry Collaboration</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_corporate') }}">Corporate Sustainability</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_materiality') }}">Double Materiality</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_carbon') }}">Carbon Accounting</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_stakeholders') }}">Stakeholder Engagement</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="esgDropdownMarketing" role="button" data-bs-toggle="dropdown" aria-expanded="false">ESG</a>
+                        <ul class="dropdown-menu" aria-labelledby="esgDropdownMarketing">
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('esg') }}">Overview</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('csrd') }}">CSRD</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('csrd_policies') }}">Policies</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="lcaDropdownMarketing" role="button" data-bs-toggle="dropdown" aria-expanded="false">LCA</a>
+                        <ul class="dropdown-menu" aria-labelledby="lcaDropdownMarketing">
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('lca') }}">Overview</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('lca_tool') }}">Tool</a></li>
+                        </ul>
+                    </li>
                     <li class="nav-item">
                         <div class="theme-toggle" title="Toggle dark mode">
                             <label class="theme-toggle__switch" for="darkModeToggle">
@@ -64,6 +92,34 @@
                             {{ illu.illu_nav_home('me-1') }}Home
                         </a>
                     </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle d-inline-flex align-items-center" href="#" id="impactDropdownApp" role="button" data-bs-toggle="dropdown" aria-expanded="false">Impact</a>
+                        <ul class="dropdown-menu" aria-labelledby="impactDropdownApp">
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact') }}">Impact Overview</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_operations') }}">Operational Sustainability</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_lca_epd') }}">LCA &amp; EPD</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_collaboration') }}">Industry Collaboration</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_corporate') }}">Corporate Sustainability</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_materiality') }}">Double Materiality</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_carbon') }}">Carbon Accounting</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_stakeholders') }}">Stakeholder Engagement</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle d-inline-flex align-items-center" href="#" id="esgDropdownApp" role="button" data-bs-toggle="dropdown" aria-expanded="false">ESG</a>
+                        <ul class="dropdown-menu" aria-labelledby="esgDropdownApp">
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('esg') }}">Overview</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('csrd') }}">CSRD</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('csrd_policies') }}">Policies</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle d-inline-flex align-items-center" href="#" id="lcaDropdownApp" role="button" data-bs-toggle="dropdown" aria-expanded="false">LCA</a>
+                        <ul class="dropdown-menu" aria-labelledby="lcaDropdownApp">
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('lca') }}">Overview</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('lca_tool') }}">Tool</a></li>
+                        </ul>
+                    </li>
 
                     {% if current_user.is_authenticated %}
                     <li class="nav-item dropdown">
@@ -72,6 +128,9 @@
                         </a>
                         <ul class="dropdown-menu" aria-labelledby="dataDropdown">
                             <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('dashboard') }}">{{ illu.illu_nav_pen_entry('me-2') }}Data Entry</a></li>
+                            {% if current_user.is_admin %}
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('dashboard_analytics') }}">{{ illu.illu_nav_chart('me-2') }}Analytics</a></li>
+                            {% endif %}
                             <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('mapping_runs') }}">{{ illu.illu_nav_bolt('me-2') }}Mappings</a></li>
                             <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('admin_report' if current_user.is_admin else 'report') }}">{{ illu.illu_nav_file('me-2') }}Report</a></li>
                             <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('carbon_accounting') }}">{{ illu.illu_nav_chart('me-2') }}Carbon Accounting</a></li>
@@ -179,11 +238,76 @@
       </div>
     </div>
 
+    {% if current_user.is_authenticated and current_user.is_admin %}
+    <div class="modal fade" id="adminUploadNotificationsModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">New data available for mapping</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div id="adminUploadNotificationsBody" class="d-flex flex-column gap-3"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='js/busy-overlay.js') }}"></script>
     <script src="{{ url_for('static', filename='js/saas.js') }}"></script>
     <script src="{{ url_for('static', filename='js/global-effects.js') }}"></script>
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+    {% if current_user.is_authenticated and current_user.is_admin %}
+    <script>
+      (function () {
+        function esc(s) {
+          return String(s ?? '').replace(/[&<>"']/g, function (c) {
+            return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+          });
+        }
+
+        async function loadAdminUploadNotifications() {
+          const body = document.getElementById('adminUploadNotificationsBody');
+          const modalEl = document.getElementById('adminUploadNotificationsModal');
+          if (!body || !modalEl || typeof bootstrap === 'undefined') return;
+
+          try {
+            const res = await fetch('{{ url_for("api_admin_upload_notifications") }}', {
+              headers: { 'Accept': 'application/json' }
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) return;
+            const notifications = Array.isArray(data.notifications) ? data.notifications : [];
+            if (!notifications.length) return;
+
+            body.innerHTML = notifications.map(function (item) {
+              const mappedLine = item.mapped && item.mapped_by_admin && item.mapping_timestamp
+                ? '<div class="small text-muted mt-2">Mapped by ' + esc(item.mapped_by_admin) + ' at ' + esc(item.mapping_timestamp) + '</div>'
+                : '';
+              return '' +
+                '<div class="border rounded-4 p-3">' +
+                  '<div class="fw-semibold mb-1">' + esc(item.company_name) + '</div>' +
+                  '<div class="small text-muted">uploaded by ' + esc(item.uploaded_by_user) + '</div>' +
+                  '<div class="small mt-2">category: ' + esc(item.category) + '</div>' +
+                  '<div class="small">rows: ' + esc(item.row_count) + '</div>' +
+                  '<div class="small">uploaded: ' + esc(item.upload_timestamp) + '</div>' +
+                  '<div class="mt-2"><span class="fw-semibold">Status:</span> ' + esc(item.mapping_status) + '</div>' +
+                  mappedLine +
+                '</div>';
+            }).join('');
+
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modal.show();
+          } catch (e) {
+          }
+        }
+
+        window.addEventListener('load', loadAdminUploadNotifications);
+      })();
+    </script>
+    {% endif %}
     {% block scripts %}{% endblock %}
 </body>
 </html> 
