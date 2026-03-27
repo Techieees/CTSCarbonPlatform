@@ -11,6 +11,7 @@ import {
   makeGradient,
   withOpacity
 } from "./echarts_theme.js";
+import { getColorByKey } from "./chart_colors.js";
 
 export function renderCategoryChart(config) {
   const variant = config.variant || "bar";
@@ -128,7 +129,8 @@ function renderDonutCategoryChart(config) {
     values = [],
     height = 280,
     tooltipSuffix = "",
-    totalLabel = "Total"
+    totalLabel = "Total",
+    pieColorKind = "category"
   } = config;
 
   const chart = initChart(container);
@@ -137,14 +139,14 @@ function renderDonutCategoryChart(config) {
   }
 
   const seriesData = labels.map((label, index) => {
-    const palette = getPalette(index);
+    const base = getColorByKey(label, pieColorKind || "category");
     return {
       name: label,
       value: values[index] || 0,
       itemStyle: {
-        color: makeGradient(index, false, 0.98, 0.76),
+        color: withOpacity(base, 0.94),
         shadowBlur: 14,
-        shadowColor: withOpacity(palette.from, 0.14)
+        shadowColor: withOpacity(base, 0.18)
       }
     };
   });

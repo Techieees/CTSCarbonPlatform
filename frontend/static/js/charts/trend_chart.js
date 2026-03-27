@@ -10,6 +10,39 @@ import {
   makeGradient,
   withOpacity
 } from "./echarts_theme.js";
+import { getColorByKey } from "./chart_colors.js";
+
+function inferLineColorKind(seriesName) {
+  const n = String(seriesName || "");
+  if (/scope\s*[123]|direct emissions|indirect emissions|value chain/i.test(n)) {
+    return "scope";
+  }
+  return "company";
+}
+
+function colorsForLineSeries(name, index, total, seriesColorKind) {
+  if (seriesColorKind) {
+    const c = getColorByKey(name, seriesColorKind);
+    return {
+      line: withOpacity(c, 0.96),
+      itemColor: c,
+      area: withOpacity(c, 0.22)
+    };
+  }
+  if (total === 1) {
+    return {
+      line: withOpacity("#3b82f6", 0.96),
+      itemColor: "#3b82f6",
+      area: makeGradient(0, false, 0.28, 0.02)
+    };
+  }
+  const c = getColorByKey(name, inferLineColorKind(name));
+  return {
+    line: withOpacity(c, 0.96),
+    itemColor: c,
+    area: withOpacity(c, 0.2)
+  };
+}
 
 export function renderTrendChart(config) {
   const {
@@ -20,7 +53,8 @@ export function renderTrendChart(config) {
     height = 320,
     showLegend = false,
     tooltipSuffix = "",
-    axisValueFormatter = formatCompact
+    axisValueFormatter = formatCompact,
+    seriesColorKind = null
   } = config;
 
   const chart = initChart(container);
@@ -93,38 +127,47 @@ export function renderTrendChart(config) {
           }
         ]
       : [],
-    series: normalizedSeries.map((item, index) => ({
-      name: item.name || `Trend ${index + 1}`,
-      type: "line",
-      smooth: true,
-      showSymbol: largestSeries <= 24,
-      symbol: "circle",
-      symbolSize: 7,
-      sampling: perf.sampling,
-      progressive: perf.progressive,
-      progressiveThreshold: perf.progressiveThreshold,
-      animationDuration: perf.animation ? 1100 : 0,
-      animationEasing: "cubicInOut",
-      animationDelay: perf.animation
-        ? (dataIndex) => Math.min(dataIndex * 28 + index * 40, 360)
-        : 0,
-      data: item.data || [],
-      lineStyle: {
-        width: 3,
-        color: withOpacity(index === 0 ? "#3b82f6" : "#8b5cf6", 0.96)
-      },
-      itemStyle: {
-        color: withOpacity(index === 0 ? "#3b82f6" : "#8b5cf6", 1),
-        borderColor: "#ffffff",
-        borderWidth: 2
-      },
-      areaStyle: {
-        color: makeGradient(index, false, 0.28, 0.02)
-      },
-      emphasis: {
-        focus: "series"
-      }
-    }))
+    series: normalizedSeries.map((seriesItem, index) => {
+      const name = seriesItem.name || `Trend ${index + 1}`;
+      const pal = colorsForLineSeries(
+        name,
+        index,
+        normalizedSeries.length,
+        seriesColorKind
+      );
+      return {
+        name,
+        type: "line",
+        smooth: true,
+        showSymbol: largestSeries <= 24,
+        symbol: "circle",
+        symbolSize: 7,
+        sampling: perf.sampling,
+        progressive: perf.progressive,
+        progressiveThreshold: perf.progressiveThreshold,
+        animationDuration: perf.animation ? 1100 : 0,
+        animationEasing: "cubicInOut",
+        animationDelay: perf.animation
+          ? (dataIndex) => Math.min(dataIndex * 28 + index * 40, 360)
+          : 0,
+        data: seriesItem.data || [],
+        lineStyle: {
+          width: 3,
+          color: pal.line
+        },
+        itemStyle: {
+          color: pal.itemColor,
+          borderColor: "#ffffff",
+          borderWidth: 2
+        },
+        areaStyle: {
+          color: pal.area
+        },
+        emphasis: {
+          focus: "series"
+        }
+      };
+    })
   });
 
   chart.resize({ height });

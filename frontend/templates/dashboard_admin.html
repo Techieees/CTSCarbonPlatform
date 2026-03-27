@@ -205,6 +205,62 @@
     </div>
   </div>
 
+  <p class="cts-analytics-section-title mt-2">Exploration &amp; filters</p>
+  <div class="row g-3 mb-4">
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header py-2"><strong>Monthly emissions (scope share)</strong></div>
+        <div class="card-body">
+          <div class="chart-surface"><div id="dashEntMonthlyScopeStack" class="chart-host chart-host--md"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header py-2"><strong>Scope evolution (multi-line)</strong></div>
+        <div class="card-body">
+          <div class="chart-surface"><div id="dashEntScopeLines" class="chart-host chart-host--md"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="row g-3 mb-4">
+    <div class="col-lg-4">
+      <div class="card h-100">
+        <div class="card-header py-2"><strong>Category treemap</strong></div>
+        <div class="card-body">
+          <div class="chart-surface"><div id="dashEntCategoryTreemap" class="chart-host chart-host--md"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card h-100">
+        <div class="card-header py-2"><strong>Monthly intensity heatmap</strong></div>
+        <div class="card-body">
+          <div class="chart-surface"><div id="dashEntMonthIntensity" class="chart-host chart-host--sm"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card h-100">
+        <div class="card-header py-2"><strong>Category contribution (stacked)</strong></div>
+        <div class="card-body">
+          <div class="chart-surface"><div id="dashEntCategoryMonthStack" class="chart-host chart-host--md"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="row g-3 mb-4">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header py-2"><strong>Company Share</strong></div>
+        <div class="card-body">
+          <div class="chart-surface"><div id="dashEntCompanyShare" class="chart-host chart-host--md"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
       <h5 class="mb-0 d-flex align-items-center gap-2">{{ illu.illu_title_building() }}Company table</h5>
@@ -239,6 +295,7 @@
   </div>
 </div>
 <script id="dashboard-admin-chart-payload" type="application/json">{{ chart_payload|tojson }}</script>
+<script id="dashboard-admin-enterprise-payload" type="application/json">{{ {"grand": grand, "companyRows": company_rows, "monthRows": month_rows, "categoryRows": category_rows}|tojson }}</script>
 <script id="dashboard-admin-scope-chart-data" type="application/json">{{ {"labels": ["Scope 1", "Scope 2", "Scope 3"], "values": [grand.scope1, grand.scope2, grand.scope3], "seriesName": "tCO₂e", "tooltipSuffix": " tCO₂e", "height": 320}|tojson }}</script>
 {% endblock %}
 
