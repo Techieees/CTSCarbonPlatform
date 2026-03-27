@@ -73,6 +73,138 @@
     </div>
   </div>
 
+  <section class="mt-4 pt-3 border-top" aria-labelledby="home-analytics-heading">
+    <p class="cts-analytics-section-title mb-2" id="home-analytics-heading">Emissions analytics</p>
+    <div class="row g-3 mb-3" id="homeAnalyticsKpis">
+      <div class="col-6 col-md-4 col-xl">
+        <div class="card h-100"><div class="card-body py-3">
+          <div class="text-muted small">Total emissions</div>
+          <div class="h5 mb-0 fw-semibold" data-kpi-key="kpi_total">—</div>
+        </div></div>
+      </div>
+      <div class="col-6 col-md-4 col-xl">
+        <div class="card h-100"><div class="card-body py-3">
+          <div class="text-muted small">Scope 1 Direct Emissions</div>
+          <div class="h5 mb-0 fw-semibold" data-kpi-key="kpi_s1">—</div>
+        </div></div>
+      </div>
+      <div class="col-6 col-md-4 col-xl">
+        <div class="card h-100"><div class="card-body py-3">
+          <div class="text-muted small">Scope 2 Indirect Emissions</div>
+          <div class="h5 mb-0 fw-semibold" data-kpi-key="kpi_s2">—</div>
+        </div></div>
+      </div>
+      <div class="col-6 col-md-4 col-xl">
+        <div class="card h-100"><div class="card-body py-3">
+          <div class="text-muted small">Scope 3 Value Chain Emissions</div>
+          <div class="h5 mb-0 fw-semibold" data-kpi-key="kpi_s3">—</div>
+        </div></div>
+      </div>
+      <div class="col-6 col-md-4 col-xl">
+        <div class="card h-100"><div class="card-body py-3">
+          <div class="text-muted small">Companies</div>
+          <div class="h5 mb-0 fw-semibold" data-kpi-key="kpi_companies">—</div>
+        </div></div>
+      </div>
+      <div class="col-6 col-md-4 col-xl">
+        <div class="card h-100"><div class="card-body py-3">
+          <div class="text-muted small">Mapped categories</div>
+          <div class="h5 mb-0 fw-semibold" data-kpi-key="kpi_categories">—</div>
+        </div></div>
+      </div>
+      <div class="col-6 col-md-4 col-xl">
+        <div class="card h-100"><div class="card-body py-3">
+          <div class="text-muted small">Reporting months covered</div>
+          <div class="h5 mb-0 fw-semibold" data-kpi-key="kpi_months">—</div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+      <div class="col-lg-6">
+        <div class="card h-100">
+          <div class="card-header py-2"><strong>Emissions by Scope (stacked by company)</strong></div>
+          <div class="card-body">
+            <div class="chart-surface"><div id="homeChartScopeStackedBar" class="chart-host chart-host--md"></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="card h-100">
+          <div class="card-header py-2"><strong>Emission Trend (portfolio)</strong></div>
+          <div class="card-body">
+            <div class="chart-surface"><div id="homeChartMonthlyTrend" class="chart-host chart-host--md"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+      <div class="col-lg-4">
+        <div class="card h-100">
+          <div class="card-header py-2"><strong>Company ranking</strong></div>
+          <div class="card-body">
+            <div class="chart-surface"><div id="homeChartCompanyRank" class="chart-host chart-host--md"></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-4">
+        <div class="card h-100">
+          <div class="card-header py-2"><strong>Category Contribution</strong></div>
+          <div class="card-body">
+            <div class="chart-surface"><div id="homeChartCategoryStack" class="chart-host chart-host--md"></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-4">
+        <div class="card h-100">
+          <div class="card-header py-2"><strong>Emission Distribution</strong></div>
+          <div class="card-body">
+            <div class="chart-surface"><div id="homeChartScopeDonut" class="chart-host chart-host--md"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header py-2"><strong>Top categories</strong></div>
+          <div class="card-body">
+            <div class="chart-surface"><div id="homeChartTopCategoriesH" class="chart-host chart-host--md"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-3 mb-2">
+      <div class="col-lg-4">
+        <div class="card h-100">
+          <div class="card-header py-2"><strong>Monthly contribution heatmap</strong></div>
+          <div class="card-body">
+            <div class="chart-surface"><div id="homeChartMonthHeat" class="chart-host chart-host--sm"></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-4">
+        <div class="card h-100">
+          <div class="card-header py-2"><strong>Company Share (treemap)</strong></div>
+          <div class="card-body">
+            <div class="chart-surface"><div id="homeChartCompanyTreemap" class="chart-host chart-host--md"></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-4">
+        <div class="card h-100">
+          <div class="card-header py-2"><strong>Scope vs Category matrix</strong></div>
+          <div class="card-body">
+            <div class="chart-surface"><div id="homeChartScopeCatHeat" class="chart-host chart-host--md"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   {% if is_admin %}
   <div class="row mt-4">
     <div class="col-12">
@@ -154,6 +286,7 @@
   {% endif %}
 </div>
 <script id="home-scope-chart-data" type="application/json">{{ {"labels": ["Scope 1", "Scope 2", "Scope 3"], "values": [totals.scope1, totals.scope2, totals.scope3], "seriesName": "tCO₂e", "tooltipSuffix": " tCO₂e", "height": 260}|tojson }}</script>
+<script id="home-dashboard-payload" type="application/json">{{ {"isAdmin": is_admin, "totals": totals, "companyRows": company_rows, "breakdown": breakdown}|tojson }}</script>
 {% endblock %} 
 
 {% block scripts %}

@@ -11,6 +11,24 @@ import {
   makeGradient,
   withOpacity
 } from "./echarts_theme.js";
+import { getColorByKey } from "./chart_colors.js";
+
+function scopeBarEntries(values, labelList, valueFn) {
+  return values.map((v, di) => {
+    const lab = labelList[di] ?? "";
+    const c = getColorByKey(lab, "scope");
+    return {
+      value: valueFn(v, di),
+      itemStyle: {
+        borderRadius: [12, 12, 0, 0],
+        color: c,
+        shadowBlur: 16,
+        shadowColor: withOpacity(c, 0.14),
+        shadowOffsetY: 8
+      }
+    };
+  });
+}
 
 export function renderScopeChart(config) {
   const {
@@ -69,12 +87,16 @@ export function renderScopeChart(config) {
     axisLabel: getAxisLabel((value) => axisValueFormatter(value))
   };
 
-  const buildSeries = (dataset, animate = true) => normalizedSeries.map((item, index) => {
+  const colorScopeBars = !stacked && normalizedSeries.length === 1;
+
+  const buildSeries = (dataset, animate = true) =>
+    normalizedSeries.map((item, index) => {
       const palette = getPalette(index);
       const isLast = index === normalizedSeries.length - 1;
+      const name = item.name || `Scope ${index + 1}`;
 
       return {
-        name: item.name || `Scope ${index + 1}`,
+        name,
         type: "bar",
         data: dataset[index] || [],
         stack: stacked ? "scope-total" : undefined,
@@ -93,20 +115,33 @@ export function renderScopeChart(config) {
         animationDelayUpdate: animate && perf.animation
           ? (dataIndex) => Math.min(dataIndex * 85 + index * 45, 580)
           : 0,
-        itemStyle: {
-          borderRadius: stacked
-            ? (isLast ? [12, 12, 0, 0] : [0, 0, 0, 0])
-            : [12, 12, 0, 0],
-          color: makeGradient(index, false, 0.98, 0.74),
-          shadowBlur: 16,
-          shadowColor: withOpacity(palette.from, 0.14),
-          shadowOffsetY: 8
-        }
+        itemStyle: colorScopeBars
+          ? undefined
+          : {
+              borderRadius: stacked
+                ? isLast
+                  ? [12, 12, 0, 0]
+                  : [0, 0, 0, 0]
+                : [12, 12, 0, 0],
+              color: makeGradient(index, false, 0.98, 0.74),
+              shadowBlur: 16,
+              shadowColor: withOpacity(palette.from, 0.14),
+              shadowOffsetY: 8
+            }
       };
-  });
+    });
 
-  const actualDataset = normalizedSeries.map((item) => item.data || []);
-  const zeroDataset = actualDataset.map((seriesData) => seriesData.map(() => 0));
+  const rawDataset = normalizedSeries.map((item) => item.data || []);
+
+  let actualDataset = rawDataset;
+  let zeroDataset = rawDataset.map((seriesData) => seriesData.map(() => 0));
+
+  if (colorScopeBars) {
+    actualDataset = rawDataset.map((seriesData) =>
+      scopeBarEntries(seriesData, labels, (v) => v)
+    );
+    zeroDataset = rawDataset.map((seriesData) => scopeBarEntries(seriesData, labels, () => 0));
+  }
 
   chart.setOption({
     animation: perf.animation,

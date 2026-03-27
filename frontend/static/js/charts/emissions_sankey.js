@@ -1,10 +1,10 @@
 import {
   formatFull,
-  getPalette,
   getTooltipBase,
   initChart,
   withOpacity
 } from "./echarts_theme.js";
+import { getColorByKey } from "./chart_colors.js";
 
 function cleanNodeLabel(value) {
   return String(value || "")
@@ -32,7 +32,7 @@ function buildSankey(rows) {
     links.set(key, (links.get(key) || 0) + Number(value || 0));
   };
 
-  rows.forEach((row, index) => {
+  rows.forEach((row) => {
     const company = row.company || "Company";
     const scope = row.scope || "Other";
     const category = row.category || "Uncategorized";
@@ -44,11 +44,10 @@ function buildSankey(rows) {
     const companyId = `company:${company}`;
     const scopeId = `scope:${scope}`;
     const categoryId = `category:${scope}:${category}`;
-    const palette = getPalette(index);
 
-    ensureNode(companyId, company, withOpacity(palette.from, 0.95));
-    ensureNode(scopeId, scope, withOpacity("#64748b", 0.88));
-    ensureNode(categoryId, category, withOpacity(palette.to, 0.84));
+    ensureNode(companyId, company, withOpacity(getColorByKey(company, "company"), 0.95));
+    ensureNode(scopeId, scope, withOpacity(getColorByKey(scope, "scope"), 0.9));
+    ensureNode(categoryId, category, withOpacity(getColorByKey(category, "category"), 0.86));
 
     addLink(companyId, scopeId, value);
     addLink(scopeId, categoryId, value);
@@ -122,26 +121,7 @@ export function renderEmissionsSankey(config) {
           fontSize: 12,
           fontWeight: 700
         },
-        levels: [
-          {
-            depth: 0,
-            itemStyle: {
-              color: withOpacity("#3b82f6", 0.92)
-            }
-          },
-          {
-            depth: 1,
-            itemStyle: {
-              color: withOpacity("#6366f1", 0.88)
-            }
-          },
-          {
-            depth: 2,
-            itemStyle: {
-              color: withOpacity("#8b5cf6", 0.84)
-            }
-          }
-        ]
+        levels: [{}, {}, {}]
       }
     ]
   });

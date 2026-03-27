@@ -1,10 +1,10 @@
 import {
   formatFull,
-  getPalette,
   getTooltipBase,
   initChart,
   withOpacity
 } from "./echarts_theme.js";
+import { getColorByKey } from "./chart_colors.js";
 
 function buildTreemapData(rows) {
   const scopeMap = new Map();
@@ -31,13 +31,19 @@ function buildTreemapData(rows) {
     category.value += value;
   });
 
-  return Array.from(scopeMap.values()).map((scope, index) => {
-    const palette = getPalette(index);
+  return Array.from(scopeMap.values()).map((scope) => {
+    const sc = getColorByKey(scope.name, "scope");
     return {
       ...scope,
       itemStyle: {
-        color: withOpacity(palette.from, 0.9)
-      }
+        color: withOpacity(sc, 0.9)
+      },
+      children: scope.children.map((child) => ({
+        ...child,
+        itemStyle: {
+          color: withOpacity(getColorByKey(child.name, "category"), 0.88)
+        }
+      }))
     };
   });
 }
@@ -104,7 +110,7 @@ export function renderCategoryTreemap(config) {
             }
           },
           {
-            colorSaturation: [0.35, 0.75],
+            colorSaturation: [0.92, 1],
             itemStyle: {
               gapWidth: 3,
               borderRadius: 12

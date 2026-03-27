@@ -11,6 +11,7 @@ import {
   makeGradient,
   withOpacity
 } from "./echarts_theme.js";
+import { getColorByKey } from "./chart_colors.js";
 
 export function renderCompanyChart(config) {
   const {
@@ -25,7 +26,9 @@ export function renderCompanyChart(config) {
     showLegend = false,
     tooltipSuffix = "",
     axisValueFormatter = formatCompact,
-    tooltipFormatter
+    tooltipFormatter,
+    seriesColorKind = null,
+    categoryColorKind = null
   } = config;
 
   const chart = initChart(container);
@@ -76,44 +79,107 @@ export function renderCompanyChart(config) {
     axisLabel: getAxisLabel((value) => axisValueFormatter(value))
   };
 
-  const buildSeries = (dataset, animate = true) => normalizedSeries.map((item, index) => {
-    const palette = getPalette(index);
+  function wrapCategoryColoredData(raw, animateValues) {
+    if (!categoryColorKind || normalizedSeries.length !== 1) {
+      return raw;
+    }
+    return raw.map((v, di) => {
+      const label = labels[di] ?? `Item ${di}`;
+      const c = getColorByKey(label, categoryColorKind);
+      const radius = horizontal ? [0, 12, 12, 0] : [12, 12, 0, 0];
+      const val = animateValues ? v : 0;
+      return {
+        value: val,
+        itemStyle: {
+          borderRadius: radius,
+          color: c,
+          shadowBlur: 18,
+          shadowColor: withOpacity(c, 0.16),
+          shadowOffsetY: 8
+        }
+      };
+    });
+  }
 
-    return {
-      name: item.name || `Series ${index + 1}`,
-      type: "bar",
-      data: dataset[index] || [],
-      stack: stacked ? "total" : undefined,
-      large: perf.large,
-      largeThreshold: perf.largeThreshold,
-      progressive: perf.progressive,
-      progressiveThreshold: perf.progressiveThreshold,
-      barMaxWidth: horizontal ? 18 : 28,
-      barMinHeight: 3,
-      animationDuration: animate && perf.animation ? 1150 : 0,
-      animationDurationUpdate: animate && perf.animation ? 1150 : 0,
-      animationEasing: "quarticOut",
-      animationDelay: animate && perf.animation
-        ? (dataIndex) => Math.min(dataIndex * 75 + index * 45, 540)
-        : 0,
-      animationDelayUpdate: animate && perf.animation
-        ? (dataIndex) => Math.min(dataIndex * 75 + index * 45, 540)
-        : 0,
-      emphasis: {
-        focus: "series"
-      },
-      itemStyle: {
-        borderRadius: horizontal ? [0, 12, 12, 0] : [12, 12, 0, 0],
-        color: makeGradient(index, horizontal, 0.98, 0.72),
-        shadowBlur: 18,
-        shadowColor: withOpacity(palette.from, 0.16),
-        shadowOffsetY: 8
+  const buildSeries = (dataset, animate = true) =>
+    normalizedSeries.map((item, index) => {
+      const palette = getPalette(index);
+      const name = item.name || `Series ${index + 1}`;
+      const isLast = index === normalizedSeries.length - 1;
+      const row = dataset[index] || [];
+
+      let itemStyle;
+      if (seriesColorKind) {
+        const c = getColorByKey(name, seriesColorKind);
+        itemStyle = {
+          borderRadius: stacked
+            ? horizontal
+              ? isLast
+                ? [0, 12, 12, 0]
+                : [0, 0, 0, 0]
+              : isLast
+                ? [12, 12, 0, 0]
+                : [0, 0, 0, 0]
+            : horizontal
+              ? [0, 12, 12, 0]
+              : [12, 12, 0, 0],
+          color: c,
+          shadowBlur: 18,
+          shadowColor: withOpacity(c, 0.16),
+          shadowOffsetY: 8
+        };
+      } else if (!categoryColorKind || normalizedSeries.length !== 1) {
+        itemStyle = {
+          borderRadius: horizontal ? [0, 12, 12, 0] : [12, 12, 0, 0],
+          color: makeGradient(index, horizontal, 0.98, 0.72),
+          shadowBlur: 18,
+          shadowColor: withOpacity(palette.from, 0.16),
+          shadowOffsetY: 8
+        };
       }
-    };
-  });
 
-  const actualDataset = normalizedSeries.map((item) => item.data || []);
-  const zeroDataset = actualDataset.map((seriesData) => seriesData.map(() => 0));
+      return {
+        name,
+        type: "bar",
+        data: row,
+        stack: stacked ? "total" : undefined,
+        large: perf.large,
+        largeThreshold: perf.largeThreshold,
+        progressive: perf.progressive,
+        progressiveThreshold: perf.progressiveThreshold,
+        barMaxWidth: horizontal ? 18 : 28,
+        barMinHeight: 3,
+        animationDuration: animate && perf.animation ? 1150 : 0,
+        animationDurationUpdate: animate && perf.animation ? 1150 : 0,
+        animationEasing: "quarticOut",
+        animationDelay: animate && perf.animation
+          ? (dataIndex) => Math.min(dataIndex * 75 + index * 45, 540)
+          : 0,
+        animationDelayUpdate: animate && perf.animation
+          ? (dataIndex) => Math.min(dataIndex * 75 + index * 45, 540)
+          : 0,
+        emphasis: {
+          focus: "series"
+        },
+        itemStyle: categoryColorKind && normalizedSeries.length === 1 ? undefined : itemStyle
+      };
+    });
+
+  const rawDataset = normalizedSeries.map((item) => item.data || []);
+  const actualDataset = categoryColorKind && normalizedSeries.length === 1
+    ? rawDataset.map((seriesData) => wrapCategoryColoredData(seriesData, true))
+    : rawDataset;
+  const zeroDataset = actualDataset.map((seriesData) => {
+    if (categoryColorKind && normalizedSeries.length === 1) {
+      return seriesData.map((entry) => {
+        if (entry && typeof entry === "object" && "value" in entry) {
+          return { ...entry, value: 0 };
+        }
+        return { value: 0, itemStyle: entry?.itemStyle };
+      });
+    }
+    return seriesData.map(() => 0);
+  });
 
   const baseOption = {
     animation: perf.animation,

@@ -7,8 +7,8 @@
 {% endblock %}
 
 {# Reusable profile card: name, role, excerpt; optional full_text, image_url, img_alt (accessibility). #}
-{# Photos: put files under static/images/team/ then add to each call, for example:
-     image_url=url_for('static', filename='images/team/surname.jpg'), img_alt='Firstname Surname'
+{# Headshots: static/images/Headshots/<Name>.jpg (or .png), e.g.
+     image_url=url_for('static', filename='images/Headshots/Graham Langton.jpg'), img_alt='Graham Langton'
    Square or portrait originals both work; the frame is fixed (see who_we_are.css). #}
 {% macro wwa_profile_card(name, role, excerpt, full_text='', image_url='', img_alt='') %}
 <article class="wwa-profile-card">
@@ -76,7 +76,9 @@
             'Graham Langton',
             'Vice President Head of Sustainability',
             'Senior sustainability leader with deep experience in Data Center sustainability, global energy management, and delivering organisation-wide decabonisation strategies.',
-            'Graham is a senior sustainability leader with extensive international experience spanning data centre sustainability, global energy management, and corporate sustainability transformation. As Vice President and Head of Sustainability, he leads the organisation’s strategy to integrate climate action, operational decarbonisation, and responsible business practices across the business. With deep experience directing sustainability programmes and driving large scale emissions reduction initiatives in complex global environments, Graham brings a proven track record of delivering measurable performance across diverse industries.'
+            'Graham is a senior sustainability leader with extensive international experience spanning data centre sustainability, global energy management, and corporate sustainability transformation. As Vice President and Head of Sustainability, he leads the organisation’s strategy to integrate climate action, operational decarbonisation, and responsible business practices across the business. With deep experience directing sustainability programmes and driving large scale emissions reduction initiatives in complex global environments, Graham brings a proven track record of delivering measurable performance across diverse industries.',
+            image_url=url_for('static', filename='images/Headshots/Graham Langton.jpg'),
+            img_alt='Graham Langton'
           ) }}
         </div>
       </div>
@@ -95,7 +97,9 @@
             'Sean Higgins',
             'Head of Corporate Sustainability',
             'Sustainability repoting and strategy specialist skilled in double materiality, climate strategy, and organization-wide reporting framework.',
-            'Sean is an experienced sustainability leader specialising in ESG strategy, CSRD/ESRS reporting, and climate related disclosures. As Head of Corporate Sustainability, he drives the organisation’s ESG framework, aligning reporting, governance, and strategic initiatives with leading standards including CSRD/ESRS, VSME, ISSB and CBAM. With over a decade of experience across consulting, infrastructure, and corporate sustainability functions, Sean has delivered double materiality assessments, net zero strategies, disclosures and organisation wide ESG programmes. His work is grounded in rigorous analysis, stakeholder engagement, and a commitment to positive environmental and social impact while ensuring robust governance.'
+            'Sean is an experienced sustainability leader specialising in ESG strategy, CSRD/ESRS reporting, and climate related disclosures. As Head of Corporate Sustainability, he drives the organisation’s ESG framework, aligning reporting, governance, and strategic initiatives with leading standards including CSRD/ESRS, VSME, ISSB and CBAM. With over a decade of experience across consulting, infrastructure, and corporate sustainability functions, Sean has delivered double materiality assessments, net zero strategies, disclosures and organisation wide ESG programmes. His work is grounded in rigorous analysis, stakeholder engagement, and a commitment to positive environmental and social impact while ensuring robust governance.',
+            image_url=url_for('static', filename='images/Headshots/Sean Higgins.jpg'),
+            img_alt='Sean Higgins'
           ) }}
         </div>
         {# PHOTO: add image_url (and optional img_alt) to the macro call in this column. #}
@@ -105,7 +109,9 @@
             'Sustainability Coordinator',
             'Sustainability practitioner with experience in ESG reporting, supporting CSRD-aligned disclosures,sustainability data management, and cross-functional reporting coordination.
             Brings a sctructured, detail-driven approach to delivering high-quality,audit-ready sustainability outputs.',
-            'Aideen supports the coordination and delivery of sustainability and ESG initiatives across the Group, with a strong focus on ESG reporting, data management, and programme implementation. She brings experience from multiple sustainability roles, including previous responsibility for ESG reporting processes, environmental data management, and corporate sustainability initiatives. Aideen combines strong analytical capability with a structured, detail-oriented approach, supporting the consistent implementation of sustainability practices and the development of robust, audit-ready reporting processes across the organisation.'
+            'Aideen supports the coordination and delivery of sustainability and ESG initiatives across the Group, with a strong focus on ESG reporting, data management, and programme implementation. She brings experience from multiple sustainability roles, including previous responsibility for ESG reporting processes, environmental data management, and corporate sustainability initiatives. Aideen combines strong analytical capability with a structured, detail-oriented approach, supporting the consistent implementation of sustainability practices and the development of robust, audit-ready reporting processes across the organisation.',
+            image_url=url_for('static', filename='images/Headshots/Aideen Boyle.jpg'),
+            img_alt='Aideen Boyle'
           ) }}
         </div>
         {# PHOTO: add image_url (and optional img_alt) to the macro call in this column. #}
@@ -114,7 +120,9 @@
             'Marta Gulman',
             'Group Carbon Accounting',
             'Carbon Accounting expert leading group-wide GHG quantification, reporting systems, and alignment with emerging carbon and sustainability standards.',
-            'Marta is a carbon accounting manager with deep expertise in GHG quantification, environmental data governance, and sustainability reporting across multientity organisations. She leads the development and execution of the Group’s carbon accounting programme, overseeing GHG policy alignment, data quality assurance, KPI tracking, and the delivery of consistent reporting across the organisation. Marta plays a key role in strategy development, legislative alignment, and CSRD readiness, while contributing to international carbon accounting communities and standardsfocused working groups.'
+            'Marta is a carbon accounting manager with deep expertise in GHG quantification, environmental data governance, and sustainability reporting across multientity organisations. She leads the development and execution of the Group’s carbon accounting programme, overseeing GHG policy alignment, data quality assurance, KPI tracking, and the delivery of consistent reporting across the organisation. Marta plays a key role in strategy development, legislative alignment, and CSRD readiness, while contributing to international carbon accounting communities and standardsfocused working groups.',
+            image_url=url_for('static', filename='images/Headshots/Marta Gulman.jpg'),
+            img_alt='Marta Gulman'
           ) }}
         </div>
         {# PHOTO: add image_url (and optional img_alt) to the macro call in this column. #}
@@ -123,7 +131,9 @@
             'Florian Demir',
             'Sustainability Data Analyst | Platform Designer & Creator',
             'Sustainability Data Analyst specialising in ESG data pipelines, IoT integration, and carbon forecasting to support data-driven decision-making.',
-            'Florian is a sustainability data specialist who designs and manages end-to-end data solutions to support ESG strategy, regulatory compliance, and carbon focused insights. He builds scalable data pipelines, integrates IoT and cloud-based monitoring systems, and develops advanced analytics models that enable real time tracking of energy, emissions, and resource efficiency. With a background in data analysis, team leadership, and quality systems, Florian brings strong technical expertise to support data driven sustainability decision making across the organisation.'
+            'Florian is a sustainability data specialist who designs and manages end-to-end data solutions to support ESG strategy, regulatory compliance, and carbon focused insights. He builds scalable data pipelines, integrates IoT and cloud-based monitoring systems, and develops advanced analytics models that enable real time tracking of energy, emissions, and resource efficiency. With a background in data analysis, team leadership, and quality systems, Florian brings strong technical expertise to support data driven sustainability decision making across the organisation.',
+            image_url=url_for('static', filename='images/Headshots/Florian Demir.jpg'),
+            img_alt='Florian Demir'
           ) }}
         </div>
         {# PHOTO: add image_url (and optional img_alt) to the macro call in this column. #}
@@ -132,7 +142,9 @@
             'James Tipper',
             'LCA Specialist',
             'LCA and product sustainability specialist delivering advanced carbon footprinting  and circularity analysis to inform material and desing decisions.',
-            'James is a specialist in Life Cycle Assessment (LCA), carbon footprinting, and circular economy analysis, delivering sustainability assessments across products, materials, portfolios and company wide systems. He leads advanced LCA modelling and environmental impact analysis to support design, procurement and sustainability decision making. With extensive consulting and environmental analysis experience, James brings strong analytical capability and deep expertise in interpreting LCA results to drive evidence based sustainability improvements.'
+            'James is a specialist in Life Cycle Assessment (LCA), carbon footprinting, and circular economy analysis, delivering sustainability assessments across products, materials, portfolios and company wide systems. He leads advanced LCA modelling and environmental impact analysis to support design, procurement and sustainability decision making. With extensive consulting and environmental analysis experience, James brings strong analytical capability and deep expertise in interpreting LCA results to drive evidence based sustainability improvements.',
+            image_url=url_for('static', filename='images/Headshots/James Tipper.jpg'),
+            img_alt='James Tipper'
           ) }}
         </div>
         {# PHOTO: add image_url (and optional img_alt) to the macro call in this column. #}
@@ -141,7 +153,9 @@
             'Andrew Behan',
             'Sustainability Communications and Design Specialist',
             'Creative strategist translating complex sustainability consepts into clear, engaging narratives through impactful design and visual storytelling.',
-            'Andrew is a sustainability communications and design specialist who works at the intersection of creativity and strategy, translating complex ideas into clear, engaging stories. He supports the sustainability and leadership teams by shaping ESG narratives, developing digital and print assets, and aligning stakeholders through cohesive visual communication. With broad experience across public, private, and nonprofit sectors, he builds scalable design systems and creates content that brings clarity, warmth, and impact to sustainability communication.'
+            'Andrew is a sustainability communications and design specialist who works at the intersection of creativity and strategy, translating complex ideas into clear, engaging stories. He supports the sustainability and leadership teams by shaping ESG narratives, developing digital and print assets, and aligning stakeholders through cohesive visual communication. With broad experience across public, private, and nonprofit sectors, he builds scalable design systems and creates content that brings clarity, warmth, and impact to sustainability communication.',
+            image_url=url_for('static', filename='images/Headshots/Andrew Behan.png'),
+            img_alt='Andrew Behan'
           ) }}
         </div>
       </div>

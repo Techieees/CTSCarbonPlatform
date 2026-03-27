@@ -2,8 +2,11 @@ import {
   formatFull,
   getAxisLabel,
   getTooltipBase,
-  initChart
+  initChart,
+  withOpacity
 } from "./echarts_theme.js";
+import { getColorByKey } from "./chart_colors.js";
+import { sortedReportingMonthSlots, rowReportingSortKey } from "./row_aggregates.js";
 
 export function renderEmissionsHeatmap(config) {
   const { container, rows = [], height = 380 } = config;
@@ -12,29 +15,54 @@ export function renderEmissionsHeatmap(config) {
     return null;
   }
 
-  const normalizedRows = rows.filter((row) => row && row.company && row.dateLabel);
-  const months = Array.from(new Set(normalizedRows.map((row) => row.dateLabel)));
-  const companies = Array.from(new Set(normalizedRows.map((row) => row.company)));
+  const normalizedRows = rows.filter((row) => row && row.company && (row.dateLabel || row.sortKey));
+  const slots = sortedReportingMonthSlots(normalizedRows);
+  const monthLabels = slots.map((s) => s.dateLabel);
+  const sortKeyToMonthIndex = new Map(slots.map((s, i) => [s.sortKey, i]));
+
+  const companies = Array.from(new Set(normalizedRows.map((row) => row.company))).sort((a, b) =>
+    String(a).localeCompare(String(b))
+  );
   const valueMap = new Map();
 
   normalizedRows.forEach((row) => {
-    const key = `${row.company}__${row.dateLabel}`;
+    const sk = rowReportingSortKey(row);
+    const mi = sortKeyToMonthIndex.get(sk);
+    if (mi === undefined) {
+      return;
+    }
+    const key = `${row.company}__${mi}`;
     valueMap.set(key, (valueMap.get(key) || 0) + Number(row.emissions || 0));
   });
 
-  const seriesData = [];
+  const rawCells = [];
   let maxValue = 0;
-
-  months.forEach((month, monthIndex) => {
+  monthLabels.forEach((_, monthIndex) => {
     companies.forEach((company, companyIndex) => {
-      const value = Number(valueMap.get(`${company}__${month}`) || 0);
+      const value = Number(valueMap.get(`${company}__${monthIndex}`) || 0);
       maxValue = Math.max(maxValue, value);
-      seriesData.push([monthIndex, companyIndex, value]);
+      rawCells.push({ monthIndex, companyIndex, value, company });
     });
   });
 
+  const maxV = maxValue || 1;
+  const seriesData = rawCells.map(({ monthIndex, companyIndex, value, company }) => {
+    const base = getColorByKey(company, "company");
+    const t = maxV > 0 ? Math.min(1, value / maxV) : 0;
+    const color = value <= 0 ? "rgba(148,163,184,0.12)" : withOpacity(base, 0.15 + t * 0.82);
+    return {
+      value: [monthIndex, companyIndex, value],
+      itemStyle: {
+        borderRadius: 10,
+        borderColor: "rgba(255,255,255,0.9)",
+        borderWidth: 1,
+        color
+      }
+    };
+  });
+
   chart.setOption({
-    animation: companies.length * months.length < 6000,
+    animation: companies.length * monthLabels.length < 6000,
     animationDuration: 900,
     animationEasing: "cubicOut",
     grid: {
@@ -46,8 +74,11 @@ export function renderEmissionsHeatmap(config) {
     },
     tooltip: {
       ...getTooltipBase((params) => {
-        const [monthIndex, companyIndex, value] = params.value || [];
-        const month = months[monthIndex] || "";
+        const raw = params.value || [];
+        const monthIndex = raw[0];
+        const companyIndex = raw[1];
+        const value = raw[2];
+        const month = monthLabels[monthIndex] || "";
         const company = companies[companyIndex] || "";
         return `
           <div>
@@ -63,7 +94,7 @@ export function renderEmissionsHeatmap(config) {
     },
     xAxis: {
       type: "category",
-      data: months,
+      data: monthLabels,
       splitArea: { show: false },
       axisTick: { show: false },
       axisLine: { lineStyle: { color: "rgba(148,163,184,0.16)" } },
@@ -79,24 +110,6 @@ export function renderEmissionsHeatmap(config) {
       splitLine: { show: false },
       axisLabel: getAxisLabel((value) => value)
     },
-    visualMap: {
-      min: 0,
-      max: maxValue || 1,
-      orient: "horizontal",
-      left: "center",
-      bottom: 0,
-      calculable: true,
-      itemWidth: 120,
-      itemHeight: 12,
-      textStyle: {
-        color: "#64748b",
-        fontSize: 12,
-        fontWeight: 600
-      },
-      inRange: {
-        color: ["#eff6ff", "#bfdbfe", "#60a5fa", "#4f46e5", "#7c3aed"]
-      }
-    },
     series: [
       {
         name: "Emission Intensity",
@@ -110,11 +123,6 @@ export function renderEmissionsHeatmap(config) {
             shadowBlur: 22,
             shadowColor: "rgba(37,99,235,0.22)"
           }
-        },
-        itemStyle: {
-          borderRadius: 10,
-          borderColor: "rgba(255,255,255,0.9)",
-          borderWidth: 1
         }
       }
     ]

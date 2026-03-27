@@ -1,10 +1,10 @@
 import {
   formatFull,
-  getPalette,
   getTooltipBase,
   initChart,
   withOpacity
 } from "./echarts_theme.js";
+import { getColorByKey } from "./chart_colors.js";
 
 function buildHierarchy(rows) {
   const companyMap = new Map();
@@ -39,15 +39,24 @@ function buildHierarchy(rows) {
     category.value += value;
   });
 
-  return Array.from(companyMap.values()).map((company, index) => {
-    const palette = getPalette(index);
-    return {
-      ...company,
+  return Array.from(companyMap.values()).map((company) => ({
+    ...company,
+    itemStyle: {
+      color: withOpacity(getColorByKey(company.name, "company"), 0.95)
+    },
+    children: company.children.map((scope) => ({
+      ...scope,
       itemStyle: {
-        color: withOpacity(palette.from, 0.95)
-      }
-    };
-  });
+        color: withOpacity(getColorByKey(scope.name, "scope"), 0.92)
+      },
+      children: scope.children.map((cat) => ({
+        ...cat,
+        itemStyle: {
+          color: withOpacity(getColorByKey(cat.name, "category"), 0.88)
+        }
+      }))
+    }))
+  }));
 }
 
 export function renderScopeSunburst(config) {
