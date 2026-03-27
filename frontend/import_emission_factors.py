@@ -12,9 +12,8 @@ if str(PROJECT_ROOT) not in sys.path:
 from config import STAGE2_IMPORT_EMISSION_FACTORS_XLSX
 
 
-# The workbook location is now environment-driven so the same script can run
-# locally and in production without editing source code.
 EXCEL_PATH = STAGE2_IMPORT_EMISSION_FACTORS_XLSX
+
 
 def safe_value(val, default=None):
     if isinstance(val, (pd.Series, np.ndarray)):
@@ -23,61 +22,106 @@ def safe_value(val, default=None):
         return default
     return val
 
-# Automatically detects sheets and column names
+
+def find_column(columns, keywords):
+    for col in columns:
+        for kw in keywords:
+            if kw in col:
+                return col
+    return None
+
 
 def import_emission_factors():
+
     xls = pd.ExcelFile(EXCEL_PATH)
+
     with app.app_context():
+
+        total_inserted = 0
+
         for sheet_name in xls.sheet_names:
+
             df = xls.parse(sheet_name)
+
             if not isinstance(df, pd.DataFrame):
-                print(f"Sheet {sheet_name} atlandı (DataFrame değil)")
+                print(f"Skipping {sheet_name} (not a dataframe)")
                 continue
-            # Normalize column names
+
+            # normalize column names
             df.columns = [str(c).strip().lower() for c in df.columns]
-            factor_col = next((c for c in df.columns if 'factor' in c or 'faktor' in c), None)
-            subcat_col = next((c for c in df.columns if 'fuel' in c or 'type' in c or 'subcategory' in c or 'mode' in c), None)
-            unit_col = next((c for c in df.columns if 'unit' in c), None)
-            year_col = next((c for c in df.columns if 'year' in c), None)
-            desc_col = next((c for c in df.columns if 'desc' in c or 'açıklama' in c), None)
-            if not factor_col or not subcat_col:
-                print(f"Sheet {sheet_name} atlandı (gerekli kolonlar yok)")
+
+            factor_col = find_column(df.columns, ["ef_value", "factor", "value"])
+            name_col = find_column(df.columns, ["ef_name", "name", "fuel", "type"])
+            unit_col = find_column(df.columns, ["ef_unit", "unit"])
+            desc_col = find_column(df.columns, ["ef_description", "description", "desc"])
+            source_col = find_column(df.columns, ["ef_source", "source"])
+            scope_col = find_column(df.columns, ["scope"])
+            category_col = find_column(df.columns, ["emission factor category", "category"])
+
+            if not factor_col or not name_col:
+                print(f"Skipping {sheet_name} (required columns not found)")
                 continue
+
+            inserted_this_sheet = 0
+
             for _, row in df.iterrows():
+
                 factor_val = safe_value(row[factor_col])
+
                 if factor_val is None:
                     continue
+
                 try:
                     factor = float(factor_val)
-                    if pd.isna(factor):
-                        continue
                 except (ValueError, TypeError):
                     continue
-                subcat = str(safe_value(row[subcat_col], '')).strip()
-                if not subcat or subcat.lower() == 'nan':
+
+                subcategory = str(safe_value(row[name_col], "")).strip()
+
+                if not subcategory or subcategory.lower() == "nan":
                     continue
-                unit = str(safe_value(row[unit_col], '')).strip() if unit_col in df.columns else None
-                year_val = safe_value(row[year_col], 2025) if year_col in df.columns else 2025
+
+                unit = str(safe_value(row[unit_col], "")).strip() if unit_col else None
+                description = str(safe_value(row[desc_col], "")).strip() if desc_col else None
+                source = str(safe_value(row[source_col], "")).strip() if source_col else None
+
                 try:
-                    year = int(year_val) if year_val is not None else 2025
-                except Exception:
-                    year = 2025
-                desc = str(safe_value(row[desc_col], '')).strip() if desc_col in df.columns else None
-                # Tüm satırı JSON olarak kaydet
-                extra_data = json.dumps({col: safe_value(row[col]) for col in df.columns})
+                    scope = int(safe_value(row[scope_col], 3)) if scope_col else 3
+                except:
+                    scope = 3
+
+                ef_category = str(safe_value(row[category_col], sheet_name)).strip() if category_col else sheet_name
+
+                extra_data = json.dumps({
+                    col: safe_value(row[col])
+                    for col in df.columns
+                })
+
                 ef = EmissionFactor(
-                    category=sheet_name,
-                    subcategory=subcat,
+                    category=ef_category,
+                    subcategory=subcategory,
                     factor=factor,
                     unit=unit,
-                    year=year,
-                    description=desc,
+                    year=2025,
+                    description=description,
                     extra_data=extra_data
                 )
+
                 db.session.add(ef)
+
+                inserted_this_sheet += 1
+                total_inserted += 1
+
             db.session.commit()
-            print(f"Sheet {sheet_name} için faktörler eklendi.")
+
+            print(f"{sheet_name}: {inserted_this_sheet} factors inserted")
+
+        print("")
+        print(f"TOTAL INSERTED: {total_inserted}")
+
 
 if __name__ == "__main__":
+
     import_emission_factors()
-    print("Tüm emisyon faktörleri başarıyla yüklendi.") 
+
+    print("Emission factors import completed successfully.")
