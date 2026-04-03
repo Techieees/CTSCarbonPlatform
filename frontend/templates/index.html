@@ -27,7 +27,7 @@
             <div class="lp-hero-copy">
                 <div class="lp-kicker" data-reveal>
                     <span class="dot" aria-hidden="true"></span>
-                    Designed and developed by the Sustainability Team (Florian Demir and Marta Gulman)
+                    Designed and developed by the Sustainability Department (Florian Demir and Marta Gulman)
                 </div>
 
                 <h1 class="lp-title" data-reveal>
@@ -48,26 +48,43 @@
                         </a>
                     {% else %}
                         <a class="btn btn-primary" href="{{ url_for('dashboard') }}">
-                            Open data entry
+                            Data Entry
                         </a>
                         <a class="btn btn-ghost" href="{{ url_for('carbon_accounting') }}">
-                            View carbon accounting
+                            Carbon Accounting
                         </a>
                     {% endif %}
                 </div>
 
                 <div class="lp-trust" data-reveal>
                     <div class="lp-stat">
-                        <strong>Secure by design</strong>
-                        <span>Role based access and controlled workbook access</span>
+                        <strong>Audit Ready Carbon Reporting</strong>
+                        <span>Save up to 70% reporting time.</span>
+                        <span>Track emissions, improve performance, stay aligned with reporting requirements.</span>
                     </div>
                     <div class="lp-stat">
-                        <strong>Excel-native</strong>
-                        <span>Enter, validate, and export workbook data with confidence</span>
+                        <strong>Full ESG coverage</strong>
+                        <span>A practical platform for managing sustainability data and improving performance over time.</span>
+                        <span>All your sustainability data in one place. Clear, practical, scalable.</span>
                     </div>
                     <div class="lp-stat">
-                        <strong>Audit-ready</strong>
-                        <span>Clear lineage from input files to aggregated outputs</span>
+                        <strong>Life Cycle Assesment</strong>
+                        <span>LCA helps identify opportunities to improve the environmental performance of a product across its life cycle.</span>
+                    </div>
+                    <div class="lp-stat">
+                        <strong>Insights from our experts</strong>
+                        <span>Guidance based on hands on experience.</span>
+                        <span>Practical support to move from current state to compliance.</span>
+                    </div>
+                    <div class="lp-stat">
+                        <strong>Supplier Management</strong>
+                        <span>Collect data,evaluate suppliers, and identify risk.</span>
+                        <span>Improve transparency and support more informed supplier decisions.</span>
+                    </div>
+
+                    <div class="lp-stat">
+                        <strong>Carbon Reduction Strategies</strong>
+                        <span>As the group grows through acquisitions and expanded operations, a carbon management strategy helps track and reduce the resulting increase in emissions.</span>
                     </div>
                 </div>
             </div>
@@ -84,10 +101,10 @@
     <div class="container">
         <div class="lp-split">
             <div class="lp-copy" data-reveal>
-                <div class="eyebrow">Preview</div>
-                <h3>At-a-glance progress, clean structure.</h3>
+                <div class="eyebrow"></div>
+                <h3>A clear overview of progress across data collection and reporting</h3>
                 <p>
-                    Lightweight cards that summarize collection health, reporting status, and automation readiness—designed to stay readable while your logo pattern animates in the background.
+                    Readable cards provide a simple overview of data completeness, progress, and overall system readiness.
                 </p>
             </div>
 
@@ -164,10 +181,10 @@
 <section id="features" class="lp-section">
     <div class="container">
         <div class="text-center">
-            <div class="eyebrow" data-reveal>Features</div>
-            <h2 data-reveal>A single source of truth for all your sustainability data.</h2>
+            <div class="eyebrow" data-reveal></div>
+            <h2 data-reveal>The single, reliable source for everything related to internal sustainability data.</h2>
             <p class="lead" data-reveal>
-                A focused user experience with clear checks and well-structured outputs.
+                Focused on energy efficiency, innovation, and compliance with sustainability requirements.
             </p>
         </div>
 
@@ -175,17 +192,28 @@
             <div class="lp-feature" data-reveal>
                 <div class="icon" aria-hidden="true">{{ illu.illu_lp_shield() }}</div>
                 <h3>Secure & reliable</h3>
-                <p>Authentication, role-based access, and controlled workbook access across companies.</p>
-            </div>
-            <div class="lp-feature" data-reveal>
-                <div class="icon" aria-hidden="true">{{ illu.illu_lp_spreadsheet() }}</div>
-                <h3>Excel-native workflows</h3>
-                <p>Work directly against workbook schemas, validate structure, and keep data entry consistent.</p>
+                <ul>
+                    <li>Authentication, role-based access, and controlled workbook access across companies.</li>
+                    <li>Trusted by <b>28</b> Companies.</li> 
+                    <li>Compare performance against 28 European companies.</li>
+                </ul>
             </div>
             <div class="lp-feature" data-reveal>
                 <div class="icon" aria-hidden="true">{{ illu.illu_lp_chart() }}</div>
-                <h3>Reporting that holds up</h3>
-                <p>Aggregate outputs with a clear trail from raw inputs to final results.</p>
+                <h3>Compatible with various API integrations.</h3>
+                <ul>
+                    <li>API (Application Programming Interface) integration allows ESG software to directly connect and pull data from source systems.</li>
+                    <li>Ultimately, robust connectivity is essential for scaling sustainable practices across complex networks.</li>
+                </ul>
+            </div>
+            <div class="lp-feature" data-reveal>
+                <div class="icon" aria-hidden="true">{{ illu.illu_lp_spreadsheet() }}</div>
+                <h3>A platform designed to keep pace with regulatory change.</h3>
+                <ul>
+                    <li>Reduce effort by avoiding duplicate work.</li>
+                    <li>Helping you stay aligned with key reporting requirements.</li>
+                    <li>See how performance compares with defined goals.</li>
+                </ul>
             </div>
         </div>
     </div>
@@ -195,14 +223,16 @@
     <div class="container">
         <div class="lp-split">
             <div class="lp-copy" data-reveal>
-                <h3>Clear data collection that eliminates repeated clarification.</h3>
+                <h3>Collect the right data from the start</h3>
                 <p>
-                    A consistent submission process with validations that reduce clarification loops.
+                    Consistent submissions with validation rules. 
                 </p>
                 <ul class="lp-bullets">
-                    <li><span class="check" aria-hidden="true">{{ illu.illu_check_tiny() }}</span>Schema-driven data capture</li>
+                    <li><span class="check" aria-hidden="true">{{ illu.illu_check_tiny() }}</span>Standard structure for collecting data</li>
                     <li><span class="check" aria-hidden="true">{{ illu.illu_check_tiny() }}</span>Quality checks before storage</li>
                     <li><span class="check" aria-hidden="true">{{ illu.illu_check_tiny() }}</span>Consistent exports for downstream accounting</li>
+                    <li><span class="check" aria-hidden="true">{{ illu.illu_check_tiny() }}</span>Validation rules for formats, thresholds, and required fields</li>
+                    <li><span class="check" aria-hidden="true">{{ illu.illu_check_tiny() }}</span>Four-eyes principle requiring two person review</li>
                 </ul>
             </div>
 
@@ -210,12 +240,12 @@
                 <div class="mock">
                     <div class="chrome" aria-hidden="true">
                         <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-                        <span class="mock-title">Collection dashboard</span>
+                        <span class="mock-title">Data Entry</span>
                     </div>
                     <div class="screen">
                         <div class="ui-row">
                             <div class="ui-bar"></div>
-                            <span class="ui-chip">Validation: passing</span>
+                            <span class="ui-chip">Validation</span>
                         </div>
                         <div class="ui-row">
                             <div class="ui-bar short"></div>
@@ -241,9 +271,11 @@
                     Give every company exactly what they need no more, no less. Keep runs and workbook access organized with clean permissions.
                 </p>
                 <ul class="lp-bullets">
-                    <li><span class="check" aria-hidden="true">{{ illu.illu_check_tiny() }}</span>Role-based admin controls</li>
-                    <li><span class="check" aria-hidden="true">{{ illu.illu_check_tiny() }}</span>Controlled downloads and uploads</li>
-                    <li><span class="check" aria-hidden="true">{{ illu.illu_check_tiny() }}</span>Traceable pipeline runs and logs</li>
+                    <li><span class="check" aria-hidden="true">{{ illu.illu_check_tiny() }}</span>Different access levels for different roles</li>
+                    <li><span class="check" aria-hidden="true">{{ illu.illu_check_tiny() }}</span>Manage how files are uploaded and accessed</li>
+                    <li><span class="check" aria-hidden="true">{{ illu.illu_check_tiny() }}</span>Transparent pipeline activity and logs</li>
+                    <li><span class="check" aria-hidden="true">{{ illu.illu_check_tiny() }}</span>Auditors can review and verify information directly in the platform</li>
+                    <li><span class="check" aria-hidden="true">{{ illu.illu_check_tiny() }}</span>Centralised data for efficient and consistent compliance</li>
                 </ul>
             </div>
 
@@ -282,8 +314,8 @@
         <div class="lp-cta" id="cta" data-parallax-scope data-reveal>
             <div class="lp-cta-inner">
                 <div>
-                    <h3>Ready to streamline your next reporting cycle?</h3>
-                    <p>Start with workbook schemas, lock in consistency, and scale data collection across companies.</p>
+                    <h3>Build a consistent reporting process from the start</h3>
+                    <p>Structured data collection designed to scale across companies.</p>
                 </div>
                 <div class="d-flex flex-wrap gap-2">
                     {% if not current_user.is_authenticated %}
@@ -302,8 +334,8 @@
 <section class="lp-section" style="padding-top: 0;">
     <div class="container">
         <div class="text-center">
-            <div class="eyebrow" data-reveal>Coverage</div>
-            <h2 data-reveal>Built for multi-company operations.</h2>
+            <div class="eyebrow" data-reveal></div>
+            <h2 data-reveal>Built for internal sustainability operations.</h2>
             <p class="lead" data-reveal>Support a wide set of subsidiaries with consistent workbook schemas and workflows.</p>
         </div>
         <div class="logo-marquee mt-4" data-reveal data-marquee aria-label="Company coverage marquee">

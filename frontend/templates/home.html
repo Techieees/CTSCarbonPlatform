@@ -48,28 +48,34 @@
 
   <div class="row g-3 mt-1">
     <div class="col-md-4">
-      <div class="card">
-        <div class="card-body">
-          <div class="text-muted">Scope 1</div>
-          <div class="h2 mb-0">{{ totals.scope1 }} <span class="text-muted fs-6">tCO₂e</span></div>
+      <a href="{{ url_for('scope1_detail') }}" class="cts-scope-card-link text-decoration-none d-block h-100">
+        <div class="card h-100">
+          <div class="card-body">
+            <div class="text-muted">Scope 1</div>
+            <div class="h2 mb-0">{{ totals.scope1 }} <span class="text-muted fs-6">tCO₂e</span></div>
+          </div>
         </div>
-      </div>
+      </a>
     </div>
     <div class="col-md-4">
-      <div class="card">
-        <div class="card-body">
-          <div class="text-muted">Scope 2</div>
-          <div class="h2 mb-0">{{ totals.scope2 }} <span class="text-muted fs-6">tCO₂e</span></div>
+      <a href="{{ url_for('scope2_detail') }}" class="cts-scope-card-link text-decoration-none d-block h-100">
+        <div class="card h-100">
+          <div class="card-body">
+            <div class="text-muted">Scope 2</div>
+            <div class="h2 mb-0">{{ totals.scope2 }} <span class="text-muted fs-6">tCO₂e</span></div>
+          </div>
         </div>
-      </div>
+      </a>
     </div>
     <div class="col-md-4">
-      <div class="card">
-        <div class="card-body">
-          <div class="text-muted">Scope 3</div>
-          <div class="h2 mb-0">{{ totals.scope3 }} <span class="text-muted fs-6">tCO₂e</span></div>
+      <a href="{{ url_for('scope3_detail') }}" class="cts-scope-card-link text-decoration-none d-block h-100">
+        <div class="card h-100">
+          <div class="card-body">
+            <div class="text-muted">Scope 3</div>
+            <div class="h2 mb-0">{{ totals.scope3 }} <span class="text-muted fs-6">tCO₂e</span></div>
+          </div>
         </div>
-      </div>
+      </a>
     </div>
   </div>
 
@@ -84,19 +90,19 @@
       </div>
       <div class="col-6 col-md-4 col-xl">
         <div class="card h-100"><div class="card-body py-3">
-          <div class="text-muted small">Scope 1 Direct Emissions</div>
+          <div class="text-muted small">Scope 1</div>
           <div class="h5 mb-0 fw-semibold" data-kpi-key="kpi_s1">—</div>
         </div></div>
       </div>
       <div class="col-6 col-md-4 col-xl">
         <div class="card h-100"><div class="card-body py-3">
-          <div class="text-muted small">Scope 2 Indirect Emissions</div>
+          <div class="text-muted small">Scope 2</div>
           <div class="h5 mb-0 fw-semibold" data-kpi-key="kpi_s2">—</div>
         </div></div>
       </div>
       <div class="col-6 col-md-4 col-xl">
         <div class="card h-100"><div class="card-body py-3">
-          <div class="text-muted small">Scope 3 Value Chain Emissions</div>
+          <div class="text-muted small">Scope 3</div>
           <div class="h5 mb-0 fw-semibold" data-kpi-key="kpi_s3">—</div>
         </div></div>
       </div>
@@ -131,7 +137,7 @@
       </div>
       <div class="col-lg-6">
         <div class="card h-100">
-          <div class="card-header py-2"><strong>Emission Trend (portfolio)</strong></div>
+          <div class="card-header py-2"><strong>Emission Trend</strong></div>
           <div class="card-body">
             <div class="chart-surface"><div id="homeChartMonthlyTrend" class="chart-host chart-host--md"></div></div>
           </div>
@@ -188,7 +194,7 @@
       </div>
       <div class="col-lg-4">
         <div class="card h-100">
-          <div class="card-header py-2"><strong>Company Share (treemap)</strong></div>
+          <div class="card-header py-2"><strong>Company Share</strong></div>
           <div class="card-body">
             <div class="chart-surface"><div id="homeChartCompanyTreemap" class="chart-host chart-host--md"></div></div>
           </div>
@@ -210,7 +216,7 @@
     <div class="col-12">
       <div class="card">
         <div class="card-header">
-          <h5 class="mb-0 d-flex align-items-center gap-2">{{ illu.illu_title_building() }}Company totals (latest per sheet)</h5>
+          <h5 class="mb-0 d-flex align-items-center gap-2">{{ illu.illu_title_building() }}Company totals</h5>
         </div>
         <div class="card-body">
           {% if company_rows %}
