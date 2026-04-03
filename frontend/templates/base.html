@@ -136,6 +136,10 @@
                             <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('mapping_runs') }}">{{ illu.illu_nav_bolt('me-2') }}Mappings</a></li>
                             <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('admin_report' if current_user.is_admin else 'report') }}">{{ illu.illu_nav_file('me-2') }}Report</a></li>
                             <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('carbon_accounting') }}">{{ illu.illu_nav_chart('me-2') }}Carbon Accounting</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('scope1_detail') }}">{{ illu.illu_nav_chart('me-2') }}Scope 1 Analytics</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('scope2_detail') }}">{{ illu.illu_nav_chart('me-2') }}Scope 2 Analytics</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('scope3_detail') }}">{{ illu.illu_nav_chart('me-2') }}Scope 3 Analytics</a></li>
                         </ul>
                     </li>
                     {% endif %}
@@ -223,7 +227,7 @@
         <div class="container d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3">
             <div class="brand">
                 <img src="{{ url_for('static', filename='images/logo.svg.png') }}" alt="CTS-VDC Services" style="height: 22px; width: auto;" />
-                <span class="d-none d-md-inline">CTS Carbon Platform</span>
+                <span class="d-none d-md-inline">CTS Group Carbon Platform</span>
             </div>
             <small>&copy; 2026 CTS Group Carbon Platform. All rights reserved.</small>
         </div>

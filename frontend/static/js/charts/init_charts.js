@@ -10,6 +10,7 @@ import { renderScopeChart } from "./scope_chart.js";
 import { renderTrendChart } from "./trend_chart.js";
 import { readJsonScript, buildAnalyticsRows, pickAvailablePayloadId } from "./analytics_rows.js";
 import { initEnterpriseDashboards } from "../components/charts/enterprise_pages.js";
+import { initScopeDetailCharts } from "./scope_detail_charts.js";
 
 let themeChangeBindingReady = false;
 
@@ -256,6 +257,7 @@ function initAllCharts() {
   initReportCards("report-chart-data");
   initReportCards("admin-report-chart-data");
   initEnterpriseDashboards();
+  initScopeDetailCharts();
 }
 
 function ensureThemeChangeBinding() {

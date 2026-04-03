@@ -1,0 +1,179 @@
+{% extends 'base.html' %}
+{% block title %}{{ scope_title }} · CTS Carbon Platform{% endblock %}
+{% block content %}
+<div class="container py-4 scope-detail-page" id="scopeDetailPage" data-scope="{{ scope_num }}">
+  <nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0 small">
+      <li class="breadcrumb-item"><a href="{{ url_for('home') }}">Overview</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Scope {{ scope_num }}</li>
+    </ol>
+  </nav>
+
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+    <div>
+      <h1 class="h2 mb-1">{{ scope_title }}</h1>
+      <p class="text-muted mb-0 col-lg-10">{{ scope_subtitle }}</p>
+    </div>
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('home') }}">← Back to Overview</a>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-md-4">
+      <div class="card h-100 border-primary-subtle">
+        <div class="card-body">
+          <div class="text-muted small">Total tCO₂e</div>
+          <div class="display-6 mt-1" id="scopeDetailKpiTotal">—</div>
+          <div class="text-muted small mt-2"> tCO₂e · Reporting year {{ year }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-8">
+      <div class="card h-100">
+        <div class="card-body">
+          <p class="small text-muted mb-0">
+            {% if scope_num == 1 %}
+            Category breakdown reflects mapped sheets and fuels where available. Monthly trend uses reporting timestamps on the latest mapping run.
+            {% elif scope_num == 2 %}
+            Electricity related emissions by category; the combined view contrasts absolute emissions with share of Scope 2 when multiple categories exist.
+            {% else %}
+            Scope 3 Categories: Purchased Goods and Services, Capital Goods, Fuel and Energy Related Activities, Upstream Transport, Waste, Business Travel, Employee Commuting, Downstream Transport, End of Life, Use of Sold Products, Pensions.
+            {% endif %}
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% if scope_num == 1 %}
+  <div class="row g-3 mb-2">
+    <div class="col-lg-8">
+      <div class="card h-100">
+        <div class="card-header py-2"><strong>Monthly trend</strong></div>
+        <div class="card-body">
+          <div class="chart-surface"><div id="scopeDetailMonthly" class="chart-host chart-host--md"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card h-100">
+        <div class="card-header py-2"><strong>Distribution by category</strong></div>
+        <div class="card-body">
+          <div class="chart-surface"><div id="scopeDetailDonut" class="chart-host chart-host--md"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header py-2"><strong>Category / Fuel Mapping</strong></div>
+        <div class="card-body">
+          <div class="chart-surface"><div id="scopeDetailCategoryH" class="chart-host chart-host--md"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header py-2"><strong>Intensity vs. mix </strong></div>
+        <div class="card-body">
+          <div class="chart-surface"><div id="scopeDetailCombo" class="chart-host chart-host--md"></div></div>
+          <p class="small text-muted mt-2 mb-0">Bars: tCO₂e per category. Line: share of Scope 1 total (%).</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% elif scope_num == 2 %}
+  <div class="row g-3 mb-2">
+    <div class="col-lg-7">
+      <div class="card h-100">
+        <div class="card-header py-2"><strong>Energy Related Emissions Trend</strong></div>
+        <div class="card-body">
+          <div class="chart-surface"><div id="scopeDetailMonthly" class="chart-host chart-host--md"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-5">
+      <div class="card h-100">
+        <div class="card-header py-2"><strong>Scope 2 Distribution</strong></div>
+        <div class="card-body">
+          <div class="chart-surface"><div id="scopeDetailDonut" class="chart-host chart-host--md"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="row g-3">
+    <div class="col-12">
+      <div class="card h-100">
+        <div class="card-header py-2"><strong>Emissions vs. Category share (Scope 2)</strong></div>
+        <div class="card-body">
+          <div class="chart-surface"><div id="scopeDetailCombo" class="chart-host chart-host--lg"></div></div>
+          <p class="small text-muted mt-2 mb-0">Columns: tCO₂e. Line: % of Scope 2 (proxy for consumption mix). Cost/spend feeds are not stored in this build.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="row g-3 mb-2">
+    <div class="col-lg-5">
+      <div class="card h-100">
+        <div class="card-header py-2"><strong>Category Contribution</strong></div>
+        <div class="card-body">
+          <div class="chart-surface"><div id="scopeDetailCategoryH" class="chart-host chart-host--md"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-7">
+      <div class="card h-100">
+        <div class="card-header py-2"><strong>Monthly Stacked Trend (top categories)</strong></div>
+        <div class="card-body">
+          <div class="chart-surface"><div id="scopeDetailStackMonth" class="chart-host chart-host--lg"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="row g-3 mb-2">
+    <div class="col-lg-4">
+      <div class="card h-100">
+        <div class="card-header py-2"><strong>Business Travel (Category 6)</strong></div>
+        <div class="card-body">
+          <div class="chart-surface"><div id="scopeDetailMini1" class="chart-host chart-host--sm"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card h-100">
+        <div class="card-header py-2"><strong> Upstream Transport (Category 4) </strong></div>
+        <div class="card-body">
+          <div class="chart-surface"><div id="scopeDetailMini2" class="chart-host chart-host--sm"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card h-100">
+        <div class="card-header py-2"><strong>Waste (Category 5)</strong></div>
+        <div class="card-body">
+          <div class="chart-surface"><div id="scopeDetailMini3" class="chart-host chart-host--sm"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="row g-3">
+    <div class="col-12">
+      <div class="card h-100">
+        <div class="card-header py-2"><strong>Monthly trend</strong></div>
+        <div class="card-body">
+          <div class="chart-surface"><div id="scopeDetailMonthly" class="chart-host chart-host--md"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<script id="scope-dashboard-payload" type="application/json">{{ {"isAdmin": is_admin, "totals": totals, "companyRows": company_rows, "breakdown": breakdown, "scope": scope_num}|tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<script type="module" src="{{ url_for('static', filename='js/charts/init_charts.js') }}"></script>
+{% endblock %}

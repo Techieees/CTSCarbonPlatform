@@ -5276,14 +5276,12 @@ def export_emission_factors():
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
-@app.route('/home')
-@login_required
-def home():
+def _home_overview_context():
+    """Shared context for Overview (home) and per-scope detail pages."""
     _ensure_db_tables()
     year = datetime.utcnow().year
 
     if bool(getattr(current_user, "is_admin", False)):
-        # Admin overview across all companies (latest per company+sheet)
         all_rows = MappingRunSummary.query.order_by(MappingRunSummary.created_at.desc()).all()
         latest_by_company_sheet: dict[tuple[str, str], MappingRunSummary] = {}
         for r in all_rows:
@@ -5315,16 +5313,14 @@ def home():
             for k in g:
                 g[k] += float(t[k] or 0.0)
 
-        return render_template(
-            "home.html",
-            year=year,
-            is_admin=True,
-            totals={k: round(g[k], 3) for k in g},
-            company_rows=rows,
-            breakdown=[],
-        )      
+        return {
+            "year": year,
+            "is_admin": True,
+            "totals": {k: round(g[k], 3) for k in g},
+            "company_rows": rows,
+            "breakdown": [],
+        }
 
-    # Regular user: show totals for their company (latest per sheet)
     keys = _company_candidate_keys(getattr(current_user, "company_name", "") or "")
     latest = _latest_sheet_totals_for_company(keys)
     if latest and getattr(latest[0], "created_at", None):
@@ -5343,19 +5339,65 @@ def home():
         for r in latest
     ]
 
-    return render_template(
-        "home.html",
-        year=year,
-        is_admin=False,
-        totals={
+    return {
+        "year": year,
+        "is_admin": False,
+        "totals": {
             "total": round(total_emission, 3),
             "scope1": round(scope1, 3),
             "scope2": round(scope2, 3),
             "scope3": round(scope3, 3),
         },
-        breakdown=breakdown,
-        company_rows=[],
+        "breakdown": breakdown,
+        "company_rows": [],
+    }
+
+
+@app.route('/home')
+@login_required
+def home():
+    ctx = _home_overview_context()
+    return render_template("home.html", **ctx)
+
+
+@app.route("/scope1")
+@login_required
+def scope1_detail():
+    ctx = _home_overview_context()
+    return render_template(
+        "scope_detail.html",
+        scope_num=1,
+        scope_title="Scope 1 — Direct Emissions",
+        scope_subtitle="Fuel Usage (Diesel on site, fuels from owned and leased vehicles)",
+        **ctx,
     )
+
+
+@app.route("/scope2")
+@login_required
+def scope2_detail():
+    ctx = _home_overview_context()
+    return render_template(
+        "scope_detail.html",
+        scope_num=2,
+        scope_title="Scope 2 - Indirect Energy Emissions",
+        scope_subtitle="Electricity and purchased energy with time and category views. Electricity for facilities. District heating for some offices.",
+        **ctx,
+    )
+
+
+@app.route("/scope3")
+@login_required
+def scope3_detail():
+    ctx = _home_overview_context()
+    return render_template(
+        "scope_detail.html",
+        scope_num=3,
+        scope_title="Scope 3 - Value Chain Emissions",
+        scope_subtitle="Purchased goods, transport, travel, waste, and other upstream/downstream categories.",
+        **ctx,
+    )
+
     
 @app.route('/Emission-factors')
 @login_required
