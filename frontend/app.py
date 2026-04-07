@@ -468,6 +468,36 @@ def sync_user_admin_flag(user: "User") -> None:
     user.is_admin = r in ROLES_WITH_ADMIN_ACCESS
 
 
+def _user_public_dict_for_admin(u: "User") -> dict:
+    """Safe user fields for admin panel JSON (no password)."""
+    rel = getattr(u, "profile_photo_path", None)
+    photo = None
+    if rel:
+        try:
+            photo = url_for("static", filename=str(rel))
+        except Exception:
+            photo = None
+    r = normalize_user_role(getattr(u, "role", None))
+    raw_role = (getattr(u, "role", None) or "").strip() or r
+    fn = (getattr(u, "first_name", None) or "").strip()
+    ln = (getattr(u, "last_name", None) or "").strip()
+    full = " ".join(x for x in (fn, ln) if x).strip()
+    return {
+        "id": u.id,
+        "email": u.email,
+        "first_name": fn or None,
+        "last_name": ln or None,
+        "full_name": full or None,
+        "phone": (getattr(u, "phone", None) or "").strip() or None,
+        "company_name": (u.company_name or "").strip(),
+        "company_country": (getattr(u, "company_country", None) or "").strip() or None,
+        "role": r,
+        "role_display": raw_role,
+        "profile_photo_url": photo,
+        "created_at": u.created_at.strftime("%Y-%m-%d") if getattr(u, "created_at", None) else None,
+    }
+
+
 class Company(db.Model):
     __tablename__ = "companies"
     id = db.Column(db.Integer, primary_key=True)
@@ -4270,9 +4300,14 @@ def admin():
         MappingRun.created_at >= seven_days_ago
     ).count()
 
+    users_for_admin = [_user_public_dict_for_admin(u) for u in users]
+    is_owner = normalize_user_role(getattr(current_user, "role", None)) == "owner"
     return render_template(
         'admin.html',
         users=users,
+        users_for_admin=users_for_admin,
+        is_owner=is_owner,
+        user_roles=list(USER_ROLES),
         submissions=[],
         mapping_runs=mapping_runs,
         recent_admin_submissions_count=recent_admin_submissions_count,
@@ -4282,6 +4317,55 @@ def admin():
         chart_data=chart_data,
         logos=[],
     )
+
+
+@app.route("/admin/user/<int:user_id>/profile", methods=["POST"])
+@login_required
+def admin_update_user_profile(user_id):
+    """Owner-only: update another user's profile fields (existing columns only)."""
+    if not current_user.is_admin:
+        flash("Access denied")
+        return redirect(url_for("dashboard"))
+    if normalize_user_role(getattr(current_user, "role", None)) != "owner":
+        flash("Only Owner can modify user details.")
+        return redirect(url_for("admin"))
+    _ensure_db_tables()
+    target = db.session.get(User, user_id)
+    if not target:
+        flash("User not found.")
+        return redirect(url_for("admin"))
+
+    target.first_name = (request.form.get("first_name") or "").strip() or None
+    target.last_name = (request.form.get("last_name") or "").strip() or None
+    target.phone = (request.form.get("phone") or "").strip() or None
+    cn = (request.form.get("company_name") or "").strip()
+    if not cn:
+        flash("Company name is required.")
+        return redirect(url_for("admin"))
+    target.company_name = cn
+    target.company_country = (request.form.get("company_country") or "").strip() or None
+
+    new_role = request.form.get("role")
+    if new_role is not None and str(new_role).strip():
+        new_role = normalize_user_role(new_role)
+        prev = normalize_user_role(getattr(target, "role", None))
+        if prev == "owner" and new_role != "owner":
+            owners = User.query.filter(User.role == "owner").count()
+            if owners <= 1:
+                flash("Cannot remove the only owner account.")
+                return redirect(url_for("admin"))
+        target.role = new_role
+        sync_user_admin_flag(target)
+
+    pfile = request.files.get("profile_photo")
+    if pfile and getattr(pfile, "filename", None):
+        rel = _save_profile_photo_file(pfile, user_id)
+        if rel:
+            target.profile_photo_path = rel
+
+    db.session.commit()
+    flash(f"User {target.email} updated.")
+    return redirect(url_for("admin"))
 
 
 @app.route("/admin/users", methods=["GET", "POST"])

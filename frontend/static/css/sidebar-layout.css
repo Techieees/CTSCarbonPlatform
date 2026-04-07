@@ -1,0 +1,476 @@
+/* App shell: collapsible left sidebar + minimal topbar (uses saas.css tokens) */
+:root {
+  --app-sidebar-w: 236px;
+  --app-sidebar-w-collapsed: 68px;
+  --app-sidebar-transition: width 0.26s var(--ease, cubic-bezier(0.2, 0.8, 0.2, 1));
+  --app-sidebar-label-transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.app-shell--with-sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-shell--with-sidebar .saas-footer {
+  margin-top: auto;
+}
+
+.app-layout {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  align-items: stretch;
+}
+
+.app-sidebar {
+  flex: 0 0 auto;
+  width: var(--app-sidebar-w);
+  min-height: 100%;
+  transition: var(--app-sidebar-transition);
+  background: #ffffff;
+  border-right: 1px solid rgba(0, 0, 0, 0.05);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+}
+
+body.dark-mode .app-sidebar {
+  background: var(--card-bg);
+  border-right-color: var(--border);
+}
+
+.app-sidebar__inner {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+}
+
+.app-sidebar__toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 10px 10px 6px;
+  border-bottom: 1px solid transparent;
+}
+
+.app-sidebar__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background-color 0.18s ease, color 0.18s ease;
+}
+
+.app-sidebar__toggle:hover {
+  background: var(--interaction-green-soft);
+  color: var(--interaction-green);
+}
+
+body.dark-mode .app-sidebar__toggle:hover {
+  background: var(--interaction-green-soft);
+  color: var(--interaction-green);
+}
+
+.app-sidebar__toggle:focus-visible {
+  outline: 2px solid var(--interaction-green-focus);
+  outline-offset: 0;
+}
+
+.app-sidebar__toggle-icon {
+  display: inline-flex;
+}
+
+/* Icon: "expand" when labels hidden; "collapse" when labels visible */
+.app-layout.app-sidebar-labels-hidden .app-sidebar__toggle-icon--collapse {
+  display: none;
+}
+
+.app-layout:not(.app-sidebar-labels-hidden) .app-sidebar__toggle-icon--expand {
+  display: none;
+}
+
+.app-sidebar__nav {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 6px 10px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.app-sidebar__group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+
+.app-sidebar__group-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+  padding: 10px 12px 4px;
+  margin: 0;
+}
+
+.app-layout--collapsed .app-sidebar__group-label {
+  opacity: 0;
+  height: 0;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.app-sidebar__link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  text-decoration: none;
+  color: var(--nav-link);
+  font-weight: 500;
+  font-size: 0.925rem;
+  transition: background-color 0.18s var(--ease, ease), color 0.18s var(--ease, ease);
+}
+
+/* Match .saas-nav link hover: brand green + soft green tint */
+.app-sidebar__link:hover {
+  background: var(--interaction-green-soft);
+  color: var(--interaction-green);
+}
+
+.app-sidebar__link:hover .app-sidebar__icon {
+  color: var(--interaction-green);
+}
+
+body.dark-mode .app-sidebar__link:hover {
+  background: var(--interaction-green-soft);
+  color: var(--interaction-green);
+}
+
+.app-sidebar__link:focus-visible {
+  outline: 2px solid var(--interaction-green-focus);
+  outline-offset: 0;
+}
+
+.app-sidebar__link.is-active {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.app-sidebar__link.is-active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--primary);
+}
+
+.app-sidebar__link.is-active:hover {
+  background: var(--interaction-green-soft);
+  color: var(--interaction-green);
+}
+
+.app-sidebar__link.is-active:hover .app-sidebar__icon {
+  color: var(--interaction-green);
+}
+
+.app-sidebar__link--sub {
+  padding-left: 14px;
+}
+
+.app-layout--collapsed .app-sidebar__link--sub {
+  padding-left: 12px;
+}
+
+.app-sidebar__icon {
+  flex-shrink: 0;
+  color: inherit;
+}
+
+.app-sidebar__link.is-active .app-sidebar__icon {
+  color: var(--primary);
+}
+
+.app-sidebar__label {
+  white-space: nowrap;
+  transition: var(--app-sidebar-label-transition);
+}
+
+.app-layout--collapsed .app-sidebar {
+  width: var(--app-sidebar-w-collapsed);
+}
+
+.app-layout--collapsed .app-sidebar__toolbar {
+  justify-content: center;
+}
+
+.app-layout--collapsed .app-sidebar__link {
+  justify-content: center;
+  padding-inline: 10px;
+}
+
+.app-layout--collapsed .app-sidebar__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+  opacity: 0;
+}
+
+.app-main-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.app-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 55;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  min-height: 52px;
+  padding: 8px 16px;
+  background: var(--nav-bg);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border);
+}
+
+.app-topbar__inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: none;
+  padding: 0;
+}
+
+.app-topbar__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  color: var(--ink) !important;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.app-topbar__brand:hover {
+  color: var(--primary) !important;
+}
+
+.app-topbar__company {
+  max-width: 220px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--muted);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(47, 95, 179, 0.06);
+  border: 1px solid rgba(47, 95, 179, 0.12);
+}
+
+body.dark-mode .app-topbar__company {
+  background: rgba(59, 130, 246, 0.08);
+  border-color: var(--border);
+}
+
+.app-topbar__spacer {
+  flex: 1 1 auto;
+}
+
+.app-topbar .nav-link {
+  color: var(--nav-link) !important;
+  font-weight: 500;
+  border-radius: 10px;
+}
+
+.app-topbar .nav-link:hover,
+.app-topbar .nav-link:focus-visible {
+  color: var(--interaction-green) !important;
+  background: var(--interaction-green-soft) !important;
+}
+
+/* Account menu (app topbar) — same tokens as marketing nav dropdowns */
+.app-topbar .dropdown-menu {
+  min-width: 200px;
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-md);
+}
+
+.app-topbar .dropdown-item {
+  color: var(--text-primary);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
+.app-topbar .dropdown-item:hover,
+.app-topbar .dropdown-item:focus-visible {
+  background: var(--interaction-green-soft) !important;
+  color: var(--interaction-green) !important;
+}
+
+.app-topbar .dropdown-item .dash-admin-illu {
+  color: inherit;
+}
+
+.app-topbar .dropdown-divider {
+  border-top-color: var(--border-subtle);
+  opacity: 0.9;
+}
+
+body.dark-mode .app-topbar .dropdown-menu {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-md);
+}
+
+body.dark-mode .app-topbar .dropdown-item {
+  color: var(--text-primary);
+}
+
+body.dark-mode .app-topbar .dropdown-item:hover,
+body.dark-mode .app-topbar .dropdown-item:focus-visible {
+  background: rgba(31, 157, 85, 0.08) !important;
+  color: var(--interaction-green) !important;
+}
+
+body.dark-mode .app-topbar .dropdown-divider {
+  border-top-color: var(--border-subtle);
+  opacity: 1;
+}
+
+/* Marketing navbar dropdowns — dark mode parity with app account menu */
+body.dark-mode .saas-nav .dropdown-menu {
+  background: var(--surface-elevated) !important;
+  border: 1px solid var(--border-subtle) !important;
+  box-shadow: var(--shadow-md);
+  padding: 8px;
+  border-radius: 10px;
+}
+
+body.dark-mode .saas-nav .dropdown-item {
+  color: var(--text-primary);
+  border-radius: 10px;
+}
+
+body.dark-mode .saas-nav .dropdown-item:hover,
+body.dark-mode .saas-nav .dropdown-item:focus-visible {
+  background: rgba(31, 157, 85, 0.08) !important;
+  color: var(--interaction-green) !important;
+}
+
+body.dark-mode .saas-nav .dropdown-item .dash-admin-illu {
+  color: inherit;
+}
+
+body.dark-mode .saas-nav .dropdown-divider {
+  border-top-color: var(--border-subtle);
+}
+
+.app-main-content {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.theme-toggle--compact .theme-toggle__label {
+  font-size: 0.8rem;
+  margin-left: 6px;
+}
+
+/* Narrow screens: default collapsed; user can expand */
+@media (max-width: 991.98px) {
+  .app-layout--mobile-narrow:not(.app-layout--mobile-expanded) .app-sidebar {
+    width: var(--app-sidebar-w-collapsed);
+  }
+
+  .app-layout--mobile-narrow:not(.app-layout--mobile-expanded) .app-sidebar__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    opacity: 0;
+  }
+
+  .app-layout--mobile-narrow:not(.app-layout--mobile-expanded) .app-sidebar__group-label {
+    opacity: 0;
+    height: 0;
+    padding: 0;
+    margin: 0;
+    overflow: hidden;
+  }
+
+  .app-layout--mobile-narrow:not(.app-layout--mobile-expanded) .app-sidebar__link {
+    justify-content: center;
+    padding-inline: 10px;
+  }
+
+  .app-layout--mobile-narrow:not(.app-layout--mobile-expanded) .app-sidebar__toolbar {
+    justify-content: center;
+  }
+
+  .app-layout--mobile-narrow.app-layout--mobile-expanded .app-sidebar {
+    width: var(--app-sidebar-w);
+  }
+
+  .app-layout--mobile-narrow.app-layout--mobile-expanded .app-sidebar__label {
+    position: static;
+    width: auto;
+    height: auto;
+    clip: auto;
+    opacity: 1;
+    overflow: visible;
+  }
+
+  .app-layout--mobile-narrow.app-layout--mobile-expanded .app-sidebar__link {
+    justify-content: flex-start;
+  }
+
+  .app-layout--mobile-narrow.app-layout--mobile-expanded .app-sidebar__link--sub {
+    padding-left: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-sidebar,
+  .app-sidebar__label {
+    transition: none !important;
+  }
+}
