@@ -176,6 +176,9 @@
                             <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('admin_report') }}">{{ illu.illu_nav_file('me-2') }}Admin Report</a></li>
                             <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('admin_mapping_runs') }}">{{ illu.illu_nav_bolt('me-2') }}Mapping Runs</a></li>
                             <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('admin_mapping_panel') }}">{{ illu.illu_nav_layers('me-2') }}Batch mapping</a></li>
+                            {% if current_user.role == 'owner' %}
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('admin_users') }}">{{ illu.illu_nav_user('me-2') }}User roles</a></li>
+                            {% endif %}
                         </ul>
                     </li>
                     {% endif %}

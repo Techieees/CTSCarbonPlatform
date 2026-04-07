@@ -283,11 +283,11 @@ a.cts-scope-card-link:hover {
 
 a.cts-scope-card-link:hover .card {
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.1);
-  border-color: rgba(59, 130, 246, 0.35);
+  border-color: rgba(47, 95, 179, 0.35);
 }
 
 a.cts-scope-card-link:focus-visible {
-  outline: 2px solid var(--bs-primary, #0d6efd);
+  outline: 2px solid var(--primary, #2f5fb3);
   outline-offset: 2px;
 }
 

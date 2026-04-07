@@ -58,13 +58,11 @@
   border: 1px solid rgba(255, 255, 255, 0.16);
   background:
     radial-gradient(circle at 32% 30%, rgba(255, 255, 255, 0.46), rgba(255, 255, 255, 0.08) 22%, transparent 46%),
-    radial-gradient(circle at 70% 72%, rgba(14, 165, 233, 0.22), transparent 55%),
+    radial-gradient(circle at 70% 72%, rgba(47, 95, 179, 0.14), transparent 55%),
     linear-gradient(145deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04));
   box-shadow:
-    0 24px 80px rgba(37, 99, 235, 0.18),
+    0 24px 80px rgba(47, 95, 179, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.26);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
   will-change: transform, opacity;
   margin-inline: auto;
   transform: translate3d(var(--hero-parallax-x), var(--hero-parallax-y), 0) rotate(0deg);
@@ -77,7 +75,7 @@
   width: 62%;
   height: auto;
   object-fit: contain;
-  filter: drop-shadow(0 12px 28px rgba(14, 165, 233, 0.16));
+  filter: drop-shadow(0 10px 22px rgba(47, 95, 179, 0.12)) drop-shadow(0 8px 20px rgba(31, 157, 85, 0.08));
 }
 
 /* Full screen busy state (batch mapping, data entry save) */
@@ -194,7 +192,7 @@ body.dark-mode .admin-upload-notification-meta {
   margin-inline: 0;
   border-color: rgba(255, 255, 255, 0.22);
   box-shadow:
-    0 28px 90px rgba(37, 99, 235, 0.28),
+    0 28px 90px rgba(47, 95, 179, 0.18),
     inset 0 1px 0 rgba(255, 255, 255, 0.28);
   animation-duration: 9s;
 }
@@ -219,10 +217,7 @@ body.dark-mode .admin-upload-notification-meta {
 }
 
 .hero-premium-orb::after {
-  inset: 20%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.34), transparent 62%);
-  filter: blur(10px);
-  opacity: 0.65;
+  display: none;
 }
 
 :is(button, .btn, a.button):not(.btn-close):not(.navbar-toggler) {
@@ -277,7 +272,7 @@ body.dark-mode .admin-upload-notification-meta {
   transform: scale(1);
 }
 
-:is(.card, .glass-card, .lp-feature, .mock, .lp-cta, .logo-marquee, .list-group-item, .lp-kicker, .lp-stat) {
+:is(.card, .glass-card, .mock, .lp-cta, .logo-marquee, .list-group-item, .lp-kicker, .lp-stat) {
   --fx-local-x: 50%;
   --fx-local-y: 50%;
   position: relative;
@@ -291,8 +286,8 @@ body.dark-mode .admin-upload-notification-meta {
   transition: transform 0.22s ease, box-shadow 0.22s ease, opacity 0.22s ease;
 }
 
-:is(.card, .lp-feature, .mock, .list-group-item, .lp-kicker, .lp-stat)::before,
-:is(.card, .lp-feature, .mock, .list-group-item, .lp-kicker, .lp-stat)::after {
+:is(.card, .mock, .list-group-item, .lp-kicker, .lp-stat)::before,
+:is(.card, .mock, .list-group-item, .lp-kicker, .lp-stat)::after {
   content: "";
   position: absolute;
   inset: 1px;
@@ -301,7 +296,7 @@ body.dark-mode .admin-upload-notification-meta {
   transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
-:is(.card, .lp-feature, .mock, .list-group-item, .lp-kicker, .lp-stat)::before {
+:is(.card, .mock, .list-group-item, .lp-kicker, .lp-stat)::before {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 38%),
     radial-gradient(
@@ -313,32 +308,31 @@ body.dark-mode .admin-upload-notification-meta {
   transform: translateZ(0);
 }
 
-:is(.card, .lp-feature, .mock, .list-group-item, .lp-kicker, .lp-stat)::after {
+:is(.card, .mock, .list-group-item, .lp-kicker, .lp-stat)::after {
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    0 0 32px rgba(37, 99, 235, 0.08);
+    0 0 32px rgba(47, 95, 179, 0.08);
   opacity: 0;
   transform: scale(0.985);
 }
 
-:is(.card, .glass-card, .lp-feature, .mock, .lp-cta, .logo-marquee, .list-group-item, .lp-kicker, .lp-stat):is(:hover, :focus-within, .is-premium-lit) {
+:is(.card, .glass-card, .mock, .lp-cta, .logo-marquee, .list-group-item, .lp-kicker, .lp-stat):is(:hover, :focus-within, .is-premium-lit) {
   transform: translateY(-4px);
   box-shadow:
     0 28px 72px rgba(15, 23, 42, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.24);
 }
 
-:is(.card, .lp-feature, .mock, .list-group-item, .lp-kicker, .lp-stat):is(:hover, :focus-within, .is-premium-lit)::before {
+:is(.card, .mock, .list-group-item, .lp-kicker, .lp-stat):is(:hover, :focus-within, .is-premium-lit)::before {
   opacity: 0.85;
 }
 
-:is(.card, .lp-feature, .mock, .list-group-item, .lp-kicker, .lp-stat):is(:hover, :focus-within, .is-premium-lit)::after {
+:is(.card, .mock, .list-group-item, .lp-kicker, .lp-stat):is(:hover, :focus-within, .is-premium-lit)::after {
   opacity: 1;
   transform: scale(1);
 }
 
-.lp-feature,
 .mock,
 .lp-cta {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.05));
@@ -370,14 +364,14 @@ body.dark-mode .admin-upload-notification-meta {
   .hero-premium-orb:not(.hero-premium-orb--busy),
   :is(button, .btn, a.button):not(.btn-close):not(.navbar-toggler)::before,
   :is(button, .btn, a.button):not(.btn-close):not(.navbar-toggler)::after,
-  :is(.card, .lp-feature, .mock, .list-group-item, .lp-kicker, .lp-stat)::before,
-  :is(.card, .lp-feature, .mock, .list-group-item, .lp-kicker, .lp-stat)::after {
+  :is(.card, .mock, .list-group-item, .lp-kicker, .lp-stat)::before,
+  :is(.card, .mock, .list-group-item, .lp-kicker, .lp-stat)::after {
     display: none;
   }
 
   .hero-logo-background,
   .hero-logo-grid,
-  :is(.card, .glass-card, .lp-feature, .mock, .lp-cta, .logo-marquee, .list-group-item, .lp-kicker, .lp-stat) {
+  :is(.card, .glass-card, .mock, .lp-cta, .logo-marquee, .list-group-item, .lp-kicker, .lp-stat) {
     transform: none !important;
   }
 
@@ -395,7 +389,7 @@ body.dark-mode .admin-upload-notification-meta {
   .hero-logo-background,
   .hero-logo-grid,
   :is(button, .btn, a.button):not(.btn-close):not(.navbar-toggler),
-  :is(.card, .glass-card, .lp-feature, .mock, .lp-cta, .logo-marquee, .list-group-item, .lp-kicker, .lp-stat) {
+  :is(.card, .glass-card, .mock, .lp-cta, .logo-marquee, .list-group-item, .lp-kicker, .lp-stat) {
     animation: none !important;
     transition: none !important;
     transform: none !important;

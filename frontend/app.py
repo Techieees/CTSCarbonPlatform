@@ -438,6 +438,8 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(200), nullable=False)
     company_name = db.Column(db.String(200), nullable=False)
     is_admin = db.Column(db.Boolean, default=False)
+    # owner | super_admin | admin | manager | user — kept in sync with is_admin via sync_user_admin_flag()
+    role = db.Column(db.String(32), nullable=True, default="user")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     first_name = db.Column(db.String(100), nullable=True)
     last_name = db.Column(db.String(100), nullable=True)
@@ -446,6 +448,24 @@ class User(UserMixin, db.Model):
     company_country = db.Column(db.String(100), nullable=True)
     profile_photo_path = db.Column(db.String(500), nullable=True)
     is_profile_complete = db.Column(db.Boolean, default=False)
+
+
+USER_ROLES: tuple[str, ...] = ("owner", "super_admin", "admin", "manager", "user")
+USER_ROLES_SET = frozenset(USER_ROLES)
+# Roles that may use existing admin routes (is_admin=True)
+ROLES_WITH_ADMIN_ACCESS = frozenset({"owner", "super_admin", "admin", "manager"})
+
+
+def normalize_user_role(raw: str | None) -> str:
+    r = (raw or "user").strip().lower()
+    return r if r in USER_ROLES_SET else "user"
+
+
+def sync_user_admin_flag(user: "User") -> None:
+    """Set role + is_admin from canonical role (call after changing role)."""
+    r = normalize_user_role(getattr(user, "role", None))
+    user.role = r
+    user.is_admin = r in ROLES_WITH_ADMIN_ACCESS
 
 
 class Company(db.Model):
@@ -689,6 +709,10 @@ def _ensure_user_profile_columns() -> None:
         if "is_profile_complete" not in existing:
             alters.append("ALTER TABLE user ADD COLUMN is_profile_complete BOOLEAN")
             backfill_profile_complete = True
+        role_added = False
+        if "role" not in existing:
+            alters.append("ALTER TABLE user ADD COLUMN role VARCHAR(32)")
+            role_added = True
         if not alters:
             return
         with db.engine.begin() as conn:
@@ -696,6 +720,9 @@ def _ensure_user_profile_columns() -> None:
                 conn.execute(text(stmt))
             if backfill_profile_complete:
                 conn.execute(text("UPDATE user SET is_profile_complete = 1 WHERE is_profile_complete IS NULL"))
+            if role_added:
+                conn.execute(text("UPDATE user SET role = 'admin' WHERE is_admin = 1"))
+                conn.execute(text("UPDATE user SET role = 'user' WHERE role IS NULL"))
     except Exception:
         pass
 
@@ -3205,6 +3232,7 @@ def login():
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
+        _ensure_db_tables()
         email = (request.form.get('email') or '').strip().lower()
         password = request.form.get('password') or ''
         company_name = (request.form.get('company_name') or '').strip()
@@ -3226,7 +3254,9 @@ def register():
             password_hash=generate_password_hash(password),
             company_name=company_name,
             is_profile_complete=False,
+            role="user",
         )
+        sync_user_admin_flag(user)
         db.session.add(user)
         db.session.commit()
 
@@ -4252,6 +4282,43 @@ def admin():
         chart_data=chart_data,
         logos=[],
     )
+
+
+@app.route("/admin/users", methods=["GET", "POST"])
+@login_required
+def admin_users():
+    """Owner-only: list users and change roles."""
+    _ensure_db_tables()
+    if normalize_user_role(getattr(current_user, "role", None)) != "owner":
+        flash("Access denied")
+        return redirect(url_for("dashboard"))
+
+    if request.method == "POST":
+        uid = request.form.get("user_id", type=int)
+        new_role = normalize_user_role(request.form.get("role"))
+        if not uid:
+            flash("Invalid request.")
+            return redirect(url_for("admin_users"))
+        target = db.session.get(User, uid)
+        if not target:
+            flash("User not found.")
+            return redirect(url_for("admin_users"))
+
+        prev = normalize_user_role(getattr(target, "role", None))
+        if prev == "owner" and new_role != "owner":
+            owners = User.query.filter(User.role == "owner").count()
+            if owners <= 1:
+                flash("Cannot remove the only owner account.")
+                return redirect(url_for("admin_users"))
+
+        target.role = new_role
+        sync_user_admin_flag(target)
+        db.session.commit()
+        flash(f"Role updated for {target.email}.")
+        return redirect(url_for("admin_users"))
+
+    users = User.query.order_by(User.email.asc()).all()
+    return render_template("admin_users.html", users=users, user_roles=USER_ROLES)
 
 
 @app.route("/admin/preprocess/travel/upload", methods=["POST"])

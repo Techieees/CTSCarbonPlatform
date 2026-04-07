@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% import 'macros/ui_illustrations.html' as illu %}
+
+{% block title %}User roles — Admin{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <div class="row mb-3">
+    <div class="col-12">
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-2">
+          <li class="breadcrumb-item"><a href="{{ url_for('admin') }}">Admin</a></li>
+          <li class="breadcrumb-item active" aria-current="page">User roles</li>
+        </ol>
+      </nav>
+      <div class="card">
+        <div class="card-header">
+          <h4 class="mb-0 d-flex align-items-center">
+            {{ illu.illu_header_cog() }}<span class="ms-2">User roles</span>
+          </h4>
+        </div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">Owner only. Change roles for platform users. Changes apply immediately.</p>
+          <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+              <thead>
+                <tr>
+                  <th scope="col">Email</th>
+                  <th scope="col" style="min-width: 280px;">Role</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for u in users %}
+                <tr>
+                  <td class="font-monospace small">{{ u.email }}</td>
+                  <td>
+                    <form method="post" action="{{ url_for('admin_users') }}" class="d-flex flex-wrap gap-2 align-items-center">
+                      <input type="hidden" name="user_id" value="{{ u.id }}">
+                      <select name="role" class="form-select form-select-sm" style="max-width: 220px;" aria-label="Role for {{ u.email }}">
+                        {% for r in user_roles %}
+                        <option value="{{ r }}" {% if (u.role or 'user') == r %}selected{% endif %}>{{ r }}</option>
+                        {% endfor %}
+                      </select>
+                      <button type="submit" class="btn btn-sm btn-primary">Save</button>
+                    </form>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% if not users %}
+          <p class="text-muted mb-0">No users found.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

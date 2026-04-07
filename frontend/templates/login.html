@@ -30,14 +30,10 @@
                         <div class="mb-4">
                             <label for="password" class="form-label">Password</label>
                             <div class="input-group">
-                                <span class="input-group-text d-inline-flex align-items-center justify-content-center">
+                                <button type="button" class="input-group-text cts-pw-toggle d-inline-flex align-items-center justify-content-center" id="togglePwLogin" aria-label="Show password" aria-pressed="false" title="Show password">
                                     {{ illu.illu_input_lock() }}
-                                </span>
-                                <input type="password" class="form-control" id="password" name="password" required autocomplete="current-password">
-                                <button class="btn btn-outline-secondary d-inline-flex align-items-center justify-content-center" type="button" id="togglePwLogin" aria-label="Show or hide password" tabindex="0">
-                                    <span id="togglePwLoginEyeOpen">{{ illu.illu_eye_open() }}</span>
-                                    <span id="togglePwLoginEyeShut" class="d-none">{{ illu.illu_eye_shut() }}</span>
                                 </button>
+                                <input type="password" class="form-control" id="password" name="password" required autocomplete="current-password">
                             </div>
                         </div>
                         
@@ -69,19 +65,15 @@
   var email = document.getElementById('email');
   var pw = document.getElementById('password');
   var btn = document.getElementById('togglePwLogin');
-  var openEl = document.getElementById('togglePwLoginEyeOpen');
-  var shutEl = document.getElementById('togglePwLoginEyeShut');
-  if (btn && pw && openEl && shutEl) {
+  if (btn && pw) {
     btn.addEventListener('click', function () {
-      if (pw.type === 'password') {
-        pw.type = 'text';
-        openEl.classList.add('d-none');
-        shutEl.classList.remove('d-none');
-      } else {
-        pw.type = 'password';
-        shutEl.classList.add('d-none');
-        openEl.classList.remove('d-none');
-      }
+      var visible = pw.type === 'text';
+      pw.type = visible ? 'password' : 'text';
+      var nowVisible = pw.type === 'text';
+      btn.setAttribute('aria-pressed', nowVisible ? 'true' : 'false');
+      btn.setAttribute('aria-label', nowVisible ? 'Hide password' : 'Show password');
+      btn.title = nowVisible ? 'Hide password' : 'Show password';
+      btn.classList.toggle('is-visible', nowVisible);
     });
   }
   if (form && email) {
