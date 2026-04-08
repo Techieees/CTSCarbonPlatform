@@ -53,6 +53,18 @@
   min-height: 220px;
 }
 
+
+.root {
+--color-primary: #0B8F6A;
+--color-secondary: #0F3D3E;
+--color-accent: #1C5D99;
+--color-light: #A7BFE8;
+--color-darkmode: #2563EB;
+--color-darkmode2: #003049;
+--Color-darkmode3:#9FB3FF;
+
+}
+
 .chart-caption {
   display: flex;
   align-items: center;

@@ -103,6 +103,14 @@
                                         {{ illu.illu_toolbar_keyboard() }}
                                         <span>Paste tabular data directly from Excel</span>
                                     </div>
+                                    <div class="data-entry-toolbar__chip data-entry-toolbar__chip--zoom">
+                                        {{ illu.illu_toolbar_arrows() }}
+                                        <span>Zoom</span>
+                                        <button class="btn btn-sm btn-ghost px-2 py-1" type="button" id="zoomOutBtn" aria-label="Zoom out">-</button>
+                                        <button class="btn btn-sm btn-ghost px-2 py-1" type="button" id="zoomResetBtn">100%</button>
+                                        <button class="btn btn-sm btn-ghost px-2 py-1" type="button" id="zoomInBtn" aria-label="Zoom in">+</button>
+                                        <span class="text-muted small">Ctrl + scroll</span>
+                                    </div>
                                 </div>
                             </div>
 
@@ -111,7 +119,7 @@
                                     <table class="table table-sm align-middle mb-0 data-entry-grid-table" id="dataTable">
                                         <thead class="data-grid__thead">
                                             <tr>
-                                                <th class="text-muted small" style="width: 52px;">#</th>
+                                                <th class="text-muted small data-grid__index">#</th>
                                                 <th class="text-muted small">Waiting for sheet selection…</th>
                                             </tr>
                                         </thead>
@@ -264,17 +272,37 @@
 <script type="application/json" id="defaultCompanyJson">{{ (default_company or "") | tojson }}</script>
 <style>
 .data-entry-table-shell {
+  --data-grid-zoom: 1;
+  --data-grid-font-size: calc(0.82rem * var(--data-grid-zoom));
+  --data-grid-index-font-size: calc(0.75rem * var(--data-grid-zoom));
+  --data-grid-cell-min-width: calc(110px * var(--data-grid-zoom));
+  --data-grid-cell-max-width: calc(280px * var(--data-grid-zoom));
+  --data-grid-cell-pad-y: calc(0.24rem * var(--data-grid-zoom));
+  --data-grid-cell-pad-x: calc(0.42rem * var(--data-grid-zoom));
+  --data-grid-input-pad-y: calc(0.26rem * var(--data-grid-zoom));
+  --data-grid-input-pad-x: calc(0.42rem * var(--data-grid-zoom));
+  --data-grid-error-font-size: calc(0.68rem * var(--data-grid-zoom));
+  --data-grid-row-actions-width: calc(48px * var(--data-grid-zoom));
   border-radius: 14px !important;
   overflow: hidden;
   border-color: var(--bs-border-color) !important;
   background: var(--bs-body-bg);
 }
 
+.data-entry-main {
+  display: flex;
+  flex-direction: column;
+}
+
 .data-entry-table-scroll {
-  max-height: min(78vh, 1200px);
+  height: clamp(30rem, 72vh, 78vh);
+  min-height: clamp(28rem, 70vh, 76vh);
+  max-height: 78vh;
   overflow: auto;
   background: var(--bs-body-bg);
   scrollbar-gutter: stable;
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
 }
 
 .data-entry-grid-table {
@@ -282,6 +310,8 @@
   --bs-table-bg: transparent;
   --bs-table-color: var(--bs-body-color);
   color: var(--bs-body-color);
+  font-size: var(--data-grid-font-size);
+  min-width: max-content;
 }
 
 .data-entry-grid-table thead.data-grid__thead th {
@@ -299,7 +329,7 @@
 .data-entry-grid-table tbody td,
 .data-entry-grid-table tbody th,
 .data-entry-grid-table thead th {
-  padding: 0.2rem 0.35rem;
+  padding: var(--data-grid-cell-pad-y) var(--data-grid-cell-pad-x);
   vertical-align: middle;
   border-color: var(--bs-border-color);
   background-color: var(--bs-body-bg);
@@ -325,13 +355,23 @@
 .data-grid__index,
 .data-grid__meta {
   white-space: nowrap;
-  font-size: 0.75rem;
+  font-size: var(--data-grid-index-font-size);
   background: var(--bs-body-bg) !important;
 }
 
+.data-grid__index {
+  width: calc(44px * var(--data-grid-zoom));
+  min-width: calc(44px * var(--data-grid-zoom));
+}
+
+.data-grid__meta {
+  width: calc(120px * var(--data-grid-zoom));
+  min-width: calc(120px * var(--data-grid-zoom));
+}
+
 .data-grid__cell {
-  min-width: 110px;
-  max-width: 280px;
+  min-width: var(--data-grid-cell-min-width);
+  max-width: var(--data-grid-cell-max-width);
   padding: 0 !important;
   background: var(--bs-body-bg) !important;
 }
@@ -352,11 +392,11 @@
   min-width: 0;
   border: 0;
   border-radius: 0;
-  padding: 0.22rem 0.35rem;
+  padding: var(--data-grid-input-pad-y) var(--data-grid-input-pad-x);
   background: var(--bs-secondary-bg);
   color: var(--bs-body-color);
   box-shadow: none !important;
-  font-size: 0.82rem;
+  font-size: var(--data-grid-font-size);
   line-height: 1.25;
 }
 
@@ -377,7 +417,7 @@
 }
 
 .data-grid__inline-error {
-  font-size: 0.68rem;
+  font-size: var(--data-grid-error-font-size);
   line-height: 1.1;
   color: var(--bs-danger);
   padding: 0 0.3rem 0.15rem;
@@ -389,7 +429,7 @@
 }
 
 .data-grid__row-actions {
-  width: 48px;
+  width: var(--data-grid-row-actions-width);
   text-align: center;
   background: var(--bs-body-bg) !important;
 }
@@ -404,6 +444,53 @@
   background: var(--bs-tertiary-bg);
   color: var(--bs-body-color);
   border: 1px solid var(--bs-border-color);
+}
+
+.data-entry-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.data-entry-toolbar__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--bs-border-color);
+  background: var(--bs-tertiary-bg);
+}
+
+.data-entry-toolbar__chip--zoom {
+  margin-left: auto;
+}
+
+.data-entry-table-scroll::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.data-entry-table-scroll::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.35);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.data-entry-table-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@media (max-width: 991.98px) {
+  .data-entry-table-scroll {
+    height: 68vh;
+    min-height: 68vh;
+  }
+
+  .data-entry-toolbar__chip--zoom {
+    margin-left: 0;
+  }
 }
 </style>
 <script>
@@ -443,9 +530,53 @@ const elMappingMeta = document.getElementById('mappingMeta');
 const elMappingDownload = document.getElementById('mappingDownload');
 const elMappingTable = document.getElementById('mappingTable');
 const table = document.getElementById('dataTable');
+const elTableShell = document.querySelector('.data-entry-table-shell');
+const elTableScroll = document.querySelector('.data-entry-table-scroll');
+const elZoomOut = document.getElementById('zoomOutBtn');
+const elZoomIn = document.getElementById('zoomInBtn');
+const elZoomReset = document.getElementById('zoomResetBtn');
+
+const GRID_ZOOM_LEVELS = [80, 90, 100, 110, 125, 150];
+const GRID_ZOOM_KEY = 'cts-data-entry-grid-zoom';
+let currentGridZoom = 100;
 
 function setStatus(msg) {
   elSaveStatus.textContent = msg || '';
+}
+
+function closestZoomLevel(value) {
+  return GRID_ZOOM_LEVELS.reduce((best, level) => (
+    Math.abs(level - value) < Math.abs(best - value) ? level : best
+  ), GRID_ZOOM_LEVELS[0]);
+}
+
+function applyGridZoom(level) {
+  const safeLevel = closestZoomLevel(Number(level) || 100);
+  currentGridZoom = safeLevel;
+  if (elTableShell) {
+    elTableShell.style.setProperty('--data-grid-zoom', String(safeLevel / 100));
+  }
+  if (elZoomReset) {
+    elZoomReset.textContent = `${safeLevel}%`;
+  }
+  if (elZoomOut) {
+    elZoomOut.disabled = safeLevel <= GRID_ZOOM_LEVELS[0];
+  }
+  if (elZoomIn) {
+    elZoomIn.disabled = safeLevel >= GRID_ZOOM_LEVELS[GRID_ZOOM_LEVELS.length - 1];
+  }
+}
+
+function stepGridZoom(direction) {
+  const currentIndex = GRID_ZOOM_LEVELS.indexOf(currentGridZoom);
+  const fallbackIndex = GRID_ZOOM_LEVELS.indexOf(closestZoomLevel(currentGridZoom));
+  const baseIndex = currentIndex >= 0 ? currentIndex : fallbackIndex;
+  const nextIndex = Math.max(0, Math.min(GRID_ZOOM_LEVELS.length - 1, baseIndex + direction));
+  const nextLevel = GRID_ZOOM_LEVELS[nextIndex];
+  applyGridZoom(nextLevel);
+  try {
+    window.localStorage.setItem(GRID_ZOOM_KEY, String(nextLevel));
+  } catch (e) {}
 }
 
 function escapeHtml(s) {
@@ -563,9 +694,9 @@ function renderGrid() {
 
   thead.innerHTML = `
     <tr>
-      <th class="text-secondary small data-grid__index" style="width:44px;">#</th>
+      <th class="text-secondary small data-grid__index">#</th>
       ${currentHeaders.map(h => `<th class="text-secondary small">${escapeHtml(h)}</th>`).join('')}
-      <th class="text-secondary small data-grid__meta" style="width:120px;">Saved</th>
+      <th class="text-secondary small data-grid__meta">Saved</th>
       <th class="text-secondary small data-grid__row-actions"> </th>
     </tr>
   `;
@@ -949,6 +1080,21 @@ elToggleWorkspace?.addEventListener('click', () => {
   } catch (e) {}
 });
 
+elZoomOut?.addEventListener('click', () => stepGridZoom(-1));
+elZoomIn?.addEventListener('click', () => stepGridZoom(1));
+elZoomReset?.addEventListener('click', () => {
+  applyGridZoom(100);
+  try {
+    window.localStorage.setItem(GRID_ZOOM_KEY, '100');
+  } catch (e) {}
+});
+
+elTableScroll?.addEventListener('wheel', (e) => {
+  if (!e.ctrlKey) return;
+  e.preventDefault();
+  stepGridZoom(e.deltaY > 0 ? -1 : 1);
+}, { passive: false });
+
 async function saveCurrent() {
   if (!currentCompany || !currentSheet) return;
   const v = validateGridForSave();
@@ -1051,6 +1197,11 @@ if (elMap) elMap.addEventListener('click', () => mapNow());
     applyWorkspaceMode(window.localStorage.getItem(WORKSPACE_MODE_KEY) === '1');
   } catch (e) {
     applyWorkspaceMode(false);
+  }
+  try {
+    applyGridZoom(window.localStorage.getItem(GRID_ZOOM_KEY) || '100');
+  } catch (e) {
+    applyGridZoom(100);
   }
   if (!currentCompany && COMPANIES.length) currentCompany = (COMPANIES[0].key || COMPANIES[0]);
   try {

@@ -1,0 +1,39 @@
+<section class="chat-widget" data-chat-widget>
+  <button class="chat-widget__launcher" type="button" data-chat-toggle aria-expanded="false">
+    <span class="chat-widget__launcher-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M5 7.5A2.5 2.5 0 017.5 5h9A2.5 2.5 0 0119 7.5v6a2.5 2.5 0 01-2.5 2.5H11l-4.5 3v-3H7.5A2.5 2.5 0 015 13.5v-6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path>
+      </svg>
+    </span>
+    <span>Messages</span>
+    <span class="collab-badge" data-chat-unread-badge hidden>0</span>
+  </button>
+  <div class="chat-widget__panel" hidden>
+    <div class="chat-widget__header">
+      <strong>Messages</strong>
+      <button class="btn btn-link p-0 collab-inline-link" type="button" data-chat-close>Minimize</button>
+    </div>
+    <div class="chat-widget__body">
+      <aside class="chat-widget__sidebar">
+        <div class="chat-widget__section-title">Conversations</div>
+        <div class="chat-widget__list" data-chat-conversations>
+          <div class="collab-empty-state">No conversations yet.</div>
+        </div>
+        <div class="chat-widget__section-title">Start new</div>
+        <div class="chat-widget__list" data-chat-contacts>
+          <div class="collab-empty-state">No available contacts.</div>
+        </div>
+      </aside>
+      <div class="chat-widget__thread">
+        <div class="chat-widget__thread-header" data-chat-thread-title>Select a conversation</div>
+        <div class="chat-widget__messages" data-chat-messages>
+          <div class="collab-empty-state">Choose a teammate to start messaging.</div>
+        </div>
+        <form class="chat-widget__composer" data-chat-form>
+          <textarea class="form-control" rows="2" maxlength="2000" placeholder="Write a message..." data-chat-input></textarea>
+          <button class="btn btn-primary" type="submit">Send</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>

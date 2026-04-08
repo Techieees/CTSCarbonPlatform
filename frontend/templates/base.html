@@ -22,6 +22,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/global-effects.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/chart-system.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard_admin_illustrations.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/collaboration.css') }}">
     {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -60,8 +61,14 @@
             {% if current_user.company_name %}
             <span class="app-topbar__company text-truncate d-none d-md-inline-block" title="{{ current_user.company_name }}">{{ current_user.company_name }}</span>
             {% endif %}
+            <div class="d-none d-lg-flex align-items-center ms-3">
+                {% include 'components/search_bar.html' %}
+            </div>
             <div class="app-topbar__spacer"></div>
             <ul class="navbar-nav flex-row align-items-center gap-1 gap-sm-2 ms-auto mb-0 list-unstyled">
+                <li class="nav-item">
+                    {% include 'components/notification_dropdown.html' %}
+                </li>
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle d-flex align-items-center py-2 px-2" href="#" id="accountDropdownTop" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                         {% set _purl = nav_profile_photo_url() %}
@@ -74,18 +81,10 @@
                     </a>
                     <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="accountDropdownTop">
                         <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('profile_page') }}">{{ illu.illu_nav_id('me-2') }}Profile</a></li>
+                        <li><button class="dropdown-item d-inline-flex align-items-center" type="button" data-open-chat>{{ illu.illu_nav_user('me-2') }}Messages</button></li>
                         <li><hr class="dropdown-divider"></li>
                         <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('logout') }}">{{ illu.illu_nav_signout('me-2') }}Logout</a></li>
                     </ul>
-                </li>
-                <li class="nav-item">
-                    <div class="theme-toggle theme-toggle--compact" title="Toggle dark mode">
-                        <label class="theme-toggle__switch" for="darkModeToggle">
-                            <input type="checkbox" id="darkModeToggle" aria-label="Toggle dark mode">
-                            <span class="theme-toggle__slider"></span>
-                        </label>
-                        <span class="theme-toggle__label d-none d-md-inline">Dark Mode</span>
-                    </div>
                 </li>
             </ul>
         </div>
@@ -149,6 +148,12 @@
                         </div>
                     </li>
                     {% if current_user.is_authenticated %}
+                    <li class="nav-item d-none d-xl-flex align-items-center me-lg-2">
+                        {% include 'components/search_bar.html' %}
+                    </li>
+                    <li class="nav-item">
+                        {% include 'components/notification_dropdown.html' %}
+                    </li>
                     <li class="nav-item ms-lg-2"><a class="btn btn-ghost" href="{{ url_for('home') }}">Dashboard</a></li>
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle d-flex align-items-center py-2 px-2" href="#" id="accountDropdownMarketingAuth" role="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -162,6 +167,7 @@
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="accountDropdownMarketingAuth">
                             <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('profile_page') }}">{{ illu.illu_nav_id('me-2') }}Profile</a></li>
+                            <li><button class="dropdown-item d-inline-flex align-items-center" type="button" data-open-chat>{{ illu.illu_nav_user('me-2') }}Messages</button></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('logout') }}">{{ illu.illu_nav_signout('me-2') }}Logout</a></li>
                         </ul>
@@ -246,6 +252,9 @@
 
         {% block content %}{% endblock %}
     </main>
+    {% if current_user.is_authenticated %}
+    {% include 'components/chat_widget.html' %}
+    {% endif %}
     {% if use_app_sidebar %}
     </div>
     </div>
@@ -293,6 +302,9 @@
     <script src="{{ url_for('static', filename='js/saas.js') }}"></script>
     <script src="{{ url_for('static', filename='js/global-effects.js') }}"></script>
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+    {% if current_user.is_authenticated %}
+    <script src="{{ url_for('static', filename='js/collaboration.js') }}"></script>
+    {% endif %}
     {% if use_app_sidebar %}
     <script src="{{ url_for('static', filename='js/sidebar-layout.js') }}"></script>
     {% endif %}

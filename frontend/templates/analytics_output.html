@@ -1,0 +1,642 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/analytics-output.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container py-4 analytics-output-page">
+  <section class="analytics-output-hero">
+    <div class="analytics-output-hero__eyebrow">{{ page_group }}</div>
+    <div class="d-flex flex-column flex-lg-row gap-3 justify-content-between align-items-lg-start">
+      <div>
+        <h1 class="analytics-output-hero__title">{{ page_title }}</h1>
+        <p class="analytics-output-hero__lead mb-0">{{ page_summary }}</p>
+      </div>
+      {% if output_exists and download_url %}
+      <a class="btn btn-primary analytics-output-hero__action" href="{{ download_url }}">Download latest output</a>
+      {% endif %}
+    </div>
+  </section>
+
+  {% if page_key == 'forecasting' %}
+  <section class="analytics-output-controls mt-4">
+    <form method="post" class="analytics-output-form js-analytics-run-form" data-loading-message="Running calculation..." id="forecastingRunForm">
+      <div class="row g-3 align-items-end">
+        <div class="col-sm-6 col-lg-3">
+          <label class="form-label" for="forecastTargetYear">Target year</label>
+          <input
+            id="forecastTargetYear"
+            class="form-control"
+            type="number"
+            min="2026"
+            max="2050"
+            name="target_year"
+            value="{{ form_state.target_year or 2030 }}"
+          >
+        </div>
+        <div class="col-sm-6 col-lg-3">
+          <button class="btn btn-primary w-100 js-analytics-run-button" type="submit">
+            <span class="js-analytics-run-label">Run forecasting</span>
+            <span class="analytics-output-spinner" aria-hidden="true"></span>
+          </button>
+        </div>
+      </div>
+      <div class="analytics-output-loading-message mt-3 js-analytics-loading-message" hidden>
+        Running calculation...
+      </div>
+    </form>
+  </section>
+  {% elif page_key == 'ccc_api_source' %}
+  <section class="analytics-output-controls mt-4">
+    <div class="analytics-output-ccc-status row g-3 mb-4">
+      <div class="col-md-3">
+        <article class="analytics-output-stat">
+          <span class="analytics-output-stat__label">Connection status</span>
+          <strong class="analytics-output-stat__value">
+            <span class="analytics-output-status analytics-output-status--{{ ccc_connection_status.tone }}">{{ ccc_connection_status.label }}</span>
+          </strong>
+          {% if ccc_connection_status.tested_at %}
+          <div class="analytics-output-card__meta mt-2">Tested {{ ccc_connection_status.tested_at }}</div>
+          {% endif %}
+        </article>
+      </div>
+      <div class="col-md-3">
+        <article class="analytics-output-stat">
+          <span class="analytics-output-stat__label">Last sync</span>
+          <strong class="analytics-output-stat__value">{{ ccc_last_sync.timestamp if ccc_last_sync else "Not synced yet" }}</strong>
+        </article>
+      </div>
+      <div class="col-md-3">
+        <article class="analytics-output-stat">
+          <span class="analytics-output-stat__label">Imported records</span>
+          <strong class="analytics-output-stat__value">{{ ccc_last_sync.records_imported if ccc_last_sync else 0 }}</strong>
+        </article>
+      </div>
+      <div class="col-md-3">
+        <article class="analytics-output-stat">
+          <span class="analytics-output-stat__label">Latest output</span>
+          <strong class="analytics-output-stat__value">{{ ccc_last_sync.output_filename if ccc_last_sync and ccc_last_sync.output_filename else "None" }}</strong>
+        </article>
+      </div>
+    </div>
+    <form method="post" class="analytics-output-form js-analytics-run-form" data-loading-message="Syncing selected endpoint..." id="cccApiSyncForm">
+      <div class="row g-3">
+        <div class="col-lg-5">
+          <label class="form-label" for="cccApiBaseUrl">CCC API base URL</label>
+          <input
+            id="cccApiBaseUrl"
+            class="form-control"
+            type="url"
+            name="base_url"
+            placeholder="https://your-ccc-host"
+            value="{{ form_state.base_url or '' }}"
+            required
+          >
+        </div>
+        <div class="col-lg-3">
+          <label class="form-label" for="cccApiUsername">Username</label>
+          <input
+            id="cccApiUsername"
+            class="form-control"
+            type="email"
+            name="username"
+            value="{{ form_state.username or '' }}"
+            required
+          >
+        </div>
+        <div class="col-lg-2">
+          <label class="form-label" for="cccApiPassword">Password</label>
+          <input
+            id="cccApiPassword"
+            class="form-control"
+            type="password"
+            name="password"
+            value=""
+            {% if not form_state.has_password %}required{% endif %}
+          >
+          {% if form_state.has_password %}
+          <div class="analytics-output-card__meta mt-2">Stored password available from environment config.</div>
+          {% endif %}
+        </div>
+        <div class="col-lg-2">
+          <label class="form-label" for="cccApiPageSize">Page size</label>
+          <input
+            id="cccApiPageSize"
+            class="form-control"
+            type="number"
+            min="1"
+            max="500"
+            name="page_size"
+            value="{{ form_state.page_size or 100 }}"
+          >
+        </div>
+        <div class="col-lg-4">
+          <label class="form-label" for="cccApiEndpointName">Available endpoints</label>
+          <select id="cccApiEndpointName" class="form-select" name="endpoint_name">
+            {% for endpoint_name, endpoint_path in ccc_get_endpoints.items() %}
+            <option value="{{ endpoint_name }}" {% if form_state.endpoint_name == endpoint_name %}selected{% endif %}>{{ endpoint_name }} · {{ endpoint_path }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-lg-4">
+          <label class="form-label" for="cccApiPathParams">Path params JSON</label>
+          <input
+            id="cccApiPathParams"
+            class="form-control"
+            type="text"
+            name="path_params"
+            placeholder='{"projectId": 123}'
+            value="{{ form_state.path_params or '' }}"
+          >
+        </div>
+        <div class="col-lg-4">
+          <label class="form-label" for="cccApiQueryParams">Query params JSON</label>
+          <input
+            id="cccApiQueryParams"
+            class="form-control"
+            type="text"
+            name="query_params"
+            placeholder='{"status": "open"}'
+            value="{{ form_state.query_params or '' }}"
+          >
+        </div>
+        <div class="col-12 d-flex flex-wrap gap-2">
+          <button class="btn btn-outline-primary js-analytics-run-button" type="submit" name="action" value="test_connection" data-loading-message="Testing CCC connection...">
+            <span class="js-analytics-run-label">Test connection</span>
+            <span class="analytics-output-spinner" aria-hidden="true"></span>
+          </button>
+          <button class="btn btn-primary js-analytics-run-button" type="submit">
+            <span class="js-analytics-run-label">Sync selected endpoint</span>
+            <span class="analytics-output-spinner" aria-hidden="true"></span>
+          </button>
+        </div>
+      </div>
+      <p class="analytics-output-inline-note mb-0 mt-3">
+        Syncs any configured CCC GET endpoint, flattens the JSON into tabular form, adds import metadata, and saves the result under `data/stage1_preprocess/input/`.
+      </p>
+      {% if ccc_connection_status.message %}
+      <p class="analytics-output-inline-note mb-0 mt-2">{{ ccc_connection_status.message }}</p>
+      {% endif %}
+      <div class="analytics-output-loading-message mt-3 js-analytics-loading-message" hidden>
+        Syncing selected endpoint...
+      </div>
+    </form>
+    {% if ccc_mapping_rules %}
+    <div class="analytics-output-card mt-4">
+      <div class="analytics-output-card__header">
+        <div>
+          <h3 class="analytics-output-card__title">Supplier routing rules</h3>
+          <p class="analytics-output-card__meta mb-0">Loaded from `config/ccc_sheet_mapping.json`.</p>
+        </div>
+      </div>
+      <div class="analytics-output-routing-grid">
+        {% for route_name, route_rules in ccc_mapping_rules.items() %}
+        <div class="analytics-output-routing-card">
+          <h4 class="analytics-output-card__title analytics-output-card__title--small">{{ route_name.replace('_', ' ')|title }}</h4>
+          <div class="analytics-output-card__meta mt-2">Suppliers</div>
+          <div class="analytics-output-tags mt-2">
+            {% for supplier in route_rules.suppliers or [] %}
+            <span class="analytics-output-tag">{{ supplier }}</span>
+            {% else %}
+            <span class="analytics-output-tag">No supplier rules</span>
+            {% endfor %}
+          </div>
+          <div class="analytics-output-card__meta mt-3">Keywords</div>
+          <div class="analytics-output-tags mt-2">
+            {% for keyword in route_rules.keywords or [] %}
+            <span class="analytics-output-tag">{{ keyword }}</span>
+            {% else %}
+            <span class="analytics-output-tag">No keyword rules</span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </section>
+  {% elif page_key == 'decarbonization' %}
+  <section class="analytics-output-controls mt-4">
+    <form method="post" class="analytics-output-form js-analytics-run-form" data-loading-message="Generating scenario..." id="decarbonizationRunForm">
+      <div class="row g-3">
+        <div class="col-sm-6 col-lg-3">
+          <label class="form-label" for="decarbScenarioPreset">Scenario preset</label>
+          <select id="decarbScenarioPreset" class="form-select js-scenario-preset" name="scenario_preset">
+            <option value="net_zero_2050" {% if form_state.preset == 'net_zero_2050' %}selected{% endif %}>Net Zero 2050</option>
+            <option value="sbt_15c" {% if form_state.preset == 'sbt_15c' %}selected{% endif %}>SBT 1.5C pathway</option>
+            <option value="reduction_30_2030" {% if form_state.preset == 'reduction_30_2030' %}selected{% endif %}>30% reduction by 2030</option>
+            <option value="custom" {% if form_state.preset == 'custom' or not form_state.preset %}selected{% endif %}>Custom</option>
+          </select>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+          <label class="form-label" for="decarbTargetYear">Target year</label>
+          <input
+            id="decarbTargetYear"
+            class="form-control"
+            type="number"
+            min="2026"
+            max="2050"
+            name="target_year"
+            value="{{ form_state.target_year or 2030 }}"
+          >
+        </div>
+        <div class="col-sm-6 col-lg-3">
+          <label class="form-label" for="decarbReductionPct">Reduction %</label>
+          <input
+            id="decarbReductionPct"
+            class="form-control"
+            type="number"
+            min="0"
+            max="100"
+            step="0.1"
+            name="reduction_pct"
+            value="{{ form_state.reduction_pct or 20 }}"
+          >
+        </div>
+        <div class="col-sm-6 col-lg-3">
+          <label class="form-label" for="decarbScope">Scope</label>
+          <select id="decarbScope" class="form-select" name="scope">
+            <option value="scope1" {% if form_state.scope == 'scope1' %}selected{% endif %}>Scope 1</option>
+            <option value="scope2" {% if form_state.scope == 'scope2' %}selected{% endif %}>Scope 2</option>
+            <option value="scope3" {% if form_state.scope == 'scope3' or not form_state.scope %}selected{% endif %}>Scope 3</option>
+            <option value="total" {% if form_state.scope == 'total' %}selected{% endif %}>Total footprint</option>
+          </select>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+          <label class="form-label" for="decarbScenarioType">Scenario type</label>
+          <select id="decarbScenarioType" class="form-select" name="scenario_type">
+            <option value="decarbonization" {% if form_state.scenario_type == 'decarbonization' or not form_state.scenario_type %}selected{% endif %}>Decarbonization</option>
+            <option value="flat" {% if form_state.scenario_type == 'flat' %}selected{% endif %}>Flat</option>
+            <option value="growth" {% if form_state.scenario_type == 'growth' %}selected{% endif %}>Growth</option>
+            <option value="expansion" {% if form_state.scenario_type == 'expansion' %}selected{% endif %}>Expansion</option>
+          </select>
+        </div>
+        <div class="col-12 col-lg-3">
+          <button class="btn btn-primary w-100 js-analytics-run-button" type="submit">
+            <span class="js-analytics-run-label">Run scenario</span>
+            <span class="analytics-output-spinner" aria-hidden="true"></span>
+          </button>
+        </div>
+      </div>
+      <div class="analytics-output-loading-message mt-3 js-analytics-loading-message" hidden>
+        Generating scenario...
+      </div>
+    </form>
+  </section>
+  {% elif page_key in ('mapped_window_output', 'emissions_totals', 'share_analysis', 'audit_ready_output') %}
+  <section class="analytics-output-controls mt-4">
+    <form method="post" class="analytics-output-form js-analytics-run-form" data-loading-message="{% if page_key == 'audit_ready_output' %}Preparing audit dataset...{% elif page_key == 'mapped_window_output' %}Generating mapped window output...{% else %}Generating fresh output...{% endif %}">
+      <div class="row g-3 align-items-end">
+        <div class="col-sm-4 col-lg-3">
+          <label class="form-label" for="windowOutputYear">Reporting year</label>
+          <input
+            id="windowOutputYear"
+            class="form-control"
+            type="number"
+            min="2020"
+            max="2100"
+            name="year"
+            value="{{ form_state.year or 2025 }}"
+          >
+        </div>
+        <div class="col-sm-4 col-lg-3">
+          <label class="form-label" for="windowOutputStartMonth">Start month</label>
+          <select id="windowOutputStartMonth" class="form-select" name="start_month">
+            {% for month in range(1, 13) %}
+            <option value="{{ month }}" {% if form_state.start_month == month %}selected{% endif %}>{{ "%02d"|format(month) }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-sm-4 col-lg-3">
+          <label class="form-label" for="windowOutputEndMonth">End month</label>
+          <select id="windowOutputEndMonth" class="form-select" name="end_month">
+            {% for month in range(1, 13) %}
+            <option value="{{ month }}" {% if form_state.end_month == month %}selected{% endif %}>{{ "%02d"|format(month) }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-lg-3">
+          <button class="btn btn-primary w-100 js-analytics-run-button" type="submit">
+            <span class="js-analytics-run-label">
+              {% if page_key == 'mapped_window_output' %}Generate mapped window output{% elif page_key == 'emissions_totals' %}Generate totals tables{% elif page_key == 'share_analysis' %}Generate share analysis{% else %}Generate audit ready dataset{% endif %}
+            </span>
+            <span class="analytics-output-spinner" aria-hidden="true"></span>
+          </button>
+        </div>
+      </div>
+      {% if page_key == 'audit_ready_output' %}
+      <p class="analytics-output-inline-note mb-0 mt-3">
+        This dataset is used for external audit review and contains filtered emissions data for the selected reporting year.
+      </p>
+      {% endif %}
+      <div class="analytics-output-loading-message mt-3 js-analytics-loading-message" hidden>
+        {% if page_key == 'audit_ready_output' %}Preparing audit dataset...{% elif page_key == 'mapped_window_output' %}Generating mapped window output...{% else %}Generating fresh output...{% endif %}
+      </div>
+    </form>
+  </section>
+  {% elif page_key == 'double_counting_check' %}
+  <section class="analytics-output-controls mt-4">
+    <form method="post" class="analytics-output-form js-analytics-run-form" data-loading-message="Generating double counting report...">
+      <div class="d-flex flex-column flex-lg-row gap-3 justify-content-between align-items-lg-center">
+        <div>
+          <h2 class="analytics-output-card__title analytics-output-card__title--small">Generate double counting report</h2>
+          <p class="analytics-output-card__meta mb-0">Runs the existing stage2 review step against the latest merged mapping workbook.</p>
+        </div>
+        <button class="btn btn-primary js-analytics-run-button" type="submit">
+          <span class="js-analytics-run-label">Generate double counting report</span>
+          <span class="analytics-output-spinner" aria-hidden="true"></span>
+        </button>
+      </div>
+      <div class="analytics-output-loading-message mt-3 js-analytics-loading-message" hidden>
+        Generating double counting report...
+      </div>
+    </form>
+  </section>
+  {% endif %}
+
+  {% if run_notice %}
+  <section class="analytics-output-feedback analytics-output-feedback--success mt-4">
+    {{ run_notice }}
+  </section>
+  {% endif %}
+
+  {% if run_error %}
+  <section class="analytics-output-feedback analytics-output-feedback--error mt-4">
+    {{ run_error }}
+  </section>
+  {% endif %}
+
+  {% if output_exists %}
+  <section class="analytics-output-meta row g-3 mt-1">
+    <div class="col-md-4">
+      <article class="analytics-output-stat">
+        <span class="analytics-output-stat__label">Source file</span>
+        <strong class="analytics-output-stat__value">{{ output_file_name }}</strong>
+      </article>
+    </div>
+    <div class="col-md-4">
+      <article class="analytics-output-stat">
+        <span class="analytics-output-stat__label">Last updated</span>
+        <strong class="analytics-output-stat__value">{{ output_file_mtime }}</strong>
+      </article>
+    </div>
+    <div class="col-md-4">
+      <article class="analytics-output-stat">
+        <span class="analytics-output-stat__label">Workbook sheets</span>
+        <strong class="analytics-output-stat__value">{{ output_sheet_count }}</strong>
+      </article>
+    </div>
+  </section>
+
+  <section class="analytics-output-sheets mt-4">
+    <div class="analytics-output-sheets__header">
+      <h2 class="analytics-output-sheets__title">Workbook previews</h2>
+      <p class="analytics-output-sheets__subtitle mb-0">
+        Showing selected pipeline-generated sheets only. No calculations are recreated in the UI.
+      </p>
+    </div>
+
+    {% for preview in sheet_previews %}
+    <article class="analytics-output-card mt-3">
+      <div class="analytics-output-card__header">
+        <div>
+          <h3 class="analytics-output-card__title">{{ preview.name }}</h3>
+          <p class="analytics-output-card__meta mb-0">{{ preview.row_count }} rows, {{ preview.column_count }} columns</p>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table analytics-output-table mb-0">
+          <thead>
+            <tr>
+              {% for col in preview.columns %}
+              <th>{{ col }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in preview.rows %}
+            <tr>
+              {% for cell in row %}
+              <td>{{ cell }}</td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if preview.truncated %}
+      <div class="analytics-output-card__footer">
+        Preview limited to the first rows for UI performance.
+      </div>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </section>
+
+  <section class="analytics-output-available mt-4">
+    <div class="analytics-output-card">
+      <div class="analytics-output-card__header">
+        <div>
+          <h3 class="analytics-output-card__title">Available sheets</h3>
+          <p class="analytics-output-card__meta mb-0">All sheet names found in the latest workbook.</p>
+        </div>
+      </div>
+      <div class="analytics-output-tags">
+        {% for sheet_name in output_sheet_names %}
+        <span class="analytics-output-tag">{{ sheet_name }}</span>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  {% if companion_outputs %}
+  <section class="analytics-output-companions mt-4">
+    {% for companion in companion_outputs %}
+    <div class="analytics-output-card">
+      <div class="analytics-output-card__header">
+        <div>
+          <h3 class="analytics-output-card__title">{{ companion.title }}</h3>
+          <p class="analytics-output-card__meta mb-0">{{ companion.file_name }} · {{ companion.updated_at }}</p>
+        </div>
+      </div>
+      {% for preview in companion.sheet_previews %}
+      <div class="analytics-output-card__header analytics-output-card__subheader">
+        <div>
+          <h4 class="analytics-output-card__title analytics-output-card__title--small">{{ preview.name }}</h4>
+          <p class="analytics-output-card__meta mb-0">{{ preview.row_count }} rows, {{ preview.column_count }} columns</p>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table analytics-output-table mb-0">
+          <thead>
+            <tr>
+              {% for col in preview.columns %}
+              <th>{{ col }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in preview.rows %}
+            <tr>
+              {% for cell in row %}
+              <td>{{ cell }}</td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+  {% else %}
+  <section class="analytics-output-empty mt-4">
+    <h2 class="analytics-output-empty__title">No output available yet</h2>
+    <p class="analytics-output-empty__text mb-0">{{ empty_message }}</p>
+  </section>
+  {% endif %}
+
+  {% if run_history and page_key == 'ccc_api_source' %}
+  <section class="analytics-output-history mt-4">
+    <div class="analytics-output-card">
+      <div class="analytics-output-card__header">
+        <div>
+          <h3 class="analytics-output-card__title">Sync history</h3>
+          <p class="analytics-output-card__meta mb-0">Recent CCC connection tests and sync operations.</p>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table analytics-output-table mb-0">
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Endpoint</th>
+              <th>Status</th>
+              <th>Records</th>
+              <th>Output</th>
+              <th>Page size</th>
+              <th>Base URL</th>
+              <th>Message</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for run in run_history %}
+            <tr>
+              <td>{{ run.timestamp }}</td>
+              <td>{{ run.endpoint or run.scenario or "—" }}</td>
+              <td>{{ run.status or "success" }}</td>
+              <td>{{ run.records_imported or 0 }}</td>
+              <td>
+                {% if run.download_url and run.output_filename %}
+                <a href="{{ run.download_url }}" class="analytics-output-history__link">{{ run.output_filename }}</a>
+                {% else %}
+                {{ run.output_filename or "—" }}
+                {% endif %}
+              </td>
+              <td>{{ run.page_size or "—" }}</td>
+              <td>{{ run.base_url or "—" }}</td>
+              <td>{{ run.message or "—" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+  {% elif run_history %}
+  <section class="analytics-output-history mt-4">
+    <div class="analytics-output-card">
+      <div class="analytics-output-card__header">
+        <div>
+          <h3 class="analytics-output-card__title">Run history</h3>
+          <p class="analytics-output-card__meta mb-0">Recent analysis runs stored as lightweight metadata.</p>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table analytics-output-table mb-0">
+          <thead>
+            <tr>
+              <th>Run date</th>
+              <th>Scenario</th>
+              <th>Parameters</th>
+              <th>Download</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for run in run_history %}
+            <tr>
+              <td>{{ run.timestamp }}</td>
+              <td>{{ run.scenario or run.type }}</td>
+              <td>{{ run.parameters_summary }}</td>
+              <td>
+                {% if run.download_url %}
+                <a href="{{ run.download_url }}" class="analytics-output-history__link">{{ run.output_file }}</a>
+                {% else %}
+                {{ run.output_file }}
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    const presetConfig = {
+      net_zero_2050: { target_year: 2050, reduction_pct: 100, scope: "total", scenario_type: "decarbonization" },
+      sbt_15c: { target_year: 2030, reduction_pct: 42, scope: "total", scenario_type: "decarbonization" },
+      reduction_30_2030: { target_year: 2030, reduction_pct: 30, scope: "total", scenario_type: "flat" },
+      custom: null
+    };
+
+    const presetSelect = document.querySelector(".js-scenario-preset");
+    if (presetSelect) {
+      presetSelect.addEventListener("change", function () {
+        const config = presetConfig[presetSelect.value];
+        if (!config) return;
+        const target = document.getElementById("decarbTargetYear");
+        const reduction = document.getElementById("decarbReductionPct");
+        const scope = document.getElementById("decarbScope");
+        const scenario = document.getElementById("decarbScenarioType");
+        if (target) target.value = config.target_year;
+        if (reduction) reduction.value = config.reduction_pct;
+        if (scope) scope.value = config.scope;
+        if (scenario) scenario.value = config.scenario_type;
+      });
+    }
+
+    document.querySelectorAll(".js-analytics-run-form").forEach(function (form) {
+      form.addEventListener("submit", function (event) {
+        const submitter = event.submitter || form.querySelector(".js-analytics-run-button");
+        const button = submitter || form.querySelector(".js-analytics-run-button");
+        const label = submitter ? submitter.querySelector(".js-analytics-run-label") : form.querySelector(".js-analytics-run-label");
+        const loading = form.querySelector(".js-analytics-loading-message");
+        const message = (submitter && submitter.getAttribute("data-loading-message")) || form.getAttribute("data-loading-message") || "Processing emissions model...";
+        form.querySelectorAll(".js-analytics-run-button").forEach(function (btn) {
+          btn.disabled = true;
+          btn.classList.toggle("is-loading", btn === submitter || (!submitter && btn === button));
+        });
+        if (label) {
+          label.textContent = message;
+        }
+        if (loading) {
+          loading.hidden = false;
+          loading.textContent = message;
+        }
+      });
+    });
+  })();
+</script>
+{% endblock %}

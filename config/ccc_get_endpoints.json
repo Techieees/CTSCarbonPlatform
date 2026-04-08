@@ -1,0 +1,18 @@
+{
+  "purchase_order": "/api/purchase_order",
+  "supplier": "/api/supplier",
+  "currency": "/api/currency",
+  "invoice": "/api/invoice",
+  "project": "/api/project",
+  "contact": "/api/contact",
+  "budget": "/api/budget",
+  "financial_purchase_order": "/api/financial/purchase_order",
+  "boq_catalog": "/api/boq-catalog",
+  "boq_inputs": "/api/boq_inputs/{projectId}",
+  "variation_order": "/api/variation_order",
+  "vat": "/api/vat",
+  "region": "/api/region",
+  "office": "/api/office",
+  "report_follow_up": "/api/report-follow-up",
+  "settings": "/api/settings"
+}

@@ -2,6 +2,8 @@
 {% set ep = request.endpoint %}
 {% set runs_href = url_for('admin_mapping_runs') if current_user.is_admin else url_for('mapping_runs') %}
 {% set runs_active = ep in ('mapping_runs', 'admin_mapping_runs') %}
+{% set analytics_active = ep in ('analytics_forecasting', 'analytics_decarbonization', 'analytics_emissions_map', 'analytics_mapped_window_output', 'analytics_emissions_totals', 'analytics_share_analysis') %}
+{% set governance_active = ep in ('governance_double_counting_check', 'governance_audit_ready_output') %}
 <aside class="app-sidebar" id="appSidebar" aria-label="Main navigation">
   <div class="app-sidebar__inner">
     <div class="app-sidebar__toolbar">
@@ -52,6 +54,58 @@
       </div>
 
       <div class="app-sidebar__group">
+        <span class="app-sidebar__group-label"><span class="app-sidebar__group-label-text">Analytics</span></span>
+        <a href="{{ url_for('analytics_forecasting') }}" class="app-sidebar__link app-sidebar__link--sub {% if ep == 'analytics_forecasting' %}is-active{% endif %}" {% if ep == 'analytics_forecasting' %}aria-current="page"{% endif %} title="Forecasting">
+          {{ illu.illu_nav_chart('app-sidebar__icon') }}
+          <span class="app-sidebar__label">Forecasting</span>
+        </a>
+        <a href="{{ url_for('analytics_decarbonization') }}" class="app-sidebar__link app-sidebar__link--sub {% if ep == 'analytics_decarbonization' %}is-active{% endif %}" {% if ep == 'analytics_decarbonization' %}aria-current="page"{% endif %} title="Decarbonization">
+          {{ illu.illu_nav_bolt('app-sidebar__icon') }}
+          <span class="app-sidebar__label">Decarbonization</span>
+        </a>
+        <a href="{{ url_for('analytics_emissions_map') }}" class="app-sidebar__link app-sidebar__link--sub {% if ep == 'analytics_emissions_map' %}is-active{% endif %}" {% if ep == 'analytics_emissions_map' %}aria-current="page"{% endif %} title="Emissions map">
+          {{ illu.illu_nav_leaf('app-sidebar__icon') }}
+          <span class="app-sidebar__label">Emissions Map</span>
+        </a>
+      </div>
+
+      <div class="app-sidebar__group">
+        <span class="app-sidebar__group-label"><span class="app-sidebar__group-label-text">Data Sources</span></span>
+        <a href="{{ url_for('data_sources_ccc_api') }}" class="app-sidebar__link app-sidebar__link--sub {% if ep == 'data_sources_ccc_api' %}is-active{% endif %}" {% if ep == 'data_sources_ccc_api' %}aria-current="page"{% endif %} title="CCC API">
+          {{ illu.illu_nav_bolt('app-sidebar__icon') }}
+          <span class="app-sidebar__label">CCC API</span>
+        </a>
+      </div>
+
+      <div class="app-sidebar__group">
+        <span class="app-sidebar__group-label"><span class="app-sidebar__group-label-text">Data Outputs</span></span>
+        <a href="{{ url_for('analytics_mapped_window_output') }}" class="app-sidebar__link app-sidebar__link--sub {% if ep == 'analytics_mapped_window_output' %}is-active{% endif %}" {% if ep == 'analytics_mapped_window_output' %}aria-current="page"{% endif %} title="Mapped window output">
+          {{ illu.illu_nav_file('app-sidebar__icon') }}
+          <span class="app-sidebar__label">Mapped window output</span>
+        </a>
+        <a href="{{ url_for('analytics_emissions_totals') }}" class="app-sidebar__link app-sidebar__link--sub {% if ep == 'analytics_emissions_totals' %}is-active{% endif %}" {% if ep == 'analytics_emissions_totals' %}aria-current="page"{% endif %} title="Emissions totals">
+          {{ illu.illu_nav_layers('app-sidebar__icon') }}
+          <span class="app-sidebar__label">Totals tables</span>
+        </a>
+        <a href="{{ url_for('analytics_share_analysis') }}" class="app-sidebar__link app-sidebar__link--sub {% if ep == 'analytics_share_analysis' %}is-active{% endif %}" {% if ep == 'analytics_share_analysis' %}aria-current="page"{% endif %} title="Share analysis">
+          {{ illu.illu_nav_chart_pie('app-sidebar__icon') }}
+          <span class="app-sidebar__label">Share analysis</span>
+        </a>
+      </div>
+
+      <div class="app-sidebar__group">
+        <span class="app-sidebar__group-label"><span class="app-sidebar__group-label-text">Governance</span></span>
+        <a href="{{ url_for('governance_double_counting_check') }}" class="app-sidebar__link app-sidebar__link--sub {% if ep == 'governance_double_counting_check' %}is-active{% endif %}" {% if ep == 'governance_double_counting_check' %}aria-current="page"{% endif %} title="Double counting check">
+          {{ illu.illu_nav_file('app-sidebar__icon') }}
+          <span class="app-sidebar__label">Double counting check</span>
+        </a>
+        <a href="{{ url_for('governance_audit_ready_output') }}" class="app-sidebar__link app-sidebar__link--sub {% if ep == 'governance_audit_ready_output' %}is-active{% endif %}" {% if ep == 'governance_audit_ready_output' %}aria-current="page"{% endif %} title="Audit ready output">
+          {{ illu.illu_nav_id('app-sidebar__icon') }}
+          <span class="app-sidebar__label">Audit ready output</span>
+        </a>
+      </div>
+
+      <div class="app-sidebar__group">
         <span class="app-sidebar__group-label"><span class="app-sidebar__group-label-text">ESG</span></span>
         <a href="{{ url_for('csrd') }}" class="app-sidebar__link app-sidebar__link--sub {% if ep in ('csrd', 'csrd_policies') %}is-active{% endif %}" {% if ep in ('csrd', 'csrd_policies') %}aria-current="page"{% endif %} title="CSRD">
           {{ illu.illu_nav_file('app-sidebar__icon') }}
@@ -72,6 +126,10 @@
           <span class="app-sidebar__label">Users</span>
         </a>
         {% endif %}
+        <a href="{{ url_for('owner_analytics') }}" class="app-sidebar__link app-sidebar__link--sub {% if ep == 'owner_analytics' %}is-active{% endif %}" {% if ep == 'owner_analytics' %}aria-current="page"{% endif %} title="Owner Analytics">
+          {{ illu.illu_nav_chart_pie('app-sidebar__icon') }}
+          <span class="app-sidebar__label">Owner Analytics</span>
+        </a>
         <a href="{{ url_for('admin') }}" class="app-sidebar__link app-sidebar__link--sub {% if ep == 'admin' %}is-active{% endif %}" {% if ep == 'admin' %}aria-current="page"{% endif %} title="Companies">
           {{ illu.illu_nav_data('app-sidebar__icon') }}
           <span class="app-sidebar__label">Companies</span>
@@ -80,13 +138,33 @@
           {{ illu.illu_nav_sliders('app-sidebar__icon') }}
           <span class="app-sidebar__label">Emission Factors</span>
         </a>
+        <a href="{{ url_for('admin_report') }}" class="app-sidebar__link app-sidebar__link--sub {% if ep == 'admin_report' %}is-active{% endif %}" {% if ep == 'admin_report' %}aria-current="page"{% endif %} title="Admin Report">
+          {{ illu.illu_nav_data('app-sidebar__icon') }}
+          <span class="app-sidebar__label">Admin Report</span>
+        </a>
       </div>
       {% endif %}
 
-      <a href="{{ url_for('profile_page') }}" class="app-sidebar__link {% if ep == 'profile_page' %}is-active{% endif %}" {% if ep == 'profile_page' %}aria-current="page"{% endif %} title="Settings">
-        {{ illu.illu_nav_cog('app-sidebar__icon') }}
-        <span class="app-sidebar__label">Settings</span>
-      </a>
+      <div class="app-sidebar__group">
+        <span class="app-sidebar__group-label"><span class="app-sidebar__group-label-text">Settings</span></span>
+        <a href="{{ url_for('profile_page') }}" class="app-sidebar__link app-sidebar__link--sub {% if ep == 'profile_page' %}is-active{% endif %}" {% if ep == 'profile_page' %}aria-current="page"{% endif %} title="Profile">
+          {{ illu.illu_nav_cog('app-sidebar__icon') }}
+          <span class="app-sidebar__label">Profile</span>
+        </a>
+        <div class="app-sidebar__utility" title="Appearance">
+          <span class="app-sidebar__utility-icon">{{ illu.illu_nav_cog('app-sidebar__icon') }}</span>
+          <div class="app-sidebar__utility-copy">
+            <span class="app-sidebar__label">Appearance</span>
+            <div class="theme-toggle theme-toggle--compact">
+              <label class="theme-toggle__switch" for="darkModeToggle">
+                <input type="checkbox" id="darkModeToggle" aria-label="Toggle dark mode">
+                <span class="theme-toggle__slider"></span>
+              </label>
+              <span class="theme-toggle__label">Dark mode</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </nav>
   </div>
 </aside>

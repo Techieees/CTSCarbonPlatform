@@ -1,0 +1,35 @@
+{
+  "common_purchases": {
+    "suppliers": [],
+    "keywords": [
+      "material",
+      "equipment",
+      "hardware",
+      "product",
+      "parts"
+    ]
+  },
+  "services_spend": {
+    "suppliers": [],
+    "keywords": [
+      "service",
+      "consulting",
+      "subscription",
+      "maintenance",
+      "software"
+    ]
+  },
+  "waste_review": {
+    "suppliers": [],
+    "keywords": [
+      "waste",
+      "recycling",
+      "recycle",
+      "scrap",
+      "landfill",
+      "disposal",
+      "hazardous",
+      "skip"
+    ]
+  }
+}

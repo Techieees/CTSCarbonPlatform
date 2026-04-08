@@ -1,0 +1,113 @@
+.emissions-map-page__hero,
+.emissions-map-page__stat,
+.emissions-map-page__card,
+.emissions-map-page__empty {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.emissions-map-page__hero {
+  padding: 24px;
+}
+
+.emissions-map-page__eyebrow {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--primary);
+  margin-bottom: 8px;
+}
+
+.emissions-map-page__title {
+  margin: 0;
+  font-size: clamp(1.8rem, 2.6vw, 2.5rem);
+  letter-spacing: -0.03em;
+}
+
+.emissions-map-page__lead,
+.emissions-map-page__card-meta {
+  color: var(--muted);
+}
+
+.emissions-map-page__meta {
+  min-width: 220px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+}
+
+.emissions-map-page__stat {
+  height: 100%;
+  padding: 18px 20px;
+}
+
+.emissions-map-page__stat-label {
+  display: block;
+  font-size: 0.82rem;
+  color: var(--muted-2);
+  margin-bottom: 6px;
+}
+
+.emissions-map-page__stat-value {
+  font-size: 1.08rem;
+  color: var(--ink);
+}
+
+.emissions-map-page__card {
+  overflow: hidden;
+}
+
+.emissions-map-page__card-header {
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.emissions-map-page__card-title {
+  margin: 0;
+  font-size: 1.08rem;
+}
+
+.emissions-map-page__chart {
+  width: 100%;
+  height: 560px;
+}
+
+.emissions-map-page__table {
+  color: var(--ink);
+}
+
+.emissions-map-page__table thead th {
+  background: var(--table-head-bg);
+  color: var(--muted-2);
+  font-size: 0.82rem;
+}
+
+.emissions-map-page__table td,
+.emissions-map-page__table th {
+  padding: 0.85rem 1rem;
+  vertical-align: middle;
+}
+
+.emissions-map-page__table tbody tr:hover > * {
+  background: var(--table-row-hover);
+}
+
+.emissions-map-page__empty {
+  padding: 28px 24px;
+  text-align: center;
+}
+
+body.dark-mode .emissions-map-page__hero,
+body.dark-mode .emissions-map-page__stat,
+body.dark-mode .emissions-map-page__card,
+body.dark-mode .emissions-map-page__empty {
+  background: var(--surface-strong);
+}
+
+body.dark-mode .emissions-map-page__meta {
+  background: rgba(255, 255, 255, 0.03);
+}

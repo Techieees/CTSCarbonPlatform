@@ -1,6 +1,7 @@
 import warnings
+import importlib.util
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file, send_from_directory, Response
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file, send_from_directory, Response, session, abort, g
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -18,15 +19,20 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 import hashlib
 import json
-from collections import defaultdict
+from collections import defaultdict, Counter
 import csv
 from io import BytesIO
 import re
 import time
 import math
+import calendar
+import ipaddress
 import secrets
 import smtplib
 import ssl
+from functools import lru_cache
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 from email.message import EmailMessage
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -34,6 +40,12 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from config import (
+    CCC_API_BASE_URL,
+    CCC_GET_ENDPOINTS_PATH,
+    CCC_API_PAGE_SIZE,
+    CCC_PASSWORD,
+    CCC_SHEET_MAPPING_PATH,
+    CCC_USERNAME,
     FRONTEND_DB_PATH,
     FRONTEND_INSTANCE_DIR,
     FRONTEND_UPLOAD_DIR,
@@ -62,6 +74,7 @@ from preprocess_jobs import (
     run_travel_preprocess,
     validate_travel_upload,
 )
+from services import messaging_service, notification_service, search_service
 
 APP_DIR = Path(__file__).resolve().parent
 INSTANCE_DIR = FRONTEND_INSTANCE_DIR
@@ -209,6 +222,8 @@ def _load_iso_countries() -> list[tuple[str, str]]:
 
 
 ISO_COUNTRIES = _load_iso_countries()
+ISO_COUNTRY_NAME_BY_CODE = {code: name for code, name in ISO_COUNTRIES}
+ISO_COUNTRY_CODE_BY_NAME = {name.casefold(): code for code, name in ISO_COUNTRIES}
 
 
 def _normalize_template_key(value: str) -> str:
@@ -415,6 +430,29 @@ def _require_complete_profile_for_app():
     return redirect(url_for("profile_setup"))
 
 
+@app.before_request
+def _ensure_activity_session_for_authenticated_user():
+    if current_user.is_authenticated:
+        _activity_session_id(create_if_missing=True)
+
+
+@app.after_request
+def _log_authenticated_activity(response: Response):
+    try:
+        if not current_user.is_authenticated:
+            return response
+        if request.method.upper() == "OPTIONS":
+            return response
+        if _is_static_or_ignored_activity_path(request.path):
+            return response
+        if request.environ.get("skip_activity_log"):
+            return response
+        _write_activity_log_for_user(current_user, action=_classify_activity_action())
+    except Exception:
+        pass
+    return response
+
+
 @app.context_processor
 def _nav_profile_context():
     def nav_profile_photo_url() -> str | None:
@@ -495,6 +533,54 @@ def _user_public_dict_for_admin(u: "User") -> dict:
         "role_display": raw_role,
         "profile_photo_url": photo,
         "created_at": u.created_at.strftime("%Y-%m-%d") if getattr(u, "created_at", None) else None,
+    }
+
+
+def _user_display_name(u: "User" | None) -> str:
+    if u is None:
+        return ""
+    first = (getattr(u, "first_name", None) or "").strip()
+    last = (getattr(u, "last_name", None) or "").strip()
+    full = " ".join(part for part in (first, last) if part).strip()
+    return full or (getattr(u, "email", None) or "").strip() or f"User {getattr(u, 'id', '')}"
+
+
+def _notification_payload(row: "Notification") -> dict[str, object]:
+    created_at = row.created_at.strftime("%Y-%m-%d %H:%M") if getattr(row, "created_at", None) else ""
+    return {
+        "id": int(row.id),
+        "title": row.title,
+        "message": row.message,
+        "type": row.type,
+        "link": row.link,
+        "is_read": bool(row.is_read),
+        "created_at": created_at,
+    }
+
+
+def _message_payload(row: "Message", *, viewer_id: int) -> dict[str, object]:
+    sender = User.query.get(int(row.sender_id))
+    receiver = User.query.get(int(row.receiver_id))
+    return {
+        "id": int(row.id),
+        "thread_id": row.thread_id,
+        "sender_id": int(row.sender_id),
+        "receiver_id": int(row.receiver_id),
+        "sender_name": _user_display_name(sender),
+        "receiver_name": _user_display_name(receiver),
+        "message": row.message,
+        "created_at": row.created_at.strftime("%Y-%m-%d %H:%M") if getattr(row, "created_at", None) else "",
+        "is_read": bool(row.is_read),
+        "is_mine": int(row.sender_id) == int(viewer_id),
+    }
+
+
+def _contact_payload(u: "User") -> dict[str, object]:
+    return {
+        "id": int(u.id),
+        "name": _user_display_name(u),
+        "email": u.email,
+        "company_name": (getattr(u, "company_name", None) or "").strip(),
     }
 
 
@@ -598,6 +684,50 @@ class CsrdPolicy(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class Notification(db.Model):
+    __tablename__ = "notifications"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    title = db.Column(db.String(255), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    type = db.Column(db.String(50), nullable=False, default="info")
+    link = db.Column(db.String(500), nullable=True)
+    is_read = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+
+class Message(db.Model):
+    __tablename__ = "messages"
+    id = db.Column(db.Integer, primary_key=True)
+    thread_id = db.Column(db.String(64), nullable=False, index=True)
+    sender_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    receiver_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    message = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    is_read = db.Column(db.Boolean, nullable=False, default=False, index=True)
+
+
+class UserActivityLog(db.Model):
+    __tablename__ = "user_activity_logs"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    company_name = db.Column(db.String(200), nullable=True, index=True)
+    email = db.Column(db.String(120), nullable=True, index=True)
+    action = db.Column(db.String(80), nullable=False, index=True)
+    page = db.Column(db.String(500), nullable=True)
+    endpoint = db.Column(db.String(120), nullable=True, index=True)
+    method = db.Column(db.String(16), nullable=True)
+    ip_address = db.Column(db.String(80), nullable=True, index=True)
+    country = db.Column(db.String(120), nullable=True, index=True)
+    city = db.Column(db.String(120), nullable=True, index=True)
+    device = db.Column(db.String(80), nullable=True, index=True)
+    browser = db.Column(db.String(80), nullable=True, index=True)
+    os = db.Column(db.String(80), nullable=True, index=True)
+    referrer = db.Column(db.String(500), nullable=True)
+    session_id = db.Column(db.String(64), nullable=True, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+
 def _csrd_policy_upload_dir() -> Path:
     d = FRONTEND_UPLOAD_DIR / "csrd_policies"
     d.mkdir(parents=True, exist_ok=True)
@@ -621,6 +751,424 @@ def _ensure_db_tables() -> None:
         _ensure_user_profile_columns()
     except Exception:
         pass
+
+
+def _is_static_or_ignored_activity_path(path: str | None) -> bool:
+    raw = str(path or "")
+    return (
+        not raw
+        or raw.startswith("/static/")
+        or raw.startswith("/assets/")
+        or raw.startswith("/favicon")
+    )
+
+
+def _client_ip_address() -> str:
+    forwarded = str(request.headers.get("X-Forwarded-For", "") or "").strip()
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return str(request.remote_addr or "").strip() or "Unknown"
+
+
+def _normalize_referrer(value: str | None) -> str | None:
+    ref = str(value or "").strip()
+    return ref[:500] if ref else None
+
+
+def _normalize_page_path() -> str:
+    path = str(request.path or "").strip() or "/"
+    query_string = str(request.query_string.decode("utf-8", errors="ignore") if request.query_string else "").strip()
+    if request.endpoint == "search_page" and query_string:
+        return f"{path}?{query_string}"[:500]
+    return path[:500]
+
+
+def _activity_session_id(create_if_missing: bool = True) -> str | None:
+    sid = str(session.get("activity_session_id", "") or "").strip()
+    if sid or not create_if_missing:
+        return sid or None
+    sid = uuid.uuid4().hex
+    session["activity_session_id"] = sid
+    return sid
+
+
+def _parse_user_agent(user_agent: str | None) -> tuple[str, str, str]:
+    ua = str(user_agent or "").lower()
+    if not ua:
+        return ("Unknown", "Unknown", "Unknown")
+
+    if "bot" in ua or "spider" in ua or "crawl" in ua:
+        device = "Bot"
+    elif "tablet" in ua or "ipad" in ua:
+        device = "Tablet"
+    elif "mobile" in ua or "iphone" in ua or "android" in ua:
+        device = "Mobile"
+    else:
+        device = "Desktop"
+
+    if "edg/" in ua:
+        browser = "Edge"
+    elif "opr/" in ua or "opera" in ua:
+        browser = "Opera"
+    elif "chrome/" in ua and "edg/" not in ua:
+        browser = "Chrome"
+    elif "safari/" in ua and "chrome/" not in ua:
+        browser = "Safari"
+    elif "firefox/" in ua:
+        browser = "Firefox"
+    elif "msie" in ua or "trident/" in ua:
+        browser = "Internet Explorer"
+    else:
+        browser = "Other"
+
+    if "windows" in ua:
+        os_name = "Windows"
+    elif "mac os" in ua or "macintosh" in ua:
+        os_name = "macOS"
+    elif "android" in ua:
+        os_name = "Android"
+    elif "iphone" in ua or "ipad" in ua or "ios" in ua:
+        os_name = "iOS"
+    elif "linux" in ua:
+        os_name = "Linux"
+    else:
+        os_name = "Other"
+    return (device, browser, os_name)
+
+
+@lru_cache(maxsize=512)
+def _geo_lookup_for_ip(ip_address_raw: str) -> tuple[str, str]:
+    ip = str(ip_address_raw or "").strip()
+    if not ip:
+        return ("Unknown", "Unknown")
+    try:
+        addr = ipaddress.ip_address(ip)
+        if addr.is_private or addr.is_loopback or addr.is_reserved or addr.is_multicast:
+            return ("Local", "Local")
+    except ValueError:
+        return ("Unknown", "Unknown")
+
+    url = f"https://ipapi.co/{ip}/json/"
+    try:
+        with urllib_request.urlopen(url, timeout=0.6) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        country = str(payload.get("country_name") or payload.get("country") or "Unknown").strip() or "Unknown"
+        city = str(payload.get("city") or "Unknown").strip() or "Unknown"
+        return (country, city)
+    except (urllib_error.URLError, TimeoutError, json.JSONDecodeError, OSError, ValueError):
+        return ("Unknown", "Unknown")
+
+
+def _classify_activity_action() -> str:
+    endpoint = str(request.endpoint or "").strip()
+    path = str(request.path or "").strip().lower()
+    method = str(request.method or "GET").upper()
+
+    if endpoint == "search_page":
+        return "search_usage"
+    if endpoint == "api_mapping_run":
+        return "mapping_run"
+    if endpoint == "data_sources_ccc_api" and method == "POST":
+        return "ccc_api_sync"
+    if endpoint == "analytics_forecasting" and method == "POST":
+        return "forecasting_run"
+    if endpoint == "analytics_decarbonization" and method == "POST":
+        return "decarbonization_run"
+    if endpoint == "governance_audit_ready_output" and method == "POST":
+        return "audit_dataset_generation"
+    if endpoint == "analytics_mapped_window_output" and method == "POST":
+        return "mapped_window_generation"
+    if endpoint == "analytics_emissions_totals" and method == "POST":
+        return "totals_generation"
+    if endpoint == "analytics_share_analysis" and method == "POST":
+        return "share_analysis_generation"
+    if endpoint == "governance_double_counting_check" and method == "POST":
+        return "double_counting_generation"
+    if "upload" in path or endpoint in {"admin", "dashboard"} and method == "POST":
+        return "data_upload"
+    if path.startswith("/api/"):
+        return "api_request"
+    return "page_visit"
+
+
+def _activity_log_payload_for_user(user: "User", *, action: str) -> dict[str, object]:
+    ip_address = _client_ip_address()
+    country, city = _geo_lookup_for_ip(ip_address)
+    device, browser, os_name = _parse_user_agent(request.headers.get("User-Agent"))
+    return {
+        "user_id": int(getattr(user, "id", 0) or 0) or None,
+        "company_name": (getattr(user, "company_name", None) or "").strip() or None,
+        "email": (getattr(user, "email", None) or "").strip() or None,
+        "action": action,
+        "page": _normalize_page_path(),
+        "endpoint": str(request.endpoint or "").strip() or None,
+        "method": str(request.method or "").upper() or None,
+        "ip_address": ip_address,
+        "country": country or "Unknown",
+        "city": city or "Unknown",
+        "device": device or "Unknown",
+        "browser": browser or "Unknown",
+        "os": os_name or "Unknown",
+        "referrer": _normalize_referrer(request.referrer),
+        "session_id": _activity_session_id(create_if_missing=True),
+        "created_at": datetime.utcnow(),
+    }
+
+
+def _write_activity_log_for_user(user: "User", *, action: str) -> None:
+    if user is None or not getattr(user, "id", None):
+        return
+    try:
+        payload = _activity_log_payload_for_user(user, action=action)
+        with db.engine.begin() as conn:
+            conn.execute(UserActivityLog.__table__.insert().values(**payload))
+    except Exception:
+        pass
+
+
+def _extract_dataset_name(path_or_ref: str | None) -> str | None:
+    raw = str(path_or_ref or "").strip()
+    if not raw:
+        return None
+    cleaned = raw.split("?", 1)[0].rstrip("/")
+    name = Path(cleaned).name
+    if any(name.lower().endswith(ext) for ext in (".xlsx", ".xls", ".csv", ".json", ".pdf", ".xlsb")):
+        return name
+    return None
+
+
+def _owner_analytics_context() -> dict[str, object]:
+    now = datetime.utcnow()
+    logs = UserActivityLog.query.order_by(UserActivityLog.created_at.asc()).all()
+    total_users = int(User.query.count())
+    if not logs:
+        empty_metrics = {
+            "total_users": total_users,
+            "active_users_24h": 0,
+            "active_users_7d": 0,
+            "total_logins": 0,
+            "total_page_views": 0,
+            "ccc_api_usage_count": 0,
+            "mapping_runs_count": 0,
+            "forecast_runs_count": 0,
+            "audit_dataset_runs": 0,
+            "avg_session_duration_minutes": 0.0,
+            "feature_adoption_rate": 0.0,
+            "top_company_engagement_score": 0.0,
+            "most_used_dataset": "None yet",
+            "most_visited_pages": [],
+            "most_active_companies": [],
+            "top_countries": [],
+            "top_browsers": [],
+            "top_devices": [],
+            "most_active_hours": [],
+            "feature_usage_frequency": [],
+            "dataset_usage_frequency": [],
+            "company_engagement": [],
+        }
+        return {"metrics": empty_metrics, "chart_data": empty_metrics, "activity_rows": 0}
+
+    rows: list[dict[str, object]] = []
+    for row in logs:
+        rows.append(
+            {
+                "user_id": row.user_id,
+                "company_name": row.company_name or "Unknown",
+                "email": row.email or "",
+                "action": row.action or "",
+                "page": row.page or "",
+                "endpoint": row.endpoint or "",
+                "method": row.method or "",
+                "country": row.country or "Unknown",
+                "city": row.city or "Unknown",
+                "device": row.device or "Unknown",
+                "browser": row.browser or "Unknown",
+                "os": row.os or "Unknown",
+                "referrer": row.referrer or "",
+                "session_id": row.session_id or "",
+                "created_at": row.created_at or now,
+                "dataset_name": _extract_dataset_name(row.page) or _extract_dataset_name(row.referrer) or "",
+            }
+        )
+    frame = pd.DataFrame(rows)
+    frame["created_at"] = pd.to_datetime(frame["created_at"])
+    frame["date"] = frame["created_at"].dt.strftime("%Y-%m-%d")
+    frame["hour"] = frame["created_at"].dt.hour
+
+    last_24h = frame[frame["created_at"] >= (now - timedelta(hours=24))]
+    last_7d = frame[frame["created_at"] >= (now - timedelta(days=7))]
+    active_users_24h = int(last_24h["user_id"].dropna().nunique())
+    active_users_7d = int(last_7d["user_id"].dropna().nunique())
+
+    def _top_pairs(series: pd.Series, *, limit: int = 8, exclude_unknown: bool = False) -> list[dict[str, object]]:
+        cleaned = series.fillna("").astype(str).str.strip()
+        if exclude_unknown:
+            cleaned = cleaned[~cleaned.isin(["", "Unknown"])]
+        else:
+            cleaned = cleaned[cleaned != ""]
+        return [{"name": str(idx), "value": int(val)} for idx, val in cleaned.value_counts().head(limit).items()]
+
+    total_logins = int((frame["action"] == "login").sum())
+    total_page_views = int(frame["action"].isin(["page_visit", "search_usage"]).sum())
+    ccc_api_usage_count = int((frame["action"] == "ccc_api_sync").sum())
+    mapping_runs_count = int((frame["action"] == "mapping_run").sum())
+    forecast_runs_count = int((frame["action"] == "forecasting_run").sum())
+    audit_dataset_runs = int((frame["action"] == "audit_dataset_generation").sum())
+
+    session_frame = frame[frame["session_id"].astype(str).str.strip() != ""].copy()
+    session_durations: list[float] = []
+    if not session_frame.empty:
+        grouped_sessions = session_frame.groupby("session_id")["created_at"].agg(["min", "max"])
+        session_durations = [
+            max(0.0, float((row["max"] - row["min"]).total_seconds() / 60.0))
+            for _, row in grouped_sessions.iterrows()
+        ]
+    avg_session_duration_minutes = round(sum(session_durations) / len(session_durations), 1) if session_durations else 0.0
+
+    feature_user_sets = {
+        "mapping": set(frame.loc[frame["action"] == "mapping_run", "user_id"].dropna().astype(int).tolist()),
+        "ccc_api": set(frame.loc[frame["action"] == "ccc_api_sync", "user_id"].dropna().astype(int).tolist()),
+        "forecasting": set(frame.loc[frame["action"] == "forecasting_run", "user_id"].dropna().astype(int).tolist()),
+        "audit_export": set(frame.loc[frame["action"] == "audit_dataset_generation", "user_id"].dropna().astype(int).tolist()),
+        "search": set(frame.loc[frame["action"] == "search_usage", "user_id"].dropna().astype(int).tolist()),
+    }
+    feature_adoption = [
+        {
+            "name": key.replace("_", " ").title(),
+            "value": round((len(user_ids) / total_users) * 100.0, 1) if total_users else 0.0,
+        }
+        for key, user_ids in feature_user_sets.items()
+    ]
+    feature_adoption_rate = round(sum(item["value"] for item in feature_adoption) / len(feature_adoption), 1) if feature_adoption else 0.0
+
+    upload_actions = {"data_upload"}
+    company_engagement: list[dict[str, object]] = []
+    for company_name, group in frame.groupby("company_name"):
+        company_sessions = [sid for sid in group["session_id"].astype(str).tolist() if sid]
+        session_minutes = 0.0
+        if company_sessions:
+            company_session_frame = session_frame[session_frame["session_id"].isin(company_sessions)]
+            if not company_session_frame.empty:
+                local_group = company_session_frame.groupby("session_id")["created_at"].agg(["min", "max"])
+                local_minutes = [
+                    max(0.0, float((row["max"] - row["min"]).total_seconds() / 60.0))
+                    for _, row in local_group.iterrows()
+                ]
+                session_minutes = sum(local_minutes) / len(local_minutes) if local_minutes else 0.0
+        score = (
+            int((group["action"] == "login").sum()) * 3
+            + int(group["action"].isin(upload_actions).sum()) * 4
+            + int((group["action"] == "mapping_run").sum()) * 5
+            + int((group["action"] == "ccc_api_sync").sum()) * 4
+            + float(session_minutes)
+            + int(group["user_id"].dropna().nunique()) * 6
+        )
+        company_engagement.append(
+            {
+                "name": company_name,
+                "value": round(score, 1),
+            }
+        )
+    company_engagement.sort(key=lambda item: float(item["value"]), reverse=True)
+    top_company_engagement_score = float(company_engagement[0]["value"]) if company_engagement else 0.0
+
+    dataset_usage_frequency = _top_pairs(frame["dataset_name"], limit=8, exclude_unknown=True)
+    most_used_dataset = dataset_usage_frequency[0]["name"] if dataset_usage_frequency else "None yet"
+
+    feature_usage_counter = Counter(
+        {
+            "Login": total_logins,
+            "Search": int((frame["action"] == "search_usage").sum()),
+            "Mapping": mapping_runs_count,
+            "CCC API": ccc_api_usage_count,
+            "Forecasting": forecast_runs_count,
+            "Audit Export": audit_dataset_runs,
+            "Page Views": total_page_views,
+        }
+    )
+    feature_usage_frequency = [{"name": name, "value": int(value)} for name, value in feature_usage_counter.items()]
+
+    most_visited_pages = _top_pairs(frame["page"], limit=8)
+    most_active_companies = _top_pairs(frame["company_name"], limit=8, exclude_unknown=True)
+    top_countries = _top_pairs(frame["country"], limit=8, exclude_unknown=True)
+    top_browsers = _top_pairs(frame["browser"], limit=8, exclude_unknown=True)
+    top_devices = _top_pairs(frame["device"], limit=8, exclude_unknown=True)
+    most_active_hours = [{"name": f"{int(idx):02d}:00", "value": int(val)} for idx, val in frame["hour"].value_counts().sort_index().items()]
+
+    daily_active_users = (
+        frame.groupby("date")["user_id"].nunique().sort_index()
+    )
+    session_duration_distribution = [
+        {"name": "0-5 min", "value": sum(1 for value in session_durations if value <= 5)},
+        {"name": "5-15 min", "value": sum(1 for value in session_durations if 5 < value <= 15)},
+        {"name": "15-30 min", "value": sum(1 for value in session_durations if 15 < value <= 30)},
+        {"name": "30-60 min", "value": sum(1 for value in session_durations if 30 < value <= 60)},
+        {"name": "60+ min", "value": sum(1 for value in session_durations if value > 60)},
+    ]
+
+    metrics = {
+        "total_users": total_users,
+        "active_users_24h": active_users_24h,
+        "active_users_7d": active_users_7d,
+        "total_logins": total_logins,
+        "total_page_views": total_page_views,
+        "ccc_api_usage_count": ccc_api_usage_count,
+        "mapping_runs_count": mapping_runs_count,
+        "forecast_runs_count": forecast_runs_count,
+        "audit_dataset_runs": audit_dataset_runs,
+        "avg_session_duration_minutes": avg_session_duration_minutes,
+        "feature_adoption_rate": feature_adoption_rate,
+        "top_company_engagement_score": top_company_engagement_score,
+        "most_used_dataset": most_used_dataset,
+        "most_visited_pages": most_visited_pages,
+        "most_active_companies": most_active_companies,
+        "top_countries": top_countries,
+        "top_browsers": top_browsers,
+        "top_devices": top_devices,
+        "most_active_hours": most_active_hours,
+        "feature_usage_frequency": feature_usage_frequency,
+        "dataset_usage_frequency": dataset_usage_frequency,
+        "company_engagement": company_engagement[:8],
+    }
+    chart_data = {
+        "daily_active_users": [{"name": str(idx), "value": int(val)} for idx, val in daily_active_users.items()],
+        "activity_by_hour": most_active_hours,
+        "top_pages": most_visited_pages,
+        "country_distribution": top_countries,
+        "browser_distribution": top_browsers,
+        "company_distribution": most_active_companies,
+        "feature_usage": feature_usage_frequency,
+        "dataset_usage": dataset_usage_frequency,
+        "session_duration_distribution": session_duration_distribution,
+    }
+    return {
+        "metrics": metrics,
+        "chart_data": chart_data,
+        "activity_rows": int(len(frame.index)),
+    }
+
+
+def _create_user_notification(
+    user_id: int,
+    *,
+    title: str,
+    message: str,
+    notification_type: str = "info",
+    link: str | None = None,
+) -> None:
+    try:
+        notification_service.create_notification(
+            db.session,
+            Notification,
+            user_id=int(user_id),
+            title=title,
+            message=message,
+            notification_type=notification_type,
+            link=link,
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 
 def _user_profile_complete(u: object) -> bool:
@@ -3252,6 +3800,9 @@ def login():
         user = User.query.filter(db.func.lower(User.email) == email).first()
         if user and check_password_hash(user.password_hash, password):
             login_user(user)
+            session["activity_session_id"] = uuid.uuid4().hex
+            request.environ["skip_activity_log"] = True
+            _write_activity_log_for_user(user, action="login")
             if not _user_profile_complete(user):
                 return redirect(url_for('profile_setup'))
             return redirect(url_for('dashboard'))
@@ -4041,6 +4592,14 @@ def api_mapping_run():
     except Exception:
         pass
 
+    _create_user_notification(
+        current_user.id,
+        title="Mapping run completed",
+        message=f"{resolved_company} / {resolved_sheet} mapping finished successfully.",
+        notification_type="success",
+        link=url_for("home"),
+    )
+
     preview = mapped_df.head(40).fillna("").to_dict(orient="records")
     resp: dict[str, object] = {
         "ok": True,
@@ -4106,6 +4665,831 @@ def _find_latest_merged_mapping_workbook() -> Path | None:
         return None
     candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     return candidates[0]
+
+
+def _find_latest_stage2_output(*patterns: str) -> Path | None:
+    candidates: list[Path] = []
+    for pattern in patterns:
+        candidates.extend(STAGE2_OUTPUT_DIR.rglob(pattern))
+    files = [p for p in candidates if p.is_file() and not p.name.startswith("~$")]
+    if not files:
+        return None
+    deduped = list({str(p.resolve()): p for p in files}.values())
+    deduped.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return deduped[0]
+
+
+def _load_stage2_module(module_basename: str):
+    module_path = STAGE2_MAPPING_DIR / f"{module_basename}.py"
+    module_name = f"ui_stage2_{module_basename}_{uuid.uuid4().hex}"
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load module: {module_path.name}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_stage1_api_source_module(module_basename: str):
+    module_path = PROJECT_ROOT / "engine" / "stage1_preprocess" / "api_sources" / f"{module_basename}.py"
+    module_name = f"ui_stage1_api_{module_basename}_{uuid.uuid4().hex}"
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load module: {module_path.name}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _format_output_preview_value(value: object) -> str:
+    try:
+        if pd.isna(value):
+            return ""
+    except Exception:
+        pass
+    if isinstance(value, (pd.Timestamp, datetime)):
+        return value.strftime("%Y-%m-%d")
+    if isinstance(value, float):
+        if math.isfinite(value):
+            if value.is_integer():
+                return f"{value:,.0f}"
+            return f"{value:,.4f}".rstrip("0").rstrip(".")
+        return ""
+    return str(value)
+
+
+def _dataframe_preview_payload(sheet_name: str, df: pd.DataFrame, limit: int = 20) -> dict[str, object]:
+    preview = df.head(limit).copy()
+    columns = [str(c) for c in preview.columns]
+    rows: list[list[str]] = []
+    for ridx in range(len(preview.index)):
+        rows.append([
+            _format_output_preview_value(preview.iloc[ridx, cidx])
+            for cidx in range(len(columns))
+        ])
+    return {
+        "name": sheet_name,
+        "columns": columns,
+        "rows": rows,
+        "row_count": int(len(df.index)),
+        "column_count": int(len(df.columns)),
+        "truncated": bool(len(df.index) > limit),
+    }
+
+
+ANALYTICS_OUTPUT_VIEWS: dict[str, dict[str, object]] = {
+    "forecasting": {
+        "title": "Forecasting",
+        "group": "Analytics",
+        "summary": "Run the existing forecasting script on demand and preview the newly generated workbook.",
+        "preferred_sheets": ("Forecast_Total", "Forecast_Company", "Forecast_Sheet", "Backtest", "Meta"),
+        "empty_message": "No forecasting workbook has been generated from the UI in this environment yet.",
+    },
+    "decarbonization": {
+        "title": "Decarbonization",
+        "group": "Analytics",
+        "summary": "Run the existing decarbonization scripts with UI-supplied parameters and preview the fresh scenario output.",
+        "preferred_sheets": ("Yearly", "Monthly", "Delta_vs_BAU", "Meta"),
+        "empty_message": "No decarbonization workbook has been generated from the UI in this environment yet.",
+    },
+    "ccc_api_source": {
+        "title": "CCC API",
+        "group": "Data Sources",
+        "summary": "Test the CCC connection and ingest any configured GET endpoint into stage1-compatible workbook outputs without changing pipeline calculations.",
+        "preferred_sheets": ("CCC Purchase Orders Raw", "Scope 3 Cat 1 Common Purchases", "Scope 3 Cat 1 Services Spend", "CCC Waste Suppliers Review"),
+        "empty_message": "No CCC API workbook has been generated from the UI in this environment yet.",
+    },
+    "mapped_window_output": {
+        "title": "Mapped Window Output",
+        "group": "Data Outputs",
+        "summary": "Generate a fresh auditor-style mapped window workbook for a selected reporting period using the existing stage2 filter step.",
+        "preferred_sheets": ("Company Totals Window", "Company by GHGP Totals Window", "GHGP sheet Totals Window", "Company Stacked Months Window"),
+        "empty_message": "No mapped window workbook has been generated from the UI in this environment yet.",
+    },
+    "emissions_totals": {
+        "title": "Totals Tables",
+        "group": "Data Outputs",
+        "summary": "Generate fresh totals tables on demand using the existing window workbook and totals-table script.",
+        "preferred_sheets": ("Company Totals Window", "Company by GHGP Totals Window", "GHGP sheet Totals Window"),
+        "empty_message": "No totals workbook has been generated from the UI in this environment yet.",
+    },
+    "share_analysis": {
+        "title": "Share Analysis",
+        "group": "Data Outputs",
+        "summary": "Generate fresh share-analysis tables using the existing totals-table stage and preview the resulting workbook.",
+        "preferred_sheets": ("Company Totals Window", "Company by GHGP Totals Window", "Company Stacked Data Window", "Company Stacked Months Window"),
+        "empty_message": "No share-analysis workbook has been generated from the UI in this environment yet.",
+    },
+    "double_counting_check": {
+        "title": "Double Counting Check",
+        "group": "Governance",
+        "summary": "Generate a fresh double-counting report using the existing stage2 review script.",
+        "preferred_sheets": ("DC Log", "Anomalies"),
+        "empty_message": "No double-counting workbook has been generated from the UI in this environment yet.",
+    },
+    "audit_ready_output": {
+        "title": "Audit Ready Dataset",
+        "group": "Governance",
+        "summary": "Generate a fresh mapped window dataset for external audit review using the existing filtering step only.",
+        "preferred_sheets": ("Company Totals Window", "Company by GHGP Totals Window", "GHGP sheet Totals Window", "Company Stacked Months Window"),
+        "empty_message": "No audit-ready dataset has been generated from the UI in this environment yet.",
+    },
+}
+
+ANALYTICS_RUN_LOG_CONFIG: dict[str, dict[str, object]] = {
+    "forecasting": {
+        "path": APP_DIR / "run_logs" / "forecasting_runs.json",
+        "types": {"forecasting"},
+    },
+    "decarbonization": {
+        "path": APP_DIR / "run_logs" / "decarbonization_runs.json",
+        "types": {"decarbonization"},
+    },
+    "ccc_api_source": {
+        "path": APP_DIR / "run_logs" / "ccc_api_sync.json",
+        "types": {"ccc_api_sync", "ccc_api_test"},
+    },
+    "mapped_window_output": {
+        "path": APP_DIR / "run_logs" / "data_output_runs.json",
+        "types": {"mapped_window"},
+    },
+    "emissions_totals": {
+        "path": APP_DIR / "run_logs" / "data_output_runs.json",
+        "types": {"totals_tables"},
+    },
+    "share_analysis": {
+        "path": APP_DIR / "run_logs" / "data_output_runs.json",
+        "types": {"share_analysis"},
+    },
+    "double_counting_check": {
+        "path": APP_DIR / "run_logs" / "data_output_runs.json",
+        "types": {"double_counting"},
+    },
+    "audit_ready_output": {
+        "path": APP_DIR / "run_logs" / "audit_runs.json",
+        "types": {"audit_output"},
+    },
+}
+
+
+def _analytics_history_download_url(filename: str) -> str | None:
+    safe_name = Path(str(filename or "")).name
+    if not safe_name:
+        return None
+    return url_for("analytics_output_download_file", filename=safe_name)
+
+
+def _analytics_run_log_config(view_key: str) -> dict[str, object] | None:
+    cfg = ANALYTICS_RUN_LOG_CONFIG.get(view_key)
+    if cfg is not None:
+        return cfg
+    return None
+
+
+def _read_run_history(view_key: str, limit: int = 20) -> list[dict[str, object]]:
+    cfg = _analytics_run_log_config(view_key)
+    path = Path(cfg.get("path")) if cfg and cfg.get("path") else None
+    allowed_types = {str(v) for v in (cfg.get("types") or set())} if cfg else set()
+    if path is None or not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    if not isinstance(data, list):
+        return []
+    rows: list[dict[str, object]] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        row = dict(item)
+        row_type = str(row.get("type") or "")
+        if allowed_types and row_type not in allowed_types:
+            continue
+        output_file = str(row.get("output_file") or "")
+        row["download_url"] = _analytics_history_download_url(output_file) if output_file else None
+        rows.append(row)
+    rows.sort(key=lambda item: str(item.get("timestamp") or ""), reverse=True)
+    return rows[:limit]
+
+
+def _append_run_history(view_key: str, payload: dict[str, object]) -> None:
+    cfg = _analytics_run_log_config(view_key)
+    path = Path(cfg.get("path")) if cfg and cfg.get("path") else None
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        existing = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+    except Exception:
+        existing = []
+    rows = existing if isinstance(existing, list) else []
+    clean_rows = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        r = dict(row)
+        r.pop("download_url", None)
+        clean_rows.append(r)
+    clean_rows.insert(0, payload)
+    path.write_text(json.dumps(clean_rows[:100], indent=2), encoding="utf-8")
+
+
+def _latest_run_history_entry(view_key: str, *, statuses: set[str] | None = None, types: set[str] | None = None) -> dict[str, object] | None:
+    rows = _read_run_history(view_key, limit=100)
+    for row in rows:
+        row_status = str(row.get("status") or "")
+        row_type = str(row.get("type") or "")
+        if statuses and row_status not in statuses:
+            continue
+        if types and row_type not in types:
+            continue
+        return row
+    return None
+
+
+def _load_output_sheet_previews(path: Path, preferred_sheets: tuple[str, ...], *, max_rows: int = 20, max_sheets: int = 4) -> tuple[list[str], list[dict[str, object]]]:
+    xls = pd.ExcelFile(path, engine="openpyxl")
+    available_sheets = [str(name) for name in xls.sheet_names]
+    selected: list[str] = []
+    for name in preferred_sheets:
+        if name in available_sheets and name not in selected:
+            selected.append(name)
+    if not selected:
+        selected = available_sheets[:max_sheets]
+    previews: list[dict[str, object]] = []
+    for sheet_name in selected[:max_sheets]:
+        df = pd.read_excel(xls, sheet_name=sheet_name, engine="openpyxl")
+        previews.append(_dataframe_preview_payload(sheet_name, df, limit=max_rows))
+    return available_sheets, previews
+
+
+def _find_output_file_by_name(filename: str) -> Path | None:
+    safe_name = Path(str(filename or "")).name
+    if not safe_name:
+        return None
+    candidates: list[Path] = []
+    for root in (STAGE2_OUTPUT_DIR, STAGE1_INPUT_DIR):
+        candidates.extend([p for p in root.rglob(safe_name) if p.is_file()])
+    if not candidates:
+        return None
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return candidates[0]
+
+
+def _latest_logged_output_path(view_key: str) -> Path | None:
+    history = _read_run_history(view_key, limit=100)
+    for row in history:
+        output_file = str(row.get("output_file") or "")
+        if not output_file:
+            continue
+        path = _find_output_file_by_name(output_file)
+        if path is not None:
+            return path
+    return None
+
+
+def _analytics_output_context_for_path(view_key: str, path: Path | None) -> dict[str, object]:
+    cfg = ANALYTICS_OUTPUT_VIEWS[view_key]
+    preferred_sheets = tuple(str(s) for s in (cfg.get("preferred_sheets") or ()))
+    context: dict[str, object] = {
+        "page_key": view_key,
+        "page_title": str(cfg.get("title") or "Output"),
+        "page_group": str(cfg.get("group") or "Analytics"),
+        "page_summary": str(cfg.get("summary") or ""),
+        "empty_message": str(cfg.get("empty_message") or "No output found."),
+        "output_exists": False,
+        "output_file_name": "",
+        "output_file_mtime": "",
+        "output_sheet_count": 0,
+        "output_sheet_names": [],
+        "sheet_previews": [],
+        "download_url": None,
+        "run_notice": "",
+        "run_error": "",
+        "form_state": {},
+        "companion_outputs": [],
+        "run_history": _read_run_history(view_key),
+    }
+    if path is None:
+        return context
+    try:
+        available_sheets, previews = _load_output_sheet_previews(path, preferred_sheets)
+    except Exception as exc:
+        context["empty_message"] = f"Output file was found but could not be read: {exc}"
+        return context
+    stat = path.stat()
+    context.update(
+        {
+            "output_exists": True,
+            "output_file_name": path.name,
+            "output_file_mtime": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
+            "output_sheet_count": len(available_sheets),
+            "output_sheet_names": available_sheets,
+            "sheet_previews": previews,
+            "download_url": url_for("analytics_output_download", kind=view_key),
+        }
+    )
+    return context
+
+
+def _analytics_output_context(view_key: str) -> dict[str, object]:
+    return _analytics_output_context_for_path(view_key, _latest_logged_output_path(view_key))
+
+
+def _build_companion_output_payload(title: str, path: Path, preferred_sheets: tuple[str, ...]) -> dict[str, object]:
+    available_sheets, previews = _load_output_sheet_previews(path, preferred_sheets)
+    return {
+        "title": title,
+        "file_name": path.name,
+        "updated_at": datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
+        "sheet_count": len(available_sheets),
+        "sheet_names": available_sheets,
+        "sheet_previews": previews,
+    }
+
+
+def _parse_int_form(name: str, default: int, *, minimum: int | None = None, maximum: int | None = None) -> int:
+    raw = str(request.form.get(name, "") or "").strip()
+    try:
+        value = int(raw)
+    except Exception:
+        value = default
+    if minimum is not None:
+        value = max(minimum, value)
+    if maximum is not None:
+        value = min(maximum, value)
+    return value
+
+
+def _parse_int_arg(name: str, default: int | None, *, minimum: int | None = None, maximum: int | None = None) -> int | None:
+    raw = str(request.args.get(name, "") or "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return default
+    if minimum is not None:
+        value = max(minimum, value)
+    if maximum is not None:
+        value = min(maximum, value)
+    return value
+
+
+def _parse_float_form(name: str, default: float, *, minimum: float | None = None, maximum: float | None = None) -> float:
+    raw = str(request.form.get(name, "") or "").strip()
+    try:
+        value = float(raw)
+    except Exception:
+        value = default
+    if minimum is not None:
+        value = max(minimum, value)
+    if maximum is not None:
+        value = min(maximum, value)
+    return value
+
+
+def _scenario_growth_profile(scenario_type: str) -> tuple[float, float]:
+    st = str(scenario_type or "").strip().lower()
+    if st == "expansion":
+        return 0.10, 2.5
+    if st == "growth":
+        return 0.05, 2.0
+    if st == "decarbonization":
+        return 0.0, 1.5
+    return 0.0, 2.0
+
+
+def _decarbonization_scope_mapping(scope_key: str) -> tuple[list[str], bool]:
+    scope = str(scope_key or "").strip().lower()
+    if scope == "scope1":
+        return (["Scope 1"], False)
+    if scope == "scope2":
+        return (["Scope 2"], False)
+    if scope == "scope3":
+        return (["S3 Cat 1 Purchased G&S"], False)
+    return ([], True)
+
+
+def _write_ui_lever_csv(*, target_year: int, reduction_pct: float, scope_key: str, scenario_type: str) -> Path:
+    applies_to_cols, scale_all = _decarbonization_scope_mapping(scope_key)
+    ramp_years = max(1, target_year - 2025)
+    out_path = STAGE2_OUTPUT_DIR / f"ui_decarb_levers_{uuid.uuid4().hex}.csv"
+    row = {
+        "lever_key": "ui_custom",
+        "name": f"UI custom {scenario_type}",
+        "reduction_pct": max(0.0, min(1.0, reduction_pct)),
+        "start_year_offset": 0,
+        "ramp_years": ramp_years,
+        "scale_all": bool(scale_all),
+        "applies_to_cols": ", ".join(applies_to_cols),
+        "notes": f"Generated from UI for scope={scope_key}, target_year={target_year}",
+    }
+    with out_path.open("w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=[
+                "lever_key",
+                "name",
+                "reduction_pct",
+                "start_year_offset",
+                "ramp_years",
+                "scale_all",
+                "applies_to_cols",
+                "notes",
+            ],
+        )
+        writer.writeheader()
+        writer.writerow(row)
+    return out_path
+
+
+def _run_forecasting_from_ui(*, target_year: int) -> Path:
+    forecasting = _load_stage2_module("Forecasting")
+    cfg = forecasting.ForecastConfig(target_year=int(target_year))
+    out_path = forecasting.run_forecasting(None, cfg)
+    if out_path is None:
+        raise RuntimeError("Forecasting did not produce an output workbook.")
+    return Path(out_path)
+
+
+def _run_decarbonization_from_ui(*, target_year: int, reduction_pct: float, scope_key: str, scenario_type: str) -> tuple[Path, Path]:
+    years = max(1, int(target_year) - 2025)
+    annual_growth, pod_multiplier_end = _scenario_growth_profile(scenario_type)
+    levers_csv = _write_ui_lever_csv(
+        target_year=int(target_year),
+        reduction_pct=float(reduction_pct),
+        scope_key=scope_key,
+        scenario_type=scenario_type,
+    )
+
+    decarb = _load_stage2_module("Decarbonization")
+    scenario_output = decarb.run_scenarios(
+        years=years,
+        annual_growth=annual_growth,
+        pod_multiplier_end=pod_multiplier_end,
+        baseline_source="additive_tabs",
+        levers_csv=str(levers_csv),
+        s3_cat1_multiplier=1.0,
+        dirty_region_multiplier=1.0,
+    )
+
+    decarb_scenarios = _load_stage2_module("Decarbonization_Scenarios")
+    rollout_end = f"{int(target_year)}-01-01"
+    companion_output = decarb_scenarios.run(
+        None,
+        input_window=None,
+        user_scenarios=True,
+        annual_growth_default=annual_growth,
+        annual_growth_10pct=max(annual_growth, 0.10),
+        annual_growth_expansion=max(annual_growth, 0.15),
+        rollout_end=rollout_end,
+    )
+    return Path(scenario_output), Path(companion_output)
+
+
+def _window_period_end_date(year: int, month: int) -> str:
+    month = max(1, min(12, int(month)))
+    _, day_count = calendar.monthrange(int(year), month)
+    return f"{int(year)}-{int(month):02d}-{day_count:02d}"
+
+
+def _run_mapped_window_from_ui(*, year: int, start_month: int = 1, end_month: int = 12) -> Path:
+    year = int(year)
+    start_month = max(1, min(12, int(start_month)))
+    end_month = max(start_month, min(12, int(end_month)))
+    window = _load_stage2_module("filter_run_output_by_period")
+    out_path = window.filter_workbook(
+        f"{year}-{start_month:02d}-01",
+        _window_period_end_date(year, end_month),
+        None,
+        None,
+    )
+    if out_path is None:
+        raise RuntimeError("Mapped window generation did not produce an output workbook.")
+    return Path(out_path)
+
+
+def _run_totals_tables_from_ui(*, year: int, start_month: int = 1, end_month: int = 12) -> Path:
+    window_path = _run_mapped_window_from_ui(year=year, start_month=start_month, end_month=end_month)
+    totals = _load_stage2_module("Window_total_tables")
+    out_path = totals.main(str(window_path))
+    return Path(out_path) if out_path else window_path
+
+
+def _capture_existing_output_names(*patterns: str) -> set[str]:
+    names: set[str] = set()
+    for pattern in patterns:
+        for path in STAGE2_OUTPUT_DIR.rglob(pattern):
+            if path.is_file():
+                names.add(path.name)
+    return names
+
+
+def _find_new_output_after_run(before_names: set[str], *patterns: str) -> Path | None:
+    candidates: list[Path] = []
+    for pattern in patterns:
+        for path in STAGE2_OUTPUT_DIR.rglob(pattern):
+            if path.is_file():
+                candidates.append(path)
+    if not candidates:
+        return None
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    for path in candidates:
+        if path.name not in before_names:
+            return path
+    return candidates[0]
+
+
+def _run_double_counting_from_ui() -> Path:
+    before_names = _capture_existing_output_names("mapped_results_merged_dc_*.xlsx", "mapped_results_merged_dc.xlsx")
+    double_counting = _load_stage2_module("double_countin_booklets")
+    double_counting.main()
+    out_path = _find_new_output_after_run(before_names, "mapped_results_merged_dc_*.xlsx", "mapped_results_merged_dc.xlsx")
+    if out_path is None:
+        raise RuntimeError("Double counting report did not produce an output workbook.")
+    return out_path
+
+
+def _ccc_runtime_defaults() -> dict[str, object]:
+    return {
+        "base_url": str(CCC_API_BASE_URL or "").strip(),
+        "username": str(CCC_USERNAME or "").strip(),
+        "page_size": int(CCC_API_PAGE_SIZE or 100),
+        "has_password": bool(str(CCC_PASSWORD or "").strip()),
+    }
+
+
+def _load_ccc_mapping_rules() -> dict[str, object]:
+    try:
+        data = json.loads(CCC_SHEET_MAPPING_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        data = {}
+    return data if isinstance(data, dict) else {}
+
+
+def _load_ccc_get_endpoints() -> dict[str, str]:
+    try:
+        data = json.loads(CCC_GET_ENDPOINTS_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        data = {}
+    if not isinstance(data, dict):
+        return {}
+    return {
+        str(key): str(value)
+        for key, value in data.items()
+        if str(key).strip() and str(value).strip()
+    }
+
+
+def _parse_json_object_form_field(name: str) -> dict[str, object]:
+    raw = str(request.form.get(name, "") or "").strip()
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except Exception as exc:
+        raise RuntimeError(f"{name.replace('_', ' ').title()} must be valid JSON.") from exc
+    if not isinstance(data, dict):
+        raise RuntimeError(f"{name.replace('_', ' ').title()} must be a JSON object.")
+    return data
+
+
+def _ccc_connection_status_payload(*, state: str = "unknown", message: str = "", tested_at: str = "") -> dict[str, str]:
+    labels = {
+        "connected": "Connected",
+        "configured": "Configured",
+        "missing": "Missing credentials",
+        "failed": "Connection failed",
+        "unknown": "Not tested",
+    }
+    tones = {
+        "connected": "success",
+        "configured": "neutral",
+        "missing": "error",
+        "failed": "error",
+        "unknown": "neutral",
+    }
+    return {
+        "state": state,
+        "label": labels.get(state, "Unknown"),
+        "tone": tones.get(state, "neutral"),
+        "message": message,
+        "tested_at": tested_at,
+    }
+
+
+def _ccc_ui_context() -> dict[str, object]:
+    context = _analytics_output_context("ccc_api_source")
+    defaults = _ccc_runtime_defaults()
+    endpoints = _load_ccc_get_endpoints()
+    latest_sync = _latest_run_history_entry("ccc_api_source", statuses={"success"}, types={"ccc_api_sync"})
+    latest_test = _latest_run_history_entry("ccc_api_source", types={"ccc_api_test", "ccc_api_sync"})
+    if latest_test:
+        test_status = _ccc_connection_status_payload(
+            state="connected" if str(latest_test.get("status") or "") == "success" else "failed",
+            message=str(latest_test.get("message") or ""),
+            tested_at=str(latest_test.get("timestamp") or ""),
+        )
+    elif defaults["base_url"] and defaults["username"] and defaults["has_password"]:
+        test_status = _ccc_connection_status_payload(
+            state="configured",
+            message="Stored credentials found in environment configuration.",
+        )
+    else:
+        test_status = _ccc_connection_status_payload(
+            state="missing",
+            message="Set CCC credentials in config/api_credentials.env or environment variables.",
+        )
+    context.update(
+        {
+            "form_state": {
+                "base_url": defaults["base_url"],
+                "username": defaults["username"],
+                "page_size": defaults["page_size"],
+                "has_password": defaults["has_password"],
+                "endpoint_name": next(iter(endpoints.keys()), "purchase_order"),
+                "path_params": "",
+                "query_params": "",
+            },
+            "ccc_connection_status": test_status,
+            "ccc_last_sync": latest_sync,
+            "ccc_mapping_rules": _load_ccc_mapping_rules(),
+            "ccc_get_endpoints": endpoints,
+        }
+    )
+    return context
+
+
+def _test_ccc_connection_from_ui(*, base_url: str, username: str, password: str) -> dict[str, object]:
+    ccc_client = _load_stage1_api_source_module("ccc_client")
+    return dict(
+        ccc_client.test_connection(
+            base_url=str(base_url or "").strip(),
+            username=str(username or "").strip(),
+            password=str(password or ""),
+        )
+    )
+
+
+def _run_ccc_generic_ingest_from_ui(*, endpoint_name: str, base_url: str, username: str, password: str, page_size: int, path_params: dict[str, object], query_params: dict[str, object]) -> tuple[Path, dict[str, object]]:
+    ccc_ingest = _load_stage1_api_source_module("ccc_generic_ingest")
+    result = ccc_ingest.ingest_endpoint(
+        str(endpoint_name or "").strip(),
+        base_url=str(base_url or "").strip(),
+        username=str(username or "").strip(),
+        password=str(password or ""),
+        page_size=int(page_size or 100),
+        path_params=path_params,
+        query_params=query_params,
+    )
+    output_path = Path(result.get("output_path"))
+    return output_path, dict(result)
+
+
+def _run_ccc_purchase_orders_from_ui(*, base_url: str, username: str, password: str, page_size: int) -> tuple[Path, dict[str, object]]:
+    ccc_api = _load_stage1_api_source_module("ccc_purchase_orders")
+    result = ccc_api.sync_purchase_orders(
+        base_url=str(base_url or "").strip(),
+        username=str(username or "").strip(),
+        password=str(password or ""),
+        page_size=int(page_size or 100),
+    )
+    output_path = Path(result.get("output_path"))
+    return output_path, dict(result)
+
+
+def _scope_label(scope_key: str) -> str:
+    labels = {
+        "scope1": "Scope 1",
+        "scope2": "Scope 2",
+        "scope3": "Scope 3",
+        "total": "Total footprint",
+    }
+    return labels.get(str(scope_key or "").strip().lower(), str(scope_key or ""))
+
+
+def _resolve_country_code_and_name(raw_country: str | None) -> tuple[str | None, str | None]:
+    raw = str(raw_country or "").strip()
+    if not raw:
+        return None, None
+    code = raw.upper()
+    if code in ISO_COUNTRY_NAME_BY_CODE:
+        return code, ISO_COUNTRY_NAME_BY_CODE[code]
+    by_name = ISO_COUNTRY_CODE_BY_NAME.get(raw.casefold())
+    if by_name:
+        return by_name, ISO_COUNTRY_NAME_BY_CODE.get(by_name)
+    return None, raw
+
+
+def _company_country_lookup() -> dict[str, tuple[str | None, str | None]]:
+    lookup: dict[str, tuple[str | None, str | None]] = {}
+    rows = User.query.filter(User.company_name.isnot(None)).all()
+    for user in rows:
+        company_name = str(getattr(user, "company_name", "") or "").strip()
+        if not company_name:
+            continue
+        keys = {_normalize_template_key(company_name)}
+        canon, inferred_country = _canonical_company_name_and_country(company_name)
+        if canon:
+            keys.add(_normalize_template_key(canon))
+        country_code, country_name = _resolve_country_code_and_name(getattr(user, "company_country", None))
+        if country_code is None and inferred_country:
+            country_code, country_name = _resolve_country_code_and_name(inferred_country)
+        if country_code is None and country_name is None:
+            continue
+        for key in keys:
+            if key and key not in lookup:
+                lookup[key] = (country_code, country_name)
+    return lookup
+
+
+def _load_emissions_map_points() -> dict[str, object]:
+    path = _latest_logged_output_path("emissions_totals")
+    points: list[dict[str, object]] = []
+    context: dict[str, object] = {
+        "output_exists": False,
+        "output_file_name": "",
+        "output_file_mtime": "",
+        "points": points,
+        "total_emissions": 0.0,
+        "companies_count": 0,
+        "countries_count": 0,
+        "empty_message": "No totals workbook has been generated from the UI yet. Run Totals Tables first to refresh the map.",
+    }
+    if path is None or not path.exists():
+        return context
+    try:
+        xls = pd.ExcelFile(path, engine="openpyxl")
+        preferred_sheet = None
+        for candidate in ("Company Totals Window", "Company Totals"):
+            if candidate in xls.sheet_names:
+                preferred_sheet = candidate
+                break
+        if preferred_sheet is None:
+            raise RuntimeError("No company totals sheet found in the latest workbook.")
+        df = pd.read_excel(xls, sheet_name=preferred_sheet, engine="openpyxl")
+    except Exception as exc:
+        context["empty_message"] = f"Map output was found but could not be read: {exc}"
+        return context
+
+    company_col = next((c for c in df.columns if str(c).strip().lower() == "company"), None)
+    emissions_col = next((c for c in df.columns if str(c).strip().lower() == "co2e (t)"), None)
+    share_col = next((c for c in df.columns if str(c).strip().lower() == "share (%)"), None)
+    if company_col is None or emissions_col is None:
+        context["empty_message"] = "Latest workbook is missing the expected Company Totals columns."
+        return context
+
+    country_lookup = _company_country_lookup()
+    country_seen: set[str] = set()
+    total_emissions = 0.0
+    for _, row in df.iterrows():
+        company_name = str(row.get(company_col) or "").strip()
+        if not company_name:
+            continue
+        emissions = _safe_float(row.get(emissions_col) or 0.0)
+        if emissions <= 0:
+            continue
+        share_pct = _safe_float(row.get(share_col) or 0.0) if share_col else 0.0
+        norm = _normalize_template_key(company_name)
+        country_code, country_name = country_lookup.get(norm, (None, None))
+        if country_code is None and country_name is None:
+            _canon, inferred_country = _canonical_company_name_and_country(company_name)
+            country_code, country_name = _resolve_country_code_and_name(inferred_country)
+        if not country_name:
+            continue
+        total_emissions += emissions
+        if country_code:
+            country_seen.add(country_code)
+        points.append(
+            {
+                "company_name": company_name,
+                "country_code": country_code or "",
+                "country_name": country_name,
+                "emissions": emissions,
+                "share_pct": share_pct,
+            }
+        )
+
+    if not points:
+        return context
+    stat = path.stat()
+    context.update(
+        {
+            "output_exists": True,
+            "output_file_name": path.name,
+            "output_file_mtime": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
+            "points": points,
+            "total_emissions": total_emissions,
+            "companies_count": len(points),
+            "countries_count": len(country_seen),
+            "empty_message": "",
+        }
+    )
+    return context
 
 
 @app.route("/api/mapping/download_merged", methods=["GET"])
@@ -4246,6 +5630,520 @@ def admin_mapping_panel():
         batches=batches,
         batches_json=batches_json,
     )
+
+
+@app.route("/analytics/output/download/<kind>", methods=["GET"])
+@login_required
+def analytics_output_download(kind: str):
+    cfg = ANALYTICS_OUTPUT_VIEWS.get(kind)
+    if not cfg:
+        flash("Output not found.")
+        return redirect(url_for("home"))
+    path = _latest_logged_output_path(kind)
+    if path is None or not path.exists():
+        flash("No UI-generated output file found.")
+        return redirect(url_for("home"))
+    return send_file(str(path), as_attachment=True, download_name=path.name)
+
+
+@app.route("/analytics/output/file/<path:filename>", methods=["GET"])
+@login_required
+def analytics_output_download_file(filename: str):
+    safe_name = Path(str(filename or "")).name
+    if not safe_name:
+        flash("Output file not found.")
+        return redirect(url_for("home"))
+    candidates: list[Path] = []
+    for root in (STAGE2_OUTPUT_DIR, STAGE1_INPUT_DIR):
+        candidates.extend([p for p in root.rglob(safe_name) if p.is_file()])
+    if not candidates:
+        flash("Output file not found.")
+        return redirect(url_for("home"))
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    path = candidates[0]
+    return send_file(str(path), as_attachment=True, download_name=path.name)
+
+
+@app.route("/data-sources/ccc-api", methods=["GET", "POST"])
+@login_required
+def data_sources_ccc_api():
+    context = _ccc_ui_context()
+    form_state = dict(context.get("form_state") or {})
+    if request.method == "POST":
+        action = str(request.form.get("action", "sync") or "sync").strip().lower()
+        form_state = {
+            "base_url": str(request.form.get("base_url", "") or "").strip(),
+            "username": str(request.form.get("username", "") or "").strip(),
+            "page_size": _parse_int_form("page_size", 100, minimum=1, maximum=500),
+            "endpoint_name": str(request.form.get("endpoint_name", "") or "").strip(),
+            "path_params": str(request.form.get("path_params", "") or "").strip(),
+            "query_params": str(request.form.get("query_params", "") or "").strip(),
+            "has_password": bool(str(request.form.get("password", "") or "").strip()) or bool(_ccc_runtime_defaults().get("has_password")),
+        }
+        password = str(request.form.get("password", "") or "")
+        try:
+            if action == "test_connection":
+                result = _test_ccc_connection_from_ui(
+                    base_url=form_state["base_url"],
+                    username=form_state["username"],
+                    password=password,
+                )
+                context = _ccc_ui_context()
+                context["run_notice"] = "CCC API connection test succeeded. JWT token received."
+                context["ccc_connection_status"] = _ccc_connection_status_payload(
+                    state="connected",
+                    message="JWT token received successfully.",
+                    tested_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
+                )
+                _append_run_history(
+                    "ccc_api_source",
+                    {
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "type": "ccc_api_test",
+                        "status": "success",
+                        "scenario": "Connection test",
+                        "parameters_summary": f"Base URL: {form_state['base_url']}",
+                        "base_url": form_state["base_url"],
+                        "page_size": int(form_state["page_size"]),
+                        "records_imported": 0,
+                        "output_filename": "",
+                        "output_file": "",
+                        "message": str(result.get("token_received") and "JWT token received successfully." or "Connection test completed."),
+                    },
+                )
+            else:
+                path_params = _parse_json_object_form_field("path_params")
+                query_params = _parse_json_object_form_field("query_params")
+                endpoint_name = str(form_state["endpoint_name"] or "").strip()
+                out_path, result = _run_ccc_generic_ingest_from_ui(
+                    endpoint_name=endpoint_name,
+                    base_url=form_state["base_url"],
+                    username=form_state["username"],
+                    password=password,
+                    page_size=int(form_state["page_size"]),
+                    path_params=path_params,
+                    query_params=query_params,
+                )
+                context = _ccc_ui_context()
+                context = {**context, **_analytics_output_context_for_path("ccc_api_source", out_path)}
+                imported = int(result.get("records_imported") or 0)
+                if not imported:
+                    context["run_notice"] = f"Endpoint `{endpoint_name}` synced successfully but returned no rows."
+                else:
+                    context["run_notice"] = (
+                        f"Endpoint `{endpoint_name}` synced successfully. "
+                        f"Imported {imported} records and saved {out_path.name}."
+                    )
+                context["run_notice"] = (
+                    context["run_notice"]
+                )
+                context["ccc_connection_status"] = _ccc_connection_status_payload(
+                    state="connected",
+                    message="Last sync authenticated successfully.",
+                    tested_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
+                )
+                _append_run_history(
+                    "ccc_api_source",
+                    {
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "type": "ccc_api_sync",
+                        "status": "success",
+                        "scenario": endpoint_name,
+                        "parameters_summary": (
+                            f"Base URL: {form_state['base_url']}, "
+                            f"Endpoint: {endpoint_name}, "
+                            f"Page size: {int(form_state['page_size'])}, "
+                            f"Rows: {imported}"
+                        ),
+                        "base_url": form_state["base_url"],
+                        "endpoint": endpoint_name,
+                        "page_size": int(form_state["page_size"]),
+                        "records_imported": imported,
+                        "output_filename": out_path.name,
+                        "output_file": out_path.name,
+                        "message": f"Imported {imported} records.",
+                    },
+                )
+                _create_user_notification(
+                    current_user.id,
+                    title="CCC API sync completed",
+                    message=f"{endpoint_name or 'Selected endpoint'} synced successfully with {imported} imported records.",
+                    notification_type="success",
+                    link=url_for("data_sources_ccc_api"),
+                )
+            context["run_history"] = _read_run_history("ccc_api_source")
+            context["ccc_last_sync"] = _latest_run_history_entry("ccc_api_source", statuses={"success"}, types={"ccc_api_sync"})
+        except Exception as exc:
+            context = _ccc_ui_context()
+            error_message = f"CCC API {'connection test' if action == 'test_connection' else 'sync'} failed: {exc}"
+            context["run_error"] = error_message
+            context["ccc_connection_status"] = _ccc_connection_status_payload(
+                state="failed",
+                message=str(exc),
+                tested_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
+            )
+            _append_run_history(
+                "ccc_api_source",
+                {
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "type": "ccc_api_test" if action == "test_connection" else "ccc_api_sync",
+                    "status": "failed",
+                    "scenario": "Connection test" if action == "test_connection" else (form_state["endpoint_name"] or "CCC endpoint"),
+                    "parameters_summary": (
+                        f"Base URL: {form_state['base_url']}, "
+                        f"Endpoint: {form_state['endpoint_name'] or 'n/a'}, "
+                        f"Page size: {int(form_state['page_size'])}"
+                    ),
+                    "base_url": form_state["base_url"],
+                    "endpoint": form_state["endpoint_name"] or "",
+                    "page_size": int(form_state["page_size"]),
+                    "records_imported": 0,
+                    "output_filename": "",
+                    "output_file": "",
+                    "message": str(exc),
+                },
+            )
+            context["run_history"] = _read_run_history("ccc_api_source")
+        context["form_state"] = form_state
+    return render_template("analytics_output.html", user=current_user, **context)
+
+
+@app.route("/analytics/forecasting", methods=["GET", "POST"])
+@login_required
+def analytics_forecasting():
+    target_year = _parse_int_form("target_year", 2030, minimum=2026, maximum=2050) if request.method == "POST" else 2030
+    context = _analytics_output_context("forecasting")
+    context["form_state"] = {"target_year": target_year}
+    if request.method == "POST":
+        try:
+            out_path = _run_forecasting_from_ui(target_year=target_year)
+            context = _analytics_output_context_for_path("forecasting", out_path)
+            context["form_state"] = {"target_year": target_year}
+            context["run_notice"] = f"Forecasting completed successfully. Loaded fresh output: {out_path.name}"
+            _append_run_history(
+                "forecasting",
+                {
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "type": "forecasting",
+                    "scenario": "Forecasting",
+                    "parameters_summary": f"Target year: {target_year}",
+                    "target_year": target_year,
+                    "output_file": out_path.name,
+                },
+            )
+            _create_user_notification(
+                current_user.id,
+                title="Forecasting completed",
+                message=f"Forecasting output {out_path.name} is ready.",
+                notification_type="success",
+                link=url_for("analytics_forecasting"),
+            )
+            context["run_history"] = _read_run_history("forecasting")
+        except Exception as exc:
+            context["run_error"] = f"Forecasting run failed: {exc}"
+    return render_template("analytics_output.html", user=current_user, **context)
+
+
+@app.route("/analytics/mapped-window-output", methods=["GET", "POST"])
+@login_required
+def analytics_mapped_window_output():
+    default_year = max(2025, datetime.now().year)
+    form_state = {
+        "year": default_year,
+        "start_month": 1,
+        "end_month": 12,
+    }
+    context = _analytics_output_context("mapped_window_output")
+    if request.method == "POST":
+        form_state = {
+            "year": _parse_int_form("year", default_year, minimum=2020, maximum=2100),
+            "start_month": _parse_int_form("start_month", 1, minimum=1, maximum=12),
+            "end_month": _parse_int_form("end_month", 12, minimum=1, maximum=12),
+        }
+        form_state["end_month"] = max(int(form_state["start_month"]), int(form_state["end_month"]))
+        try:
+            out_path = _run_mapped_window_from_ui(
+                year=int(form_state["year"]),
+                start_month=int(form_state["start_month"]),
+                end_month=int(form_state["end_month"]),
+            )
+            context = _analytics_output_context_for_path("mapped_window_output", out_path)
+            context["run_notice"] = f"Mapped window output generated successfully: {out_path.name}"
+            _append_run_history(
+                "mapped_window_output",
+                {
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "type": "mapped_window",
+                    "scenario": "Mapped window output",
+                    "parameters_summary": (
+                        f"Year: {form_state['year']}, "
+                        f"Period: {int(form_state['start_month']):02d}-{int(form_state['end_month']):02d}"
+                    ),
+                    "year": int(form_state["year"]),
+                    "start_month": int(form_state["start_month"]),
+                    "end_month": int(form_state["end_month"]),
+                    "output_file": out_path.name,
+                },
+            )
+            context["run_history"] = _read_run_history("mapped_window_output")
+        except Exception as exc:
+            context["run_error"] = f"Mapped window generation failed: {exc}"
+    context["form_state"] = form_state
+    return render_template("analytics_output.html", user=current_user, **context)
+
+
+@app.route("/analytics/decarbonization", methods=["GET", "POST"])
+@login_required
+def analytics_decarbonization():
+    context = _analytics_output_context("decarbonization")
+    form_state = {
+        "preset": "custom",
+        "target_year": 2030,
+        "reduction_pct": 20,
+        "scope": "scope3",
+        "scenario_type": "decarbonization",
+    }
+    if request.method == "POST":
+        form_state = {
+            "preset": str(request.form.get("scenario_preset", "custom") or "custom"),
+            "target_year": _parse_int_form("target_year", 2030, minimum=2026, maximum=2050),
+            "reduction_pct": _parse_float_form("reduction_pct", 20.0, minimum=0.0, maximum=100.0),
+            "scope": str(request.form.get("scope", "scope3") or "scope3"),
+            "scenario_type": str(request.form.get("scenario_type", "decarbonization") or "decarbonization"),
+        }
+        try:
+            scenario_output, companion_output = _run_decarbonization_from_ui(
+                target_year=int(form_state["target_year"]),
+                reduction_pct=float(form_state["reduction_pct"]) / 100.0,
+                scope_key=str(form_state["scope"]),
+                scenario_type=str(form_state["scenario_type"]),
+            )
+            context = _analytics_output_context_for_path("decarbonization", companion_output)
+            context["run_notice"] = (
+                "Decarbonization run completed successfully. "
+                f"Loaded fresh scenario output: {companion_output.name}"
+            )
+            context["companion_outputs"] = [
+                _build_companion_output_payload(
+                    "Decarbonization lever workbook",
+                    scenario_output,
+                    ("Scenarios_Yearly", "Scenarios_Monthly", "S4_Delta", "Meta"),
+                )
+            ]
+            _append_run_history(
+                "decarbonization",
+                {
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "type": "decarbonization",
+                    "scenario": str(form_state["preset"] or "custom"),
+                    "parameters_summary": (
+                        f"Target year: {form_state['target_year']}, "
+                        f"Reduction: {form_state['reduction_pct']}%, "
+                        f"Scope: {_scope_label(str(form_state['scope']))}, "
+                        f"Type: {form_state['scenario_type']}"
+                    ),
+                    "target_year": int(form_state["target_year"]),
+                    "reduction_pct": float(form_state["reduction_pct"]),
+                    "scope": _scope_label(str(form_state["scope"])),
+                    "scenario_type": str(form_state["scenario_type"]),
+                    "output_file": companion_output.name,
+                    "companion_output_file": scenario_output.name,
+                },
+            )
+            _create_user_notification(
+                current_user.id,
+                title="Decarbonization completed",
+                message=f"Scenario output {companion_output.name} is ready for review.",
+                notification_type="success",
+                link=url_for("analytics_decarbonization"),
+            )
+            context["run_history"] = _read_run_history("decarbonization")
+        except Exception as exc:
+            context["run_error"] = f"Decarbonization run failed: {exc}"
+    context["form_state"] = form_state
+    return render_template("analytics_output.html", user=current_user, **context)
+
+
+@app.route("/analytics/emissions-totals", methods=["GET", "POST"])
+@login_required
+def analytics_emissions_totals():
+    default_year = max(2025, datetime.now().year)
+    form_state = {
+        "year": default_year,
+        "start_month": 1,
+        "end_month": 12,
+    }
+    context = _analytics_output_context("emissions_totals")
+    if request.method == "POST":
+        form_state = {
+            "year": _parse_int_form("year", default_year, minimum=2020, maximum=2100),
+            "start_month": _parse_int_form("start_month", 1, minimum=1, maximum=12),
+            "end_month": _parse_int_form("end_month", 12, minimum=1, maximum=12),
+        }
+        form_state["end_month"] = max(int(form_state["start_month"]), int(form_state["end_month"]))
+        try:
+            out_path = _run_totals_tables_from_ui(
+                year=int(form_state["year"]),
+                start_month=int(form_state["start_month"]),
+                end_month=int(form_state["end_month"]),
+            )
+            context = _analytics_output_context_for_path("emissions_totals", out_path)
+            context["run_notice"] = f"Totals tables generated successfully: {out_path.name}"
+            _append_run_history(
+                "emissions_totals",
+                {
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "type": "totals_tables",
+                    "scenario": "Totals tables",
+                    "parameters_summary": (
+                        f"Year: {form_state['year']}, "
+                        f"Period: {int(form_state['start_month']):02d}-{int(form_state['end_month']):02d}"
+                    ),
+                    "year": int(form_state["year"]),
+                    "start_month": int(form_state["start_month"]),
+                    "end_month": int(form_state["end_month"]),
+                    "output_file": out_path.name,
+                },
+            )
+            context["run_history"] = _read_run_history("emissions_totals")
+        except Exception as exc:
+            context["run_error"] = f"Totals generation failed: {exc}"
+    context["form_state"] = form_state
+    return render_template("analytics_output.html", user=current_user, **context)
+
+
+@app.route("/analytics/share-analysis", methods=["GET", "POST"])
+@login_required
+def analytics_share_analysis():
+    default_year = max(2025, datetime.now().year)
+    form_state = {
+        "year": default_year,
+        "start_month": 1,
+        "end_month": 12,
+    }
+    context = _analytics_output_context("share_analysis")
+    if request.method == "POST":
+        form_state = {
+            "year": _parse_int_form("year", default_year, minimum=2020, maximum=2100),
+            "start_month": _parse_int_form("start_month", 1, minimum=1, maximum=12),
+            "end_month": _parse_int_form("end_month", 12, minimum=1, maximum=12),
+        }
+        form_state["end_month"] = max(int(form_state["start_month"]), int(form_state["end_month"]))
+        try:
+            out_path = _run_totals_tables_from_ui(
+                year=int(form_state["year"]),
+                start_month=int(form_state["start_month"]),
+                end_month=int(form_state["end_month"]),
+            )
+            context = _analytics_output_context_for_path("share_analysis", out_path)
+            context["run_notice"] = f"Share analysis generated successfully: {out_path.name}"
+            _append_run_history(
+                "share_analysis",
+                {
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "type": "share_analysis",
+                    "scenario": "Share analysis",
+                    "parameters_summary": (
+                        f"Year: {form_state['year']}, "
+                        f"Period: {int(form_state['start_month']):02d}-{int(form_state['end_month']):02d}"
+                    ),
+                    "year": int(form_state["year"]),
+                    "start_month": int(form_state["start_month"]),
+                    "end_month": int(form_state["end_month"]),
+                    "output_file": out_path.name,
+                },
+            )
+            context["run_history"] = _read_run_history("share_analysis")
+        except Exception as exc:
+            context["run_error"] = f"Share analysis generation failed: {exc}"
+    context["form_state"] = form_state
+    return render_template("analytics_output.html", user=current_user, **context)
+
+
+@app.route("/analytics/emissions-map", methods=["GET"])
+@login_required
+def analytics_emissions_map():
+    return render_template("emissions_map.html", user=current_user, **_load_emissions_map_points())
+
+
+@app.route("/governance/double-counting-check", methods=["GET", "POST"])
+@login_required
+def governance_double_counting_check():
+    context = _analytics_output_context("double_counting_check")
+    if request.method == "POST":
+        try:
+            out_path = _run_double_counting_from_ui()
+            context = _analytics_output_context_for_path("double_counting_check", out_path)
+            context["run_notice"] = f"Double counting report generated successfully: {out_path.name}"
+            _append_run_history(
+                "double_counting_check",
+                {
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "type": "double_counting",
+                    "scenario": "Double counting report",
+                    "parameters_summary": "Generated from the latest merged mapping workbook.",
+                    "output_file": out_path.name,
+                },
+            )
+            context["run_history"] = _read_run_history("double_counting_check")
+        except Exception as exc:
+            context["run_error"] = f"Double counting generation failed: {exc}"
+    return render_template("analytics_output.html", user=current_user, **context)
+
+
+@app.route("/governance/audit-ready-output", methods=["GET", "POST"])
+@login_required
+def governance_audit_ready_output():
+    default_year = max(2025, datetime.now().year)
+    form_state = {
+        "year": default_year,
+        "start_month": 1,
+        "end_month": 12,
+    }
+    context = _analytics_output_context("audit_ready_output")
+    if request.method == "POST":
+        form_state = {
+            "year": _parse_int_form("year", default_year, minimum=2020, maximum=2100),
+            "start_month": _parse_int_form("start_month", 1, minimum=1, maximum=12),
+            "end_month": _parse_int_form("end_month", 12, minimum=1, maximum=12),
+        }
+        form_state["end_month"] = max(int(form_state["start_month"]), int(form_state["end_month"]))
+        try:
+            out_path = _run_mapped_window_from_ui(
+                year=int(form_state["year"]),
+                start_month=int(form_state["start_month"]),
+                end_month=int(form_state["end_month"]),
+            )
+            context = _analytics_output_context_for_path("audit_ready_output", out_path)
+            context["run_notice"] = f"Audit-ready dataset generated successfully: {out_path.name}"
+            _append_run_history(
+                "audit_ready_output",
+                {
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "type": "audit_output",
+                    "scenario": "Audit ready dataset",
+                    "parameters_summary": (
+                        f"Year: {form_state['year']}, "
+                        f"Period: {int(form_state['start_month']):02d}-{int(form_state['end_month']):02d}"
+                    ),
+                    "year": int(form_state["year"]),
+                    "start_month": int(form_state["start_month"]),
+                    "end_month": int(form_state["end_month"]),
+                    "output_file": out_path.name,
+                },
+            )
+            _create_user_notification(
+                current_user.id,
+                title="Audit dataset ready",
+                message=f"Audit-ready dataset {out_path.name} has been generated.",
+                notification_type="success",
+                link=url_for("governance_audit_ready_output"),
+            )
+            context["run_history"] = _read_run_history("audit_ready_output")
+        except Exception as exc:
+            context["run_error"] = f"Audit dataset generation failed: {exc}"
+    context["form_state"] = form_state
+    return render_template("analytics_output.html", user=current_user, **context)
 
 
 @app.route('/admin', methods=['GET', 'POST'])
@@ -4405,6 +6303,14 @@ def admin_users():
     return render_template("admin_users.html", users=users, user_roles=USER_ROLES)
 
 
+@app.route("/owner-analytics", methods=["GET"])
+@login_required
+def owner_analytics():
+    if not bool(getattr(current_user, "is_admin", False)):
+        abort(403)
+    return render_template("owner_analytics.html", user=current_user, **_owner_analytics_context())
+
+
 @app.route("/admin/preprocess/travel/upload", methods=["POST"])
 @login_required
 def upload_travel_preprocess():
@@ -4458,6 +6364,9 @@ def upload_travel_preprocess():
 @app.route('/logout')
 @login_required
 def logout():
+    request.environ["skip_activity_log"] = True
+    _write_activity_log_for_user(current_user, action="logout")
+    session.pop("activity_session_id", None)
     logout_user()
     return redirect(url_for('index'))
 
@@ -5593,6 +7502,202 @@ def carbon_accounting():
         },
         by_sheet=by_sheet,
     )
+
+
+@app.route("/search", methods=["GET"])
+@login_required
+def search_page():
+    query = str(request.args.get("q", "") or "").strip()
+    groups = search_service.search_all(
+        query,
+        CompanyModel=Company,
+        UserModel=User,
+        EmissionFactorModel=EmissionFactor,
+        stage1_input_dir=STAGE1_INPUT_DIR,
+        stage2_output_dir=STAGE2_OUTPUT_DIR,
+        run_logs_dir=APP_DIR / "run_logs",
+    )
+    total_results = sum(len(rows) for rows in groups.values())
+    return render_template(
+        "search_results.html",
+        user=current_user,
+        query=query,
+        results=groups,
+        total_results=total_results,
+    )
+
+
+@app.route("/api/notifications/recent", methods=["GET"])
+@login_required
+def api_notifications_recent():
+    _ensure_db_tables()
+    rows = notification_service.recent_notifications(
+        Notification,
+        user_id=current_user.id,
+        limit=_parse_int_arg("limit", 8, minimum=1, maximum=30),
+    )
+    unread = notification_service.unread_count(Notification, user_id=current_user.id)
+    return jsonify({"notifications": [_notification_payload(row) for row in rows], "unread_count": unread})
+
+
+@app.route("/api/notifications/unread_count", methods=["GET"])
+@login_required
+def api_notifications_unread_count():
+    _ensure_db_tables()
+    return jsonify({"unread_count": notification_service.unread_count(Notification, user_id=current_user.id)})
+
+
+@app.route("/api/notifications/mark-read", methods=["POST"])
+@login_required
+def api_notifications_mark_read():
+    _ensure_db_tables()
+    payload = request.get_json(silent=True) or {}
+    notification_id = payload.get("notification_id")
+    if notification_id in (None, "", "all"):
+        updated = notification_service.mark_all_read(db.session, Notification, user_id=current_user.id)
+    else:
+        updated = 1 if notification_service.mark_one_read(
+            db.session,
+            Notification,
+            user_id=current_user.id,
+            notification_id=int(notification_id),
+        ) else 0
+    db.session.commit()
+    return jsonify(
+        {
+            "ok": True,
+            "updated": int(updated),
+            "unread_count": notification_service.unread_count(Notification, user_id=current_user.id),
+        }
+    )
+
+
+@app.route("/api/messages/contacts", methods=["GET"])
+@login_required
+def api_message_contacts():
+    _ensure_db_tables()
+    contacts = messaging_service.available_contacts(User, current_user, limit=50)
+    return jsonify({"contacts": [_contact_payload(row) for row in contacts]})
+
+
+@app.route("/api/messages/conversations", methods=["GET"])
+@login_required
+def api_message_conversations():
+    _ensure_db_tables()
+    conversations = messaging_service.list_conversations(Message, User, current_user, limit=30)
+    payload = []
+    for item in conversations:
+        payload.append(
+            {
+                "thread_id": item["thread_id"],
+                "other_user": _contact_payload(item["other_user"]),
+                "last_message": _message_payload(item["last_message"], viewer_id=current_user.id),
+                "unread_count": int(item["unread_count"]),
+            }
+        )
+    return jsonify(
+        {
+            "conversations": payload,
+            "unread_count": messaging_service.unread_count(Message, current_user),
+        }
+    )
+
+
+@app.route("/api/messages/thread", methods=["GET"])
+@login_required
+def api_message_thread():
+    _ensure_db_tables()
+    other_user_id = _parse_int_arg("user_id", None, minimum=1)
+    if not other_user_id:
+        return jsonify({"error": "user_id is required"}), 400
+    try:
+        other_user, rows = messaging_service.fetch_thread_messages(
+            Message,
+            User,
+            current_user,
+            other_user_id=other_user_id,
+            limit=250,
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 403
+    return jsonify(
+        {
+            "contact": _contact_payload(other_user),
+            "messages": [_message_payload(row, viewer_id=current_user.id) for row in rows],
+        }
+    )
+
+
+@app.route("/api/messages/send", methods=["POST"])
+@login_required
+def api_message_send():
+    _ensure_db_tables()
+    payload = request.get_json(silent=True) or {}
+    receiver_id = payload.get("receiver_id")
+    if receiver_id in (None, ""):
+        return jsonify({"error": "receiver_id is required"}), 400
+    try:
+        row = messaging_service.send_message(
+            db.session,
+            Message,
+            User,
+            current_user,
+            receiver_id=int(receiver_id),
+            body=str(payload.get("message", "") or ""),
+        )
+        db.session.commit()
+        _create_user_notification(
+            row.receiver_id,
+            title=f"New message from {_user_display_name(current_user)}",
+            message=row.message[:180],
+            notification_type="message",
+            link=None,
+        )
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({"error": f"Message send failed: {exc}"}), 500
+    return jsonify(
+        {
+            "ok": True,
+            "message": _message_payload(row, viewer_id=current_user.id),
+            "unread_count": messaging_service.unread_count(Message, current_user),
+        }
+    )
+
+
+@app.route("/api/messages/mark-read", methods=["POST"])
+@login_required
+def api_message_mark_read():
+    _ensure_db_tables()
+    payload = request.get_json(silent=True) or {}
+    other_user_id = payload.get("user_id")
+    if other_user_id in (None, ""):
+        return jsonify({"error": "user_id is required"}), 400
+    updated = messaging_service.mark_thread_read(
+        db.session,
+        Message,
+        User,
+        current_user,
+        other_user_id=int(other_user_id),
+    )
+    db.session.commit()
+    return jsonify(
+        {
+            "ok": True,
+            "updated": int(updated),
+            "unread_count": messaging_service.unread_count(Message, current_user),
+        }
+    )
+
+
+@app.route("/api/messages/unread_count", methods=["GET"])
+@login_required
+def api_message_unread_count():
+    _ensure_db_tables()
+    return jsonify({"unread_count": messaging_service.unread_count(Message, current_user)})
 
 
 @app.route('/admin_data', methods=['GET'])

@@ -10,6 +10,9 @@ from dotenv import load_dotenv
 # resolves the same data location both locally and on the server.
 PROJECT_ROOT = Path(__file__).resolve().parent
 load_dotenv(PROJECT_ROOT / ".env")
+CONFIG_DIR = PROJECT_ROOT / "config"
+API_CREDENTIALS_ENV_PATH = CONFIG_DIR / "api_credentials.env"
+load_dotenv(API_CREDENTIALS_ENV_PATH)
 
 
 def _resolve_path(raw_value: str) -> Path:
@@ -49,6 +52,12 @@ MAIL_PASSWORD = os.getenv("MAIL_PASSWORD", "").strip()
 MAIL_DEFAULT_SENDER = os.getenv("MAIL_DEFAULT_SENDER", "noreply@cts-nordics.com").strip()
 # Public site URL for reset links (no trailing slash), e.g. https://ctscarbonplatform.com
 PUBLIC_APP_BASE_URL = os.getenv("PUBLIC_APP_BASE_URL", "http://127.0.0.1:5000").rstrip("/")
+CCC_API_BASE_URL = os.getenv("CCC_API_BASE_URL", "").strip()
+CCC_USERNAME = os.getenv("CCC_USERNAME", os.getenv("CCC_API_EMAIL", "")).strip()
+CCC_PASSWORD = os.getenv("CCC_PASSWORD", os.getenv("CCC_API_PASSWORD", "")).strip()
+CCC_API_PAGE_SIZE = int(os.getenv("CCC_API_PAGE_SIZE", "100") or "100")
+CCC_SHEET_MAPPING_PATH = CONFIG_DIR / "ccc_sheet_mapping.json"
+CCC_GET_ENDPOINTS_PATH = CONFIG_DIR / "ccc_get_endpoints.json"
 
 # Frontend runtime paths
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
@@ -94,6 +103,7 @@ STAGE2_IMPORT_EMISSION_FACTORS_XLSX = pick_first_existing(
 
 for directory in [
     DATA_DIR,
+    CONFIG_DIR,
     FRONTEND_INSTANCE_DIR,
     FRONTEND_UPLOAD_DIR,
     PIPELINE_TEMPLATE_DIR,

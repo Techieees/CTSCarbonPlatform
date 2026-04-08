@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}Emissions Map{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/emissions_map.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container py-4 emissions-map-page">
+  <section class="emissions-map-page__hero">
+    <div class="emissions-map-page__eyebrow">Analytics</div>
+    <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-start">
+      <div>
+        <h1 class="emissions-map-page__title">Emissions Map</h1>
+        <p class="emissions-map-page__lead mb-0">
+          Global 2D view of company emissions using the latest UI-generated totals output, joined with stored company country metadata.
+        </p>
+      </div>
+      {% if output_exists %}
+      <div class="emissions-map-page__meta">
+        <div class="small text-muted">Source workbook</div>
+        <strong>{{ output_file_name }}</strong>
+        <div class="small text-muted mt-1">Updated {{ output_file_mtime }}</div>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+  {% if output_exists and points %}
+  <section class="row g-3 mt-1">
+    <div class="col-md-4">
+      <article class="emissions-map-page__stat">
+        <span class="emissions-map-page__stat-label">Companies</span>
+        <strong class="emissions-map-page__stat-value">{{ companies_count }}</strong>
+      </article>
+    </div>
+    <div class="col-md-4">
+      <article class="emissions-map-page__stat">
+        <span class="emissions-map-page__stat-label">Countries</span>
+        <strong class="emissions-map-page__stat-value">{{ countries_count }}</strong>
+      </article>
+    </div>
+    <div class="col-md-4">
+      <article class="emissions-map-page__stat">
+        <span class="emissions-map-page__stat-label">Total emissions</span>
+        <strong class="emissions-map-page__stat-value">{{ "{:,.2f}".format(total_emissions) }} tCO2e</strong>
+      </article>
+    </div>
+  </section>
+
+  <section class="emissions-map-page__card mt-4">
+    <div class="emissions-map-page__card-header">
+      <div>
+        <h2 class="emissions-map-page__card-title">Global company distribution</h2>
+        <p class="emissions-map-page__card-meta mb-0">
+          Bubble size represents total emissions from the latest totals workbook generated from the Data Outputs flow.
+        </p>
+      </div>
+    </div>
+    <div id="emissionsMapChart" class="emissions-map-page__chart"></div>
+  </section>
+
+  <section class="emissions-map-page__card mt-4">
+    <div class="emissions-map-page__card-header">
+      <div>
+        <h2 class="emissions-map-page__card-title">Mapped companies</h2>
+        <p class="emissions-map-page__card-meta mb-0">Country mapping is based on stored company country information.</p>
+      </div>
+    </div>
+    <div class="table-responsive">
+      <table class="table emissions-map-page__table mb-0">
+        <thead>
+          <tr>
+            <th>Company</th>
+            <th>Country</th>
+            <th>Total emissions</th>
+            <th>Share</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for point in points %}
+          <tr>
+            <td>{{ point.company_name }}</td>
+            <td>{{ point.country_name }}{% if point.country_code %} ({{ point.country_code }}){% endif %}</td>
+            <td>{{ "{:,.2f}".format(point.emissions) }} tCO2e</td>
+            <td>{{ "{:,.2f}".format(point.share_pct) }}%</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% else %}
+  <section class="emissions-map-page__empty mt-4">
+    <h2 class="emissions-map-page__card-title">No map data available yet</h2>
+    <p class="emissions-map-page__card-meta mb-0">{{ empty_message }}</p>
+    <a class="btn btn-primary mt-3" href="{{ url_for('analytics_emissions_totals') }}">Open Totals Tables</a>
+  </section>
+  {% endif %}
+</div>
+
+<script id="emissions-map-payload" type="application/json">{{ points|tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/map/js/world.js"></script>
+<script type="module" src="{{ url_for('static', filename='js/charts/emissions_map.js') }}"></script>
+{% endblock %}

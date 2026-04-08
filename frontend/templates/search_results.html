@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% block title %}Search | CTS Carbon Platform{% endblock %}
+{% block content %}
+<section class="container py-4 py-lg-5">
+  <div class="search-results-page">
+    <div class="search-results-page__hero">
+      <h1>Search</h1>
+      {% if query %}
+      <p class="text-muted mb-0">`{{ query }}` için {{ total_results }} sonuç bulundu.</p>
+      {% else %}
+      <p class="text-muted mb-0">Şirketler, tedarikçiler, faktörler, projeler ve içe aktarımlar arasında arama yapın.</p>
+      {% endif %}
+    </div>
+
+    {% if not query %}
+    <div class="search-results-card">
+      <div class="collab-empty-state">Arama başlatmak için üst çubuktaki search alanını kullanın.</div>
+    </div>
+    {% elif not results %}
+    <div class="search-results-card">
+      <div class="collab-empty-state">Sonuç bulunamadı.</div>
+    </div>
+    {% else %}
+    <div class="search-results-grid">
+      {% for group_name, items in results.items() %}
+      <section class="search-results-card">
+        <div class="search-results-card__header">
+          <h2>{{ group_name }}</h2>
+          <span>{{ items|length }}</span>
+        </div>
+        <div class="search-results-card__body">
+          {% for item in items %}
+          <article class="search-result-item">
+            <div>
+              <div class="search-result-item__title">
+                {% if item.link %}
+                <a href="{{ item.link }}">{{ item.title }}</a>
+                {% else %}
+                <span>{{ item.title }}</span>
+                {% endif %}
+              </div>
+              <div class="search-result-item__subtitle">{{ item.subtitle }}</div>
+            </div>
+            <span class="search-result-item__kind">{{ item.kind|replace('_', ' ') }}</span>
+          </article>
+          {% endfor %}
+        </div>
+      </section>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

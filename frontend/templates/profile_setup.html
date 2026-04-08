@@ -43,12 +43,13 @@
                             </div>
                             <div class="col-12">
                                 <label class="form-label" for="company_country">Company country</label>
-                                <select class="form-select" id="company_country" name="company_country" required>
+                                <select class="form-select" id="company_country" name="company_country" data-country-flag-target="company_country_flag_preview" required>
                                     <option value="">Select country</option>
                                     {% for code, name in iso_countries %}
                                     <option value="{{ code }}" {% if code == (current_user.company_country or '') %}selected{% endif %}>{{ name }} ({{ code }})</option>
                                     {% endfor %}
                                 </select>
+                                <div class="form-text mt-2" id="company_country_flag_preview">No country selected</div>
                             </div>
                             <div class="col-12">
                                 <label class="form-label" for="profile_photo">Profile photo <span class="text-muted">(optional)</span></label>
@@ -70,4 +71,11 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  window.__countryFlagsUrl = "{{ url_for('static', filename='data/country_flags.json') }}";
+</script>
+<script src="{{ url_for('static', filename='js/country-flags.js') }}"></script>
 {% endblock %}
