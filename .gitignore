@@ -46,3 +46,9 @@ CTSCarbonPlatform/
 Carbon-platform/
 frontend/static/profile_photos/
 frontend/static/company_logos/
+
+# API credentials
+config/api_credentials.env
+
+# run history logs
+frontend/run_logs/*.json

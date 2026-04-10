@@ -134,6 +134,10 @@
           {{ illu.illu_nav_data('app-sidebar__icon') }}
           <span class="app-sidebar__label">Companies</span>
         </a>
+        <a href="{{ url_for('admin_mapping_panel') }}" class="app-sidebar__link app-sidebar__link--sub {% if ep == 'admin_mapping_panel' %}is-active{% endif %}" {% if ep == 'admin_mapping_panel' %}aria-current="page"{% endif %} title="Batch mapping (admin)">
+          {{ illu.illu_nav_bolt('app-sidebar__icon') }}
+          <span class="app-sidebar__label">Batch mapping</span>
+        </a>
         <a href="{{ url_for('manage_emission_factors') }}" class="app-sidebar__link app-sidebar__link--sub {% if ep == 'manage_emission_factors' %}is-active{% endif %}" {% if ep == 'manage_emission_factors' %}aria-current="page"{% endif %} title="Emission Factors">
           {{ illu.illu_nav_sliders('app-sidebar__icon') }}
           <span class="app-sidebar__label">Emission Factors</span>
