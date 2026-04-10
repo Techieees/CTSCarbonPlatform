@@ -536,7 +536,7 @@ def _user_public_dict_for_admin(u: "User") -> dict:
     }
 
 
-def _user_display_name(u: "User" | None) -> str:
+def _user_display_name(u: User | None) -> str:
     if u is None:
         return ""
     first = (getattr(u, "first_name", None) or "").strip()
