@@ -74,7 +74,7 @@ from preprocess_jobs import (
     run_travel_preprocess,
     validate_travel_upload,
 )
-from services import messaging_service, notification_service, search_service
+from frontend.services import messaging_service, notification_service, search_service
 
 APP_DIR = Path(__file__).resolve().parent
 INSTANCE_DIR = FRONTEND_INSTANCE_DIR
