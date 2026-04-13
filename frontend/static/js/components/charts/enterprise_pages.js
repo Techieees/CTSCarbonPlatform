@@ -203,7 +203,7 @@ function initHomeEnterprise() {
     whenVisible(el, () => fn(el));
   };
 
-  const { isAdmin, totals, companyRows = [], breakdown = [] } = payload;
+  const { isAdmin, totals, companyRows = [], breakdown = [], reportingRows = [] } = payload;
 
   bind("homeChartScopeStackedBar", (el) => {
     if (!isAdmin || !companyRows.length) {
@@ -224,9 +224,19 @@ function initHomeEnterprise() {
   });
 
   bind("homeChartMonthlyTrend", (el) => {
-    const rows = portfolioMonthRowsFromBreakdown(breakdown);
+    let rows = [];
+    if (Array.isArray(reportingRows) && reportingRows.length) {
+      rows = reportingRows.map((r) => ({
+        company: r.company || "Portfolio",
+        dateLabel: r.dateLabel || r.sortKey,
+        sortKey: r.sortKey,
+        emissions: Number(r.emissions || 0)
+      }));
+    } else {
+      rows = portfolioMonthRowsFromBreakdown(breakdown);
+    }
     if (!rows.length) {
-      showEmptyState(el, "Monthly emission trend needs time-indexed reporting rows (user portfolio view).");
+      showEmptyState(el, "Monthly emission trend needs time-indexed reporting rows in mapped workbooks.");
       return;
     }
     const mt = monthlyTotals(rows);
@@ -296,9 +306,19 @@ function initHomeEnterprise() {
   });
 
   bind("homeChartMonthHeat", (el) => {
-    const rows = portfolioMonthRowsFromBreakdown(breakdown);
+    let rows = [];
+    if (Array.isArray(reportingRows) && reportingRows.length) {
+      rows = reportingRows.map((r) => ({
+        company: r.company || "Portfolio",
+        dateLabel: r.dateLabel || r.sortKey,
+        sortKey: r.sortKey,
+        emissions: Number(r.emissions || 0)
+      }));
+    } else {
+      rows = portfolioMonthRowsFromBreakdown(breakdown);
+    }
     if (!rows.length) {
-      showEmptyState(el, "Monthly pattern heatmap needs dated category rows.");
+      showEmptyState(el, "Monthly pattern heatmap needs dated rows in mapped workbooks.");
       return;
     }
     mountHeatmapChart({ container: el, rows, height: 260 });

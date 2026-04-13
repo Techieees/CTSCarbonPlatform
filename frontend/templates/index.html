@@ -25,11 +25,6 @@
     <div class="container">
         <div class="lp-hero-inner lp-hero-inner--hero">
             <div class="lp-hero-copy">
-                <div class="lp-kicker" data-reveal>
-                    <span class="dot" aria-hidden="true"></span>
-                    Designed and developed by the Sustainability Department (Florian Demir and Marta Gulman)
-                </div>
-
                 <h1 class="lp-title" data-reveal>
                     An internal carbon platform for CTS Group<br/> 
                 </h1>
@@ -40,8 +35,8 @@
 
                 <div class="lp-cta-row" data-reveal>
                     {% if not current_user.is_authenticated %}
-                        <a class="btn btn-primary" href="{{ url_for('register') }}">
-                            Create account
+                        <a class="btn btn-primary" href="{{ url_for('request_access') }}">
+                            Request Access
                         </a>
                         <a class="btn btn-ghost" href="{{ url_for('login') }}">
                             Sign in
@@ -56,33 +51,33 @@
                     {% endif %}
                 </div>
 
-                <div class="lp-trust" data-reveal>
-                    <div class="lp-stat">
+                <div class="lp-trust" id="lp-hero-trust">
+                    <div class="lp-stat hidden-left">
                         <strong>Audit Ready Carbon Reporting</strong>
                         <span>Save up to 70% reporting time.</span>
                         <span>Track emissions, improve performance, stay aligned with reporting requirements.</span>
                     </div>
-                    <div class="lp-stat">
+                    <div class="lp-stat hidden-right">
                         <strong>Full ESG coverage</strong>
                         <span>A practical platform for managing sustainability data and improving performance over time.</span>
                         <span>All your sustainability data in one place. Clear, practical, scalable.</span>
                     </div>
-                    <div class="lp-stat">
+                    <div class="lp-stat hidden-left">
                         <strong>Life Cycle Assesment</strong>
                         <span>LCA helps identify opportunities to improve the environmental performance of a product across its life cycle.</span>
                     </div>
-                    <div class="lp-stat">
+                    <div class="lp-stat hidden-right">
                         <strong>Insights from our experts</strong>
                         <span>Guidance based on hands on experience.</span>
                         <span>Practical support to move from current state to compliance.</span>
                     </div>
-                    <div class="lp-stat">
+                    <div class="lp-stat hidden-left">
                         <strong>Supplier Management</strong>
                         <span>Collect data,evaluate suppliers, and identify risk.</span>
                         <span>Improve transparency and support more informed supplier decisions.</span>
                     </div>
 
-                    <div class="lp-stat">
+                    <div class="lp-stat hidden-right">
                         <strong>Carbon Reduction Strategies</strong>
                         <span>As the group grows through acquisitions and expanded operations, a carbon management strategy helps track and reduce the resulting increase in emissions.</span>
                     </div>
@@ -189,7 +184,7 @@
         </div>
 
         <div class="lp-features">
-            <div class="lp-feature" data-reveal>
+            <div class="lp-feature hidden-left">
                 <div class="icon" aria-hidden="true">{{ illu.illu_lp_shield() }}</div>
                 <h3>Secure & reliable</h3>
                 <ul>
@@ -198,7 +193,7 @@
                     <li>Compare performance against 28 European companies.</li>
                 </ul>
             </div>
-            <div class="lp-feature" data-reveal>
+            <div class="lp-feature hidden-right">
                 <div class="icon" aria-hidden="true">{{ illu.illu_lp_chart() }}</div>
                 <h3>Compatible with various API integrations.</h3>
                 <ul>
@@ -206,13 +201,40 @@
                     <li>Ultimately, robust connectivity is essential for scaling sustainable practices across complex networks.</li>
                 </ul>
             </div>
-            <div class="lp-feature" data-reveal>
+            <div class="lp-feature hidden-left">
                 <div class="icon" aria-hidden="true">{{ illu.illu_lp_spreadsheet() }}</div>
                 <h3>A platform designed to keep pace with regulatory change.</h3>
                 <ul>
                     <li>Reduce effort by avoiding duplicate work.</li>
                     <li>Helping you stay aligned with key reporting requirements.</li>
                     <li>See how performance compares with defined goals.</li>
+                </ul>
+            </div>
+            <div class="lp-feature hidden-right">
+                <div class="icon" aria-hidden="true">{{ illu.illu_lp_grid() }}</div>
+                <h3>Structured subsidiary coverage</h3>
+                <ul>
+                    <li>Shared workbook schemas across companies.</li>
+                    <li>One process from collection to reporting.</li>
+                    <li>Clear ownership of inputs and deadlines.</li>
+                </ul>
+            </div>
+            <div class="lp-feature hidden-left">
+                <div class="icon" aria-hidden="true">{{ illu.illu_nav_leaf() }}</div>
+                <h3>Environmental insight</h3>
+                <ul>
+                    <li>Track energy and emissions in one place.</li>
+                    <li>Support improvement initiatives with consistent baselines.</li>
+                    <li>Align operational data with sustainability goals.</li>
+                </ul>
+            </div>
+            <div class="lp-feature hidden-right">
+                <div class="icon" aria-hidden="true">{{ illu.illu_card_report() }}</div>
+                <h3>Traceable reporting</h3>
+                <ul>
+                    <li>Export-ready views for reviews and audits.</li>
+                    <li>Clear lineage from activity data to reported totals.</li>
+                    <li>Reduce manual consolidation work.</li>
                 </ul>
             </div>
         </div>
@@ -319,7 +341,7 @@
                 </div>
                 <div class="d-flex flex-wrap gap-2">
                     {% if not current_user.is_authenticated %}
-                        <a class="btn btn-primary" href="{{ url_for('register') }}">Create account</a>
+                        <a class="btn btn-primary" href="{{ url_for('request_access') }}">Request Access</a>
                         <a class="btn btn-ghost" href="{{ url_for('login') }}">Sign in</a>
                     {% else %}
                         <a class="btn btn-primary" href="{{ url_for('dashboard') }}">Open dashboard</a>

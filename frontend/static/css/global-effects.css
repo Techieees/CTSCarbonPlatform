@@ -361,7 +361,6 @@ body.dark-mode .admin-upload-notification-meta {
 
 @media (max-width: 767.98px), (pointer: coarse) {
   .cursor-light,
-  .hero-premium-orb:not(.hero-premium-orb--busy),
   :is(button, .btn, a.button):not(.btn-close):not(.navbar-toggler)::before,
   :is(button, .btn, a.button):not(.btn-close):not(.navbar-toggler)::after,
   :is(.card, .mock, .list-group-item, .lp-kicker, .lp-stat)::before,
@@ -371,7 +370,7 @@ body.dark-mode .admin-upload-notification-meta {
 
   .hero-logo-background,
   .hero-logo-grid,
-  :is(.card, .glass-card, .mock, .lp-cta, .logo-marquee, .list-group-item, .lp-kicker, .lp-stat) {
+  :is(.card, .glass-card, .mock, .lp-cta, .list-group-item, .lp-kicker, .lp-stat) {
     transform: none !important;
   }
 

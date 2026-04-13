@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Scope 2 — Methodology{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/methodology.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-methodology">
+  <section class="page-methodology__hero" aria-labelledby="methodology-scope-title">
+    <div class="container">
+      <p class="page-methodology__section-body mb-3"><a href="{{ url_for('methodology') }}">Methodology</a></p>
+      <h1 class="page-methodology__hero-title" id="methodology-scope-title">Scope 2</h1>
+    </div>
+  </section>
+
+  <section class="page-methodology__section" aria-labelledby="methodology-scope-title-sec">
+    <div class="container">
+      <h2 class="page-methodology__section-title" id="methodology-scope-title-sec">Title</h2>
+      <p class="page-methodology__section-body">Placeholder.</p>
+    </div>
+  </section>
+
+  <section class="page-methodology__section" aria-labelledby="methodology-scope-desc">
+    <div class="container">
+      <h2 class="page-methodology__section-title" id="methodology-scope-desc">Description</h2>
+      <p class="page-methodology__section-body">Placeholder.</p>
+    </div>
+  </section>
+
+  <section class="page-methodology__section" aria-labelledby="methodology-scope-calc">
+    <div class="container">
+      <h2 class="page-methodology__section-title" id="methodology-scope-calc">Calculation methodology</h2>
+      <p class="page-methodology__section-body">Placeholder.</p>
+    </div>
+  </section>
+
+  <section class="page-methodology__section" aria-labelledby="methodology-scope-inputs">
+    <div class="container">
+      <h2 class="page-methodology__section-title" id="methodology-scope-inputs">Data inputs</h2>
+      <p class="page-methodology__section-body">Placeholder.</p>
+    </div>
+  </section>
+
+  <section class="page-methodology__section" aria-labelledby="methodology-scope-ef">
+    <div class="container">
+      <h2 class="page-methodology__section-title" id="methodology-scope-ef">Emission factors</h2>
+      <p class="page-methodology__section-body">Placeholder.</p>
+    </div>
+  </section>
+
+  <section class="page-methodology__section" aria-labelledby="methodology-scope-notes">
+    <div class="container">
+      <h2 class="page-methodology__section-title" id="methodology-scope-notes">Notes</h2>
+      <p class="page-methodology__section-body">Placeholder.</p>
+    </div>
+  </section>
+</div>
+{% endblock %}

@@ -39,10 +39,28 @@
     syncSidebarState();
   }
 
+  function initSidebarCollapsibleGroups() {
+    document.querySelectorAll("[data-sidebar-group-toggle]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const group = btn.closest("[data-sidebar-group]");
+        if (!group) return;
+        const willOpen = !group.classList.contains("is-open");
+        group.classList.toggle("is-open", willOpen);
+        btn.setAttribute("aria-expanded", willOpen ? "true" : "false");
+        const panelId = btn.getAttribute("aria-controls");
+        const panel = panelId ? document.getElementById(panelId) : null;
+        if (panel) {
+          panel.setAttribute("aria-hidden", willOpen ? "false" : "true");
+        }
+      });
+    });
+  }
+
   function init() {
     const layout = getLayout();
     if (!layout) return;
     syncSidebarState();
+    initSidebarCollapsibleGroups();
 
     const btn = document.getElementById("appSidebarToggle");
     if (btn) {

@@ -4,7 +4,7 @@
 <div class="container py-4 scope-detail-page" id="scopeDetailPage" data-scope="{{ scope_num }}">
   <nav aria-label="breadcrumb" class="mb-3">
     <ol class="breadcrumb mb-0 small">
-      <li class="breadcrumb-item"><a href="{{ url_for('home') }}">Overview</a></li>
+      <li class="breadcrumb-item"><a href="{{ url_for('home', year=selected_year) }}">Overview</a></li>
       <li class="breadcrumb-item active" aria-current="page">Scope {{ scope_num }}</li>
     </ol>
   </nav>
@@ -13,8 +13,16 @@
     <div>
       <h1 class="h2 mb-1">{{ scope_title }}</h1>
       <p class="text-muted mb-0 col-lg-10">{{ scope_subtitle }}</p>
+      <form method="get" class="d-flex flex-wrap align-items-center gap-2 mt-2 mb-0" action="{{ request.path }}">
+        <label class="text-muted small mb-0" for="scopeReportingYear">Reporting year:</label>
+        <select name="year" id="scopeReportingYear" class="form-select form-select-sm" style="width:auto;min-width:5.5rem" onchange="this.form.submit()" aria-label="Reporting year">
+          {% for y in available_years %}
+          <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+          {% endfor %}
+        </select>
+      </form>
     </div>
-    <a class="btn btn-ghost btn-sm" href="{{ url_for('home') }}">← Back to Overview</a>
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('home', year=selected_year) }}">← Back to Overview</a>
   </div>
 
   <div class="row g-3 mb-3">
@@ -32,7 +40,7 @@
         <div class="card-body">
           <p class="small text-muted mb-0">
             {% if scope_num == 1 %}
-            Category breakdown reflects mapped sheets and fuels where available. Monthly trend uses reporting timestamps on the latest mapping run.
+            Category breakdown reflects mapped sheets and fuels where available. Monthly trend uses the reporting period column from your uploaded data (not upload or mapping time).
             {% elif scope_num == 2 %}
             Electricity related emissions by category; the combined view contrasts absolute emissions with share of Scope 2 when multiple categories exist.
             {% else %}
@@ -170,7 +178,7 @@
   {% endif %}
 </div>
 
-<script id="scope-dashboard-payload" type="application/json">{{ {"isAdmin": is_admin, "totals": totals, "companyRows": company_rows, "breakdown": breakdown, "scope": scope_num}|tojson }}</script>
+<script id="scope-dashboard-payload" type="application/json">{{ {"isAdmin": is_admin, "totals": totals, "companyRows": company_rows, "breakdown": breakdown, "reporting_rows": reporting_rows, "scope": scope_num}|tojson }}</script>
 {% endblock %}
 
 {% block scripts %}

@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block title %}Category {{ category_num }} — Methodology{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/methodology.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/platform.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-methodology">
+  <section class="page-methodology__hero" aria-labelledby="methodology-cat-title">
+    <div class="container">
+      <p class="page-methodology__section-body mb-2">
+        <a href="{{ url_for('methodology') }}">Methodology</a>
+        <span class="text-muted" aria-hidden="true"> · </span>
+        <a href="{{ url_for('methodology_scope3') }}">Scope 3</a>
+      </p>
+      <h1 class="page-methodology__hero-title" id="methodology-cat-title">Category {{ category_num }} — {{ category_title }}</h1>
+    </div>
+  </section>
+
+  <section class="container py-4 scope3-category-mapped-data" id="scope3CategoryDashboard" data-authenticated="{{ 'true' if current_user.is_authenticated else 'false' }}" aria-labelledby="scope3-mapped-heading">
+    <h2 class="h5 mb-3" id="scope3-mapped-heading">Your mapped data</h2>
+    <script id="scope3-category-chart-payload" type="application/json">{{ chart_payload|tojson }}</script>
+
+    <div id="scope3CategoryEmpty" class="alert alert-secondary border-0" role="status"
+      {% if current_user.is_authenticated and chart_payload.get('has_data') %}style="display:none"{% endif %}>
+      {% if not current_user.is_authenticated %}
+      Sign in to view mapped data for this category.
+      {% elif not chart_payload.get('has_data') %}
+      No data available yet
+      {% endif %}
+    </div>
+
+    <div id="scope3CategoryCharts" class="row g-3 {% if not (current_user.is_authenticated and chart_payload.get('has_data')) %}d-none{% endif %}">
+      <div class="col-md-4">
+        <div class="card h-100 border-primary-subtle">
+          <div class="card-body">
+            <div class="text-muted small">Total emissions</div>
+            <div class="display-6 mt-1" id="s3catKpiTotal">—</div>
+            <div class="text-muted small mt-2">tCO₂e (mapped results)</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card h-100 border-primary-subtle">
+          <div class="card-body">
+            <div class="text-muted small">Record count</div>
+            <div class="display-6 mt-1" id="s3catKpiRecords">—</div>
+            <div class="text-muted small mt-2">Rows with emissions in mapped files</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card h-100">
+          <div class="card-body d-flex align-items-center">
+            <p class="small text-muted mb-0">Figures update when you run mapping on templates for this Scope 3 category.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-8">
+        <div class="card h-100">
+          <div class="card-header py-2"><strong>Monthly trend</strong> <span class="text-muted small fw-normal">(reporting period)</span></div>
+          <div class="card-body">
+            <div class="chart-surface"><div id="s3catMonthly" class="chart-host chart-host--md"></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-4">
+        <div class="card h-100">
+          <div class="card-header py-2"><strong>Emission factor distribution</strong></div>
+          <div class="card-body">
+            <div class="chart-surface"><div id="s3catEfDonut" class="chart-host chart-host--md"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12">
+        <div class="card h-100">
+          <div class="card-header py-2"><strong>Data source breakdown</strong></div>
+          <div class="card-body">
+            <div class="chart-surface"><div id="s3catSourceBar" class="chart-host chart-host--md"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page-methodology__section" aria-labelledby="methodology-cat-title-sec">
+    <div class="container">
+      <h2 class="page-methodology__section-title" id="methodology-cat-title-sec">Title</h2>
+      <p class="page-methodology__section-body">Placeholder.</p>
+    </div>
+  </section>
+
+  <section class="page-methodology__section" aria-labelledby="methodology-cat-desc">
+    <div class="container">
+      <h2 class="page-methodology__section-title" id="methodology-cat-desc">Description</h2>
+      <p class="page-methodology__section-body">Placeholder.</p>
+    </div>
+  </section>
+
+  <section class="page-methodology__section" aria-labelledby="methodology-cat-calc">
+    <div class="container">
+      <h2 class="page-methodology__section-title" id="methodology-cat-calc">Calculation methodology</h2>
+      <p class="page-methodology__section-body">Placeholder.</p>
+    </div>
+  </section>
+
+  <section class="page-methodology__section" aria-labelledby="methodology-cat-inputs">
+    <div class="container">
+      <h2 class="page-methodology__section-title" id="methodology-cat-inputs">Data inputs</h2>
+      <p class="page-methodology__section-body">Placeholder.</p>
+    </div>
+  </section>
+
+  <section class="page-methodology__section" aria-labelledby="methodology-cat-ef">
+    <div class="container">
+      <h2 class="page-methodology__section-title" id="methodology-cat-ef">Emission factors</h2>
+      <p class="page-methodology__section-body">Placeholder.</p>
+    </div>
+  </section>
+
+  <section class="page-methodology__section" aria-labelledby="methodology-cat-notes">
+    <div class="container">
+      <h2 class="page-methodology__section-title" id="methodology-cat-notes">Notes</h2>
+      <p class="page-methodology__section-body">Placeholder.</p>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<script type="module" src="{{ url_for('static', filename='js/charts/init_charts.js') }}"></script>
+{% endblock %}

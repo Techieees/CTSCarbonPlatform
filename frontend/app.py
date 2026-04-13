@@ -74,7 +74,7 @@ from preprocess_jobs import (
     run_travel_preprocess,
     validate_travel_upload,
 )
-from .services import messaging_service, notification_service, search_service
+from frontend.services import messaging_service, notification_service, search_service
 
 APP_DIR = Path(__file__).resolve().parent
 INSTANCE_DIR = FRONTEND_INSTANCE_DIR
@@ -388,9 +388,29 @@ _ENDPOINTS_WITHOUT_PROFILE = frozenset(
         "who_we_are",
         "platform",
         "methodology",
+        "methodology_reference",
+        "methodology_scope1",
+        "methodology_scope2",
+        "methodology_scope3",
+        "methodology_scope3_category1",
+        "methodology_scope3_category2",
+        "methodology_scope3_category3",
+        "methodology_scope3_category4",
+        "methodology_scope3_category5",
+        "methodology_scope3_category6",
+        "methodology_scope3_category7",
+        "methodology_scope3_category9",
+        "methodology_scope3_category10",
+        "methodology_scope3_category11",
+        "methodology_scope3_category12",
+        "methodology_scope3_category13",
+        "methodology_scope3_category14",
+        "methodology_scope3_category15",
+        "methodology_scope3_category16",
         "trust",
         "forgot_password",
         "reset_password",
+        "request_access",
         "impact",
         "impact_approach",
         "impact_operations",
@@ -497,6 +517,22 @@ ROLES_WITH_ADMIN_ACCESS = frozenset({"owner", "super_admin", "admin", "manager"}
 def normalize_user_role(raw: str | None) -> str:
     r = (raw or "user").strip().lower()
     return r if r in USER_ROLES_SET else "user"
+
+
+def _split_full_name(full_name: str) -> tuple[str, str]:
+    s = (full_name or "").strip()
+    if not s:
+        return ("", "")
+    parts = s.split(None, 1)
+    if len(parts) == 1:
+        return (parts[0], "")
+    return (parts[0], parts[1])
+
+
+ACCESS_REQUEST_NOTIFY_EMAIL = "florian.d@cts-nordics.com"
+# Owner accounts are not created from the access-request flow (use User roles admin only).
+ACCESS_REQUEST_APPROVE_ROLES: tuple[str, ...] = tuple(r for r in USER_ROLES if r != "owner")
+ACCESS_REQUEST_APPROVE_ROLES_SET = frozenset(ACCESS_REQUEST_APPROVE_ROLES)
 
 
 def sync_user_admin_flag(user: "User") -> None:
@@ -609,7 +645,7 @@ class EmissionFactor(db.Model):
     unit = db.Column(db.String(100))
     year = db.Column(db.Integer)
     description = db.Column(db.Text)
-    extra_data = db.Column(db.Text)  # Tüm satır verisi JSON olarak
+    extra_data = db.Column(db.Text)  # Full row payload as JSON
 
 
 class PipelineRun(db.Model):
@@ -705,6 +741,17 @@ class Message(db.Model):
     message = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
     is_read = db.Column(db.Boolean, nullable=False, default=False, index=True)
+
+
+class AccessRequest(db.Model):
+    __tablename__ = "access_requests"
+    id = db.Column(db.Integer, primary_key=True)
+    full_name = db.Column(db.String(200), nullable=False)
+    email = db.Column(db.String(120), nullable=False, index=True)
+    company = db.Column(db.String(200), nullable=False)
+    reason = db.Column(db.Text, nullable=False)
+    status = db.Column(db.String(32), nullable=False, default="pending")
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 class UserActivityLog(db.Model):
@@ -1982,6 +2029,247 @@ def _infer_scope_from_sheet(sheet_name: str) -> int | None:
     return None
 
 
+def _infer_scope3_ghg_category(sheet_name: str) -> int | None:
+    """
+    Map template / mapped sheet name to GHG Protocol Scope 3 category number (1–15).
+    Used to filter analytics per methodology category page.
+    """
+    if _infer_scope_from_sheet(sheet_name) != 3:
+        return None
+    s = (sheet_name or "").strip().lower()
+    if "cat 4+9" in s or re.search(r"\b4\s*\+\s*9\b", s):
+        return 9 if "downstream" in s else 4
+    for cat in (15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1):
+        if re.search(rf"cat(?:egory)?\s*{cat}\b", s) or re.search(rf"\bs3c{cat}\b", s):
+            return cat
+    if "scope 3 services spend" in s and "cat 1" not in s:
+        return 1
+    return None
+
+
+def _find_data_source_column(df: "pd.DataFrame") -> str | None:
+    if df is None or getattr(df, "columns", None) is None:
+        return None
+
+    def norm(x: str) -> str:
+        return "".join(ch.lower() for ch in (x or "") if ch.isalnum())
+
+    priority = (
+        "Source_File",
+        "Source file",
+        "source_file",
+        "Source File",
+        "Data Source",
+        "Data source",
+        "Datasource",
+        "Source",
+    )
+    for p in priority:
+        if p in df.columns:
+            return str(p)
+    for c in df.columns:
+        n = norm(str(c))
+        if n in ("sourcefile", "sourcefilename", "datasources"):
+            return str(c)
+    return None
+
+
+def _find_emission_factor_label_column(df: "pd.DataFrame") -> str | None:
+    """Column used to group emission factor distribution (name, id, or description)."""
+    if df is None or getattr(df, "columns", None) is None:
+        return None
+
+    def norm(x: str) -> str:
+        return "".join(ch.lower() for ch in (x or "") if ch.isalnum())
+
+    priority = (
+        "ef_name",
+        "EF Name",
+        "Matched EF",
+        "Emission Factor Name",
+        "ef_id",
+        "EF ID",
+        "Emission Factor ID",
+        "ef_description",
+        "EF Description",
+    )
+    for p in priority:
+        if p in df.columns:
+            return str(p)
+    for c in df.columns:
+        n = norm(str(c))
+        if n in ("efname", "emissionfactorname", "matchedef"):
+            return str(c)
+        if "emissionfactor" in n and "value" not in n and "unit" not in n and "category" not in n:
+            return str(c)
+    return None
+
+
+def _df_row_emission_and_labels(
+    df: "pd.DataFrame",
+    tco2e_col: str | None,
+    ef_col: str | None,
+    src_col: str | None,
+) -> tuple[dict[str, float], dict[str, float], int]:
+    """Returns (ef_buckets, source_buckets, valid_row_count) weighted by tCO₂e."""
+    ef_acc: dict[str, float] = defaultdict(float)
+    src_acc: dict[str, float] = defaultdict(float)
+    n_valid = 0
+    if df is None or not tco2e_col:
+        return ef_acc, src_acc, 0
+    try:
+        cols = [tco2e_col]
+        if ef_col and ef_col in df.columns:
+            cols.append(ef_col)
+        if src_col and src_col in df.columns:
+            cols.append(src_col)
+        sub = df.loc[:, [c for c in cols if c in df.columns]]
+    except Exception:
+        return ef_acc, src_acc, 0
+
+    for _, row in sub.iterrows():
+        try:
+            v = _parse_float_loose(row.get(tco2e_col))
+        except Exception:
+            v = None
+        if v is None or abs(float(v)) <= 1e-18:
+            continue
+        n_valid += 1
+        val = float(v)
+        ef_key = "Unspecified"
+        if ef_col and ef_col in df.columns:
+            raw = row.get(ef_col)
+            if raw is not None and str(raw).strip() != "" and not (isinstance(raw, float) and pd.isna(raw)):
+                ef_key = str(raw).strip()[:80]
+        ef_acc[ef_key] += val
+
+        src_key = "Unspecified"
+        if src_col and src_col in df.columns:
+            raw_s = row.get(src_col)
+            if raw_s is not None and str(raw_s).strip() != "" and not (isinstance(raw_s, float) and pd.isna(raw_s)):
+                src_key = str(raw_s).strip()[:120]
+        src_acc[src_key] += val
+
+    return ef_acc, src_acc, n_valid
+
+
+def _chart_top_buckets(raw: dict[str, float], top_n: int = 10) -> tuple[list[str], list[float]]:
+    items = sorted(raw.items(), key=lambda x: abs(x[1]), reverse=True)
+    if not items:
+        return [], []
+    if len(items) <= top_n:
+        return [k for k, _ in items], [float(v) for _, v in items]
+    head = items[: top_n - 1]
+    rest = sum(float(v) for _, v in items[top_n - 1 :])
+    labels = [k for k, _ in head] + ["Other"]
+    values = [float(v) for _, v in head] + [rest]
+    return labels, values
+
+
+def _scope3_category_charts_payload(category_num: int) -> dict[str, object]:
+    """
+    JSON for Scope 3 methodology category dashboards: mapped outputs only.
+    """
+    empty: dict[str, object] = {
+        "has_data": False,
+        "total_tco2e": 0.0,
+        "record_count": 0,
+        "monthly_labels": [],
+        "monthly_values": [],
+        "ef_labels": [],
+        "ef_values": [],
+        "source_labels": [],
+        "source_values": [],
+    }
+    try:
+        if not getattr(current_user, "is_authenticated", False):
+            return empty
+    except Exception:
+        return empty
+
+    keys = _company_candidate_keys(getattr(current_user, "company_name", "") or "")
+    if not keys:
+        return empty
+
+    latest = _latest_sheet_totals_for_company(keys)
+    subs = [
+        s
+        for s in latest
+        if int(getattr(s, "scope", 0) or 0) == 3 and _infer_scope3_ghg_category(str(getattr(s, "sheet_name", "") or "")) == category_num
+    ]
+    if not subs:
+        return empty
+
+    total_tco2e = 0.0
+    record_count = 0
+    monthly_map: dict[str, float] = defaultdict(float)
+    monthly_label: dict[str, str] = {}
+    ef_all: dict[str, float] = defaultdict(float)
+    src_all: dict[str, float] = defaultdict(float)
+
+    for sub in subs:
+        total_tco2e += float(getattr(sub, "tco2e_total", 0.0) or 0.0)
+
+        for r in _build_reporting_rows_from_summary(sub):
+            sk = str(r.get("sortKey") or "").strip()
+            if not sk:
+                continue
+            monthly_map[sk] += float(r.get("emissions") or 0.0)
+            dl = str(r.get("dateLabel") or sk).strip()
+            if sk not in monthly_label or len(dl) >= len(monthly_label.get(sk, "")):
+                monthly_label[sk] = dl
+
+        rid = str(getattr(sub, "run_id", "") or "")
+        mr = MappingRun.query.get(rid) if rid else None
+        op = getattr(mr, "output_path", None) if mr else None
+        if not op or not os.path.exists(str(op)):
+            continue
+        df = _read_sheet_df_from_workbook(op, getattr(sub, "sheet_name", None))
+        if df is None or getattr(df, "empty", True):
+            continue
+        tcol = _find_tco2e_column(df)
+        ef_c = _find_emission_factor_label_column(df)
+        src_c = _find_data_source_column(df)
+        ef_part, src_part, n_ok = _df_row_emission_and_labels(df, tcol, ef_c, src_c)
+        record_count += int(n_ok)
+        for k, v in ef_part.items():
+            ef_all[k] += float(v)
+        for k, v in src_part.items():
+            src_all[k] += float(v)
+
+    if record_count <= 0 and subs:
+        record_count = sum(int(getattr(s, "rows_count", 0) or 0) for s in subs)
+
+    has_any = (
+        total_tco2e > 1e-12
+        or bool(monthly_map)
+        or bool(ef_all)
+        or bool(src_all)
+        or int(record_count or 0) > 0
+    )
+    if not has_any:
+        return empty
+
+    month_keys = sorted(monthly_map.keys(), key=lambda x: str(x))
+    monthly_labels = [monthly_label.get(k, k) for k in month_keys]
+    monthly_values = [round(float(monthly_map[k]), 6) for k in month_keys]
+
+    ef_labels, ef_values = _chart_top_buckets(dict(ef_all), 10)
+    src_labels, src_values = _chart_top_buckets(dict(src_all), 10)
+
+    return {
+        "has_data": True,
+        "total_tco2e": round(float(total_tco2e), 6),
+        "record_count": int(record_count),
+        "monthly_labels": monthly_labels,
+        "monthly_values": monthly_values,
+        "ef_labels": ef_labels,
+        "ef_values": [round(float(v), 6) for v in ef_values],
+        "source_labels": src_labels,
+        "source_values": [round(float(v), 6) for v in src_values],
+    }
+
+
 def _count_company_mapped_categories(company_name: str) -> int:
     company_keys = _company_candidate_keys(company_name)
     if not company_keys:
@@ -2397,6 +2685,10 @@ def _parse_period_value(value) -> datetime | None:
     if m:
         return datetime(int(m.group(1)), int(m.group(2)), 1)
 
+    m = _re.match(r"^\s*((?:19|20)\d{2})\s*$", s)
+    if m:
+        return datetime(int(m.group(1)), 1, 1)
+
     try:
         dt = pd.to_datetime([s], errors="coerce", dayfirst=False)[0]
         if pd.isna(dt):
@@ -2406,43 +2698,92 @@ def _parse_period_value(value) -> datetime | None:
         return None
 
 
+def _column_name_period_priority(name: str) -> int:
+    """Lower is higher priority (reporting > period > date > …)."""
+    n = "".join(ch.lower() for ch in (name or "") if ch.isalnum())
+    low = (name or "").strip().lower()
+    if "reporting period" in low:
+        return 1
+    if "purchase date" in low:
+        return 2
+    if "reporting" in n:
+        return 1
+    if "period" in n:
+        return 2
+    if "date" in n:
+        return 3
+    if "month" in n:
+        return 4
+    if n in ("activitydate", "consumptiondate", "invoicedate"):
+        return 5
+    if "activity" in n and "date" in n:
+        return 5
+    if "invoice" in n and "date" in n:
+        return 5
+    if "consumption" in n and "date" in n:
+        return 5
+    return 99
+
+
 def _find_period_column(df: "pd.DataFrame", sample_rows: int = 120) -> str | None:
     if df is None or getattr(df, "columns", None) is None or len(df.columns) == 0:
         return None
 
-    def norm(x: str) -> str:
-        return "".join(ch.lower() for ch in (x or "") if ch.isalnum())
+    cols = list(df.columns)
 
-    preferred_exact = {
-        "date",
-        "reportingperiodmonthyear",
-        "reportingperiod",
-        "reportingperiodmonth",
-        "monthyear",
-        "periodmonthyear",
-        "reportingmonth",
-    }
-
-    for c in list(df.columns):
-        n = norm(str(c))
-        if n in preferred_exact:
+    # 0) Data-entry templates: prefer explicit headers used in CTS forms
+    for c in cols:
+        low = str(c).strip().lower()
+        if "reporting period" in low:
             return str(c)
-        if ("date" in n) or ("period" in n and ("month" in n or "year" in n)):
+    for c in cols:
+        low = str(c).strip().lower()
+        if "purchase date" in low:
             return str(c)
 
-    first_col = str(df.columns[0])
+    first_col = str(cols[0])
+
+    # 1) First column: if most values parse as reporting dates, use it
     try:
         sample = [v for v in df[first_col].tolist()[:sample_rows] if str(v).strip() != ""]
         if sample:
             parsed = sum(1 for v in sample if _parse_period_value(v) is not None)
-            if parsed >= max(2, int(len(sample) * 0.5)):
+            need = max(1, int(len(sample) * 0.45))
+            if parsed >= max(need, min(2, len(sample))):
                 return first_col
     except Exception:
         pass
 
+    # 2) Named columns: priority reporting → period → date → month → activity/invoice dates
+    ranked: list[tuple[tuple[int, float, int], str]] = []
+    for c in cols:
+        sc = str(c)
+        pri = _column_name_period_priority(sc)
+        if pri >= 99:
+            continue
+        try:
+            sample = [v for v in df[sc].tolist()[:sample_rows] if str(v).strip() != ""]
+        except Exception:
+            continue
+        if not sample:
+            continue
+        parsed = sum(1 for v in sample if _parse_period_value(v) is not None)
+        ratio = parsed / max(len(sample), 1)
+        min_parsed = 1 if len(sample) <= 8 else 2
+        min_ratio = 0.2 if len(sample) <= 8 else 0.35
+        if pri <= 2:
+            min_parsed = 1
+            min_ratio = 0.12
+        if parsed >= min_parsed and ratio >= min_ratio:
+            ranked.append(((pri, -ratio, -parsed), sc))
+    if ranked:
+        ranked.sort(key=lambda x: x[0])
+        return ranked[0][1]
+
+    # 3) Heuristic: any column with strong date-like values
     best_col = None
     best_score = (-1, -1.0)
-    for c in list(df.columns):
+    for c in cols:
         try:
             sample = [v for v in df[str(c)].tolist()[:sample_rows] if str(v).strip() != ""]
         except Exception:
@@ -2451,7 +2792,9 @@ def _find_period_column(df: "pd.DataFrame", sample_rows: int = 120) -> str | Non
             continue
         parsed = sum(1 for v in sample if _parse_period_value(v) is not None)
         ratio = parsed / max(len(sample), 1)
-        if parsed >= 3 and ratio >= 0.55 and (parsed, ratio) > best_score:
+        min_ok = 1 if len(sample) <= 6 else 3
+        rmin = 0.34 if len(sample) <= 6 else 0.55
+        if parsed >= min_ok and ratio >= rmin and (parsed, ratio) > best_score:
             best_col = str(c)
             best_score = (parsed, ratio)
     return best_col
@@ -2560,10 +2903,104 @@ def _format_period_label(points: list[dict[str, object]], fallback_dt: datetime 
     return ""
 
 
+def _build_reporting_rows_from_summary(sub: "MappingRunSummary") -> list[dict[str, object]]:
+    """
+    Chart rows keyed by reporting period from the mapped workbook (not upload / mapping time).
+    Emits sortKey (YYYY-MM) and dateLabel for MonthlyTrend / stacked charts.
+    """
+    out: list[dict[str, object]] = []
+    rid = str(getattr(sub, "run_id", "") or "")
+    if not rid:
+        return out
+    try:
+        mr = MappingRun.query.get(rid)
+    except Exception:
+        mr = None
+    if not mr:
+        return out
+    op = getattr(mr, "output_path", None)
+    if not op or not os.path.exists(str(op)):
+        return out
+    df = _read_sheet_df_from_workbook(op, getattr(sub, "sheet_name", None))
+    if df is None or getattr(df, "empty", True):
+        return out
+    tco2e_col = _find_tco2e_column(df)
+    period_col = _find_period_column(df)
+    if not tco2e_col or not period_col:
+        return out
+    sheet_name = str(getattr(sub, "sheet_name", "") or "Category")
+    scope = _effective_scope(getattr(sub, "scope", None), sheet_name)
+    for _, row in df.iterrows():
+        try:
+            raw_date = row.get(period_col)
+            raw_val = row.get(tco2e_col)
+        except Exception:
+            continue
+        dt = _parse_period_value(raw_date)
+        val = _parse_float_loose(raw_val)
+        if dt is None or val is None:
+            continue
+        sraw = str(raw_date).strip() if raw_date is not None else ""
+        m_yonly = re.match(r"^\s*((?:19|20)\d{2})(?:\.0)?\s*$", sraw)
+        if m_yonly:
+            sk = m_yonly.group(1)
+            label = m_yonly.group(1)
+        else:
+            sk = dt.strftime("%Y-%m")
+            label = dt.strftime("%b %Y")
+        out.append(
+            {
+                "scope": scope,
+                "sheet": sheet_name,
+                "category": sheet_name,
+                "company": str(getattr(sub, "company_name", "") or ""),
+                "emissions": float(val),
+                "sortKey": sk,
+                "dateLabel": label,
+            }
+        )
+    if not out and tco2e_col and period_col:
+        total, _, _ = _sum_tco2e(df)
+        if total > 0:
+            sk = None
+            label = None
+            for _, row in df.iterrows():
+                try:
+                    raw_date = row.get(period_col)
+                except Exception:
+                    continue
+                dt = _parse_period_value(raw_date)
+                if dt:
+                    sk = dt.strftime("%Y-%m")
+                    label = dt.strftime("%b %Y")
+                    break
+            if not sk:
+                ca = getattr(sub, "created_at", None)
+                if isinstance(ca, datetime):
+                    sk = ca.strftime("%Y-%m")
+                    label = ca.strftime("%b %Y")
+                else:
+                    sk = datetime.utcnow().strftime("%Y-%m")
+                    label = sk
+            out.append(
+                {
+                    "scope": scope,
+                    "sheet": sheet_name,
+                    "category": sheet_name,
+                    "company": str(getattr(sub, "company_name", "") or ""),
+                    "emissions": float(total),
+                    "sortKey": sk,
+                    "dateLabel": label,
+                }
+            )
+    return out
+
+
 def _period_profile_for_summary(sub: "MappingRunSummary", run_cache: dict[str, "MappingRun | None"] | None = None) -> dict[str, object]:
     rid = str(getattr(sub, "run_id", "") or "")
     cache_key = "|".join(
         [
+            "v3",
             rid,
             str(getattr(sub, "sheet_name", "") or ""),
             str(getattr(sub, "created_at", "") or ""),
@@ -2576,9 +3013,27 @@ def _period_profile_for_summary(sub: "MappingRunSummary", run_cache: dict[str, "
         if cached is not None:
             return cached
 
-    # Avoid reopening mapped workbooks during requests. Those reads were causing
-    # slow responses and proxy timeouts on report/dashboard pages.
-    profile = _fallback_period_profile_for_summary(sub)
+    profile: dict[str, object] | None = None
+    try:
+        mr = None
+        if run_cache is not None:
+            if rid in run_cache:
+                mr = run_cache[rid]
+            else:
+                mr = MappingRun.query.get(rid)
+                run_cache[rid] = mr
+        else:
+            mr = MappingRun.query.get(rid)
+        op = getattr(mr, "output_path", None) if mr else None
+        if op and os.path.exists(str(op)):
+            df = _read_sheet_df_from_workbook(op, getattr(sub, "sheet_name", None))
+            if df is not None and not getattr(df, "empty", True):
+                profile = _build_period_profile_from_df(df)
+    except Exception:
+        profile = None
+
+    if profile is None:
+        profile = _fallback_period_profile_for_summary(sub)
     with _PERIOD_PROFILE_CACHE_LOCK:
         _PERIOD_PROFILE_CACHE[cache_key] = profile
     return profile
@@ -3337,14 +3792,14 @@ def _run_pipeline_background(run_id: int) -> None:
 # Registration dropdown: exact template.json top-level keys only
 COMPANIES = list(TEMPLATES.keys())
 
-# Utility: Calculate emissions from excel data (veritabanından faktör çeker)
+# Utility: Calculate emissions from excel data (loads factors from the database)
 def calculate_emissions_from_excel(file_path, template_name):
     from sqlalchemy import and_
     total_emission = 0
     by_category = {}
     try:
         xls = pd.ExcelFile(file_path)
-        # Önce 'Activity Based' sheet var mı kontrol et
+        # Check whether an 'Activity Based' sheet exists first
         if 'Activity Based' in xls.sheet_names:
             sheet = 'Activity Based'
         else:
@@ -3382,7 +3837,7 @@ def calculate_emissions_from_excel(file_path, template_name):
                         litres = float(row[litre_col])
                     except (ValueError, TypeError):
                         litres = 0
-                    # Veritabanından faktör çek
+                    # Load factor from database
                     factor_obj = EmissionFactor.query.filter_by(category=template_name, subcategory=fuel).first()
                     factor = factor_obj.factor if factor_obj else 0
                     emission = litres * factor
@@ -3488,7 +3943,7 @@ def calculate_emissions_from_excel(file_path, template_name):
                     by_category['Water'] = by_category.get('Water', 0) + emission
                     total_emission += emission
         else:
-            # Diğer template'ler için dummy değer
+            # Dummy value for other templates
             return {
                 'total_emission': 1234.56,
                 'by_category': {
@@ -3556,9 +4011,128 @@ def who_we_are():
 def platform():
     return render_template('platform.html')
 
-@app.route('/methodology')
+def _render_methodology_scope3_category(category_num, category_title, category_slug):
+    chart_payload = _scope3_category_charts_payload(int(category_num))
+    return render_template(
+        "methodology_scope3_category.html",
+        category_slug=category_slug,
+        category_num=category_num,
+        category_title=category_title,
+        chart_payload=chart_payload,
+    )
+
+
+@app.route("/methodology")
 def methodology():
-    return render_template('methodology.html')
+    return render_template("methodology.html")
+
+
+@app.route("/methodology/reference")
+def methodology_reference():
+    return render_template("methodology_reference.html")
+
+
+@app.route("/methodology/scope1")
+def methodology_scope1():
+    return render_template("methodology_scope1.html")
+
+
+@app.route("/methodology/scope2")
+def methodology_scope2():
+    return render_template("methodology_scope2.html")
+
+
+@app.route("/methodology/scope3")
+def methodology_scope3():
+    return render_template("methodology_scope3.html")
+
+
+@app.route("/methodology/scope3/category1")
+def methodology_scope3_category1():
+    return _render_methodology_scope3_category(
+        1, "Purchased Goods and Services", "category1"
+    )
+
+
+@app.route("/methodology/scope3/category2")
+def methodology_scope3_category2():
+    return _render_methodology_scope3_category(2, "Capital Goods", "category2")
+
+
+@app.route("/methodology/scope3/category3")
+def methodology_scope3_category3():
+    return _render_methodology_scope3_category(
+        3, "Fuel and Energy Related Activities", "category3"
+    )
+
+
+@app.route("/methodology/scope3/category4")
+def methodology_scope3_category4():
+    return _render_methodology_scope3_category(
+        4, "Upstream Transportation", "category4"
+    )
+
+
+@app.route("/methodology/scope3/category5")
+def methodology_scope3_category5():
+    return _render_methodology_scope3_category(5, "Waste", "category5")
+
+
+@app.route("/methodology/scope3/category6")
+def methodology_scope3_category6():
+    return _render_methodology_scope3_category(
+        6, "Business Travel", "category6"
+    )
+
+
+@app.route("/methodology/scope3/category7")
+def methodology_scope3_category7():
+    return _render_methodology_scope3_category(
+        7, "Employee Commuting", "category7"
+    )
+
+
+@app.route("/methodology/scope3/category9")
+def methodology_scope3_category9():
+    return _render_methodology_scope3_category(
+        9, "Downstream Transportation", "category9"
+    )
+
+
+@app.route("/methodology/scope3/category10")
+def methodology_scope3_category10():
+    return render_template("methodology_scope3_category10.html")
+
+
+@app.route("/methodology/scope3/category11")
+def methodology_scope3_category11():
+    return render_template("methodology_scope3_category11.html")
+
+
+@app.route("/methodology/scope3/category12")
+def methodology_scope3_category12():
+    return render_template("methodology_scope3_category12.html")
+
+
+@app.route("/methodology/scope3/category13")
+def methodology_scope3_category13():
+    return render_template("methodology_scope3_category13.html")
+
+
+@app.route("/methodology/scope3/category14")
+def methodology_scope3_category14():
+    return render_template("methodology_scope3_category14.html")
+
+
+@app.route("/methodology/scope3/category15")
+def methodology_scope3_category15():
+    return render_template("methodology_scope3_category15.html")
+
+
+@app.route("/methodology/scope3/category16")
+def methodology_scope3_category16():
+    return render_template("methodology_scope3_category16.html")
+
 
 @app.route('/trust')
 def trust():
@@ -3810,40 +4384,143 @@ def login():
 
     return render_template('login.html')
 
-@app.route('/register', methods=['GET', 'POST'])
+@app.route("/register", methods=["GET", "POST"])
 def register():
-    if request.method == 'POST':
-        _ensure_db_tables()
-        email = (request.form.get('email') or '').strip().lower()
-        password = request.form.get('password') or ''
-        company_name = (request.form.get('company_name') or '').strip()
+    """Public self-registration is disabled; use the access request flow."""
+    return redirect(url_for("request_access"))
+
+
+@app.route("/request-access", methods=["GET", "POST"])
+def request_access():
+    if current_user.is_authenticated:
+        return redirect(url_for("home"))
+    _ensure_db_tables()
+    if request.method == "POST":
+        full_name = (request.form.get("full_name") or "").strip()
+        email = (request.form.get("email") or "").strip().lower()
+        company = (request.form.get("company") or "").strip()
+        reason = (request.form.get("reason") or "").strip()
+
+        if not full_name or not email or not company or not reason:
+            flash("Please fill in all fields.")
+            return render_template("request_access.html")
 
         if not _email_domain_allowed(email):
-            flash('Only CTS company email addresses are allowed')
-            return render_template('register.html', companies=COMPANIES)
-
-        if company_name not in TEMPLATES:
-            flash('Invalid company selection')
-            return render_template('register.html', companies=COMPANIES)
+            flash("Only CTS company email addresses are allowed (@cts-nordics.com).")
+            return render_template("request_access.html")
 
         if User.query.filter(db.func.lower(User.email) == email).first():
-            flash('Email already registered')
-            return render_template('register.html', companies=COMPANIES)
+            flash("This email is already registered. Please sign in or use Forgot password.")
+            return render_template("request_access.html")
+
+        existing_pending = (
+            AccessRequest.query.filter(db.func.lower(AccessRequest.email) == email)
+            .filter(AccessRequest.status == "pending")
+            .first()
+        )
+        if existing_pending:
+            flash("You already have a pending access request. We will contact you when it is reviewed.")
+            return render_template("request_access.html")
+
+        row = AccessRequest(
+            full_name=full_name,
+            email=email,
+            company=company,
+            reason=reason,
+            status="pending",
+        )
+        db.session.add(row)
+        db.session.commit()
+
+        admin_body = (
+            "New access request received.\n\n"
+            f"Name:\n{full_name}\n\n"
+            f"Company:\n{company}\n\n"
+            f"Email:\n{email}\n\n"
+            f"Reason:\n{reason}\n\n"
+            "Review request in admin panel.\n"
+        )
+        _send_plain_email(
+            ACCESS_REQUEST_NOTIFY_EMAIL,
+            "New Access Request - CTS Platform",
+            admin_body,
+        )
+
+        flash("Thank you. Your request has been submitted. We will notify you when your access is approved.")
+        return redirect(url_for("request_access"))
+
+    return render_template("request_access.html")
+
+
+@app.route("/admin/access-requests", methods=["GET", "POST"])
+@login_required
+def admin_access_requests():
+    if not getattr(current_user, "is_admin", False):
+        flash("Access denied")
+        return redirect(url_for("dashboard"))
+
+    _ensure_db_tables()
+
+    if request.method == "POST":
+        action = (request.form.get("action") or "").strip()
+        rid = request.form.get("request_id", type=int)
+        if action != "approve" or not rid:
+            flash("Invalid request.")
+            return redirect(url_for("admin_access_requests"))
+
+        row = db.session.get(AccessRequest, rid)
+        if not row:
+            flash("Request not found.")
+            return redirect(url_for("admin_access_requests"))
+
+        if row.status != "pending":
+            flash("This request is no longer pending.")
+            return redirect(url_for("admin_access_requests"))
+
+        email = (row.email or "").strip().lower()
+        if User.query.filter(db.func.lower(User.email) == email).first():
+            flash("A user with this email already exists. Remove or reject the request manually if needed.")
+            return redirect(url_for("admin_access_requests"))
+
+        password = request.form.get("password") or ""
+        if len(password) < 8:
+            flash("Password must be at least 8 characters.")
+            return redirect(url_for("admin_access_requests"))
+
+        new_role = normalize_user_role(request.form.get("role"))
+        if new_role not in ACCESS_REQUEST_APPROVE_ROLES_SET:
+            flash("Invalid role selected.")
+            return redirect(url_for("admin_access_requests"))
+
+        first_name, last_name = _split_full_name(row.full_name)
+        company_name = (row.company or "").strip() or "Unknown"
 
         user = User(
             email=email,
             password_hash=generate_password_hash(password),
             company_name=company_name,
+            first_name=first_name or None,
+            last_name=last_name or None,
             is_profile_complete=False,
-            role="user",
+            role=new_role,
         )
         sync_user_admin_flag(user)
         db.session.add(user)
+
+        row.status = "approved"
         db.session.commit()
 
-        flash('Registration successful! Please login.')
-        return redirect(url_for('login'))
-    return render_template('register.html', companies=COMPANIES)
+        flash(
+            f"Account created for {email} (role: {new_role}). No email was sent — share credentials with them directly."
+        )
+        return redirect(url_for("admin_access_requests"))
+
+    rows = AccessRequest.query.order_by(AccessRequest.created_at.desc()).all()
+    return render_template(
+        "admin_access_requests.html",
+        requests=rows,
+        approve_roles=ACCESS_REQUEST_APPROVE_ROLES,
+    )
 
 
 @app.route("/forgot-password", methods=["GET", "POST"])
@@ -7336,10 +8013,117 @@ def export_emission_factors():
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
+
+def _reporting_row_year(row: dict[str, object]) -> int | None:
+    sk = str(row.get("sortKey") or "").strip()
+    if len(sk) >= 4 and sk[:4].isdigit():
+        y = int(sk[:4])
+        if 1990 <= y <= 2100:
+            return y
+    return None
+
+
+def _infer_scope_from_sheet_name(sheet_name: str | None) -> int:
+    """
+    When MappingRunSummary.scope is NULL or wrong, many templates encode scope in the sheet title
+    (e.g. 'Scope 1 Fuel Usage', 'Scope 3 Cat 1 Goods Spend'). Used so scope detail pages match Home.
+    """
+    s = (sheet_name or "").strip().lower()
+    if not s:
+        return 0
+    if re.search(r"\bscope\s*3\b", s):
+        return 3
+    if re.search(r"\bscope\s*2\b", s):
+        return 2
+    if re.search(r"\bscope\s*1\b", s):
+        return 1
+    return 0
+
+
+def _effective_scope(scope_val: object, sheet_name: str | None) -> int:
+    try:
+        n = int(scope_val) if scope_val is not None else 0
+    except (TypeError, ValueError):
+        n = 0
+    if n in (1, 2, 3):
+        return n
+    inferred = _infer_scope_from_sheet_name(sheet_name)
+    return inferred if inferred else n
+
+
+def _admin_aggregates_from_reporting_rows(
+    rows: list[dict[str, object]],
+) -> tuple[dict[str, float], list[dict[str, object]], list[dict[str, object]]]:
+    company_totals: dict[str, dict[str, float]] = defaultdict(
+        lambda: {"scope1": 0.0, "scope2": 0.0, "scope3": 0.0, "total": 0.0}
+    )
+    g = {"scope1": 0.0, "scope2": 0.0, "scope3": 0.0, "total": 0.0}
+    sheet_agg: dict[tuple[int, str], float] = defaultdict(float)
+    for r in rows:
+        v = float(r.get("emissions") or 0.0)
+        sheet = str(r.get("sheet") or r.get("category") or "Category")
+        sc = _effective_scope(r.get("scope"), sheet)
+        c = (str(r.get("company") or "").strip()) or "—"
+        if sc == 1:
+            company_totals[c]["scope1"] += v
+        elif sc == 2:
+            company_totals[c]["scope2"] += v
+        elif sc == 3:
+            company_totals[c]["scope3"] += v
+        company_totals[c]["total"] += v
+        if sc == 1:
+            g["scope1"] += v
+        elif sc == 2:
+            g["scope2"] += v
+        elif sc == 3:
+            g["scope3"] += v
+        g["total"] += v
+        sheet_agg[(sc, sheet)] += v
+    out_rows: list[dict[str, object]] = []
+    for c in sorted(company_totals.keys(), key=lambda x: x.lower()):
+        t = company_totals[c]
+        out_rows.append({"company": c, **{k: round(t[k], 3) for k in ("scope1", "scope2", "scope3", "total")}})
+    breakdown = [
+        {"sheet": sheet, "scope": sc, "tco2e": round(float(v), 3), "updated_at": ""}
+        for (sc, sheet), v in sorted(sheet_agg.items(), key=lambda x: (-x[1], str(x[0][1]).lower()))
+    ]
+    return {k: round(g[k], 3) for k in g}, out_rows, breakdown
+
+
+def _user_totals_and_breakdown_from_reporting_rows(
+    rows: list[dict[str, object]],
+) -> tuple[dict[str, float], list[dict[str, object]]]:
+    s1 = s2 = s3 = 0.0
+    sheet_agg: dict[tuple[int, str], float] = defaultdict(float)
+    for r in rows:
+        v = float(r.get("emissions") or 0.0)
+        sheet = str(r.get("sheet") or r.get("category") or "Category")
+        sc = _effective_scope(r.get("scope"), sheet)
+        if sc == 1:
+            s1 += v
+        elif sc == 2:
+            s2 += v
+        elif sc == 3:
+            s3 += v
+        sheet_agg[(sc, sheet)] += v
+    totals = {
+        "total": round(s1 + s2 + s3, 3),
+        "scope1": round(s1, 3),
+        "scope2": round(s2, 3),
+        "scope3": round(s3, 3),
+    }
+    breakdown = [
+        {"sheet": sheet, "scope": sc, "tco2e": round(float(v), 3), "updated_at": ""}
+        for (sc, sheet), v in sorted(sheet_agg.items(), key=lambda x: (-x[1], str(x[0][1]).lower()))
+    ]
+    return totals, breakdown
+
+
 def _home_overview_context():
     """Shared context for Overview (home) and per-scope detail pages."""
     _ensure_db_tables()
-    year = datetime.utcnow().year
+    req_year = request.args.get("year", type=int)
+    default_year = datetime.utcnow().year
 
     if bool(getattr(current_user, "is_admin", False)):
         all_rows = MappingRunSummary.query.order_by(MappingRunSummary.created_at.desc()).all()
@@ -7352,11 +8136,44 @@ def _home_overview_context():
                 continue
             latest_by_company_sheet[key] = r
 
-        company_totals: dict[str, dict[str, float]] = defaultdict(lambda: {"scope1": 0.0, "scope2": 0.0, "scope3": 0.0, "total": 0.0})
+        latest_list = list(latest_by_company_sheet.values())
+        reporting_rows_full: list[dict[str, object]] = []
+        for r in latest_list:
+            try:
+                reporting_rows_full.extend(_build_reporting_rows_from_summary(r))
+            except Exception:
+                continue
+
+        years_in_data = sorted({_reporting_row_year(x) for x in reporting_rows_full if _reporting_row_year(x)})
+        run_years = sorted({r.created_at.year for r in latest_list if getattr(r, "created_at", None)})
+
+        if years_in_data:
+            selected_year = req_year if req_year in years_in_data else max(years_in_data)
+            reporting_rows_adm = [x for x in reporting_rows_full if _reporting_row_year(x) == selected_year]
+            if reporting_rows_adm:
+                g, rows, breakdown_adm = _admin_aggregates_from_reporting_rows(reporting_rows_adm)
+            else:
+                g = {"scope1": 0.0, "scope2": 0.0, "scope3": 0.0, "total": 0.0}
+                rows = []
+                breakdown_adm = []
+            return {
+                "year": selected_year,
+                "selected_year": selected_year,
+                "available_years": years_in_data,
+                "is_admin": True,
+                "totals": g,
+                "company_rows": rows,
+                "breakdown": breakdown_adm,
+                "reporting_rows": reporting_rows_adm,
+            }
+
+        company_totals: dict[str, dict[str, float]] = defaultdict(
+            lambda: {"scope1": 0.0, "scope2": 0.0, "scope3": 0.0, "total": 0.0}
+        )
         for (_c, _s), r in latest_by_company_sheet.items():
             c = (r.company_name or "").strip()
             v = float(getattr(r, "tco2e_total", 0.0) or 0.0)
-            sc = int(getattr(r, "scope", 0) or 0)
+            sc = _effective_scope(getattr(r, "scope", None), getattr(r, "sheet_name", None))
             if sc == 1:
                 company_totals[c]["scope1"] += v
             elif sc == 2:
@@ -7365,42 +8182,108 @@ def _home_overview_context():
                 company_totals[c]["scope3"] += v
             company_totals[c]["total"] += v
 
-        rows = []
+        rows_out = []
         g = {"scope1": 0.0, "scope2": 0.0, "scope3": 0.0, "total": 0.0}
         for c in sorted(company_totals.keys(), key=lambda x: x.lower()):
             t = company_totals[c]
-            rows.append({"company": c, **{k: round(t[k], 3) for k in ("scope1", "scope2", "scope3", "total")}})
+            rows_out.append({"company": c, **{k: round(t[k], 3) for k in ("scope1", "scope2", "scope3", "total")}})
             for k in g:
                 g[k] += float(t[k] or 0.0)
 
+        breakdown_adm = [
+            {
+                "sheet": r.sheet_name,
+                "scope": _effective_scope(getattr(r, "scope", None), getattr(r, "sheet_name", None)),
+                "tco2e": round(float(r.tco2e_total or 0.0), 3),
+                "updated_at": r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "",
+            }
+            for r in latest_list
+        ]
+        available_years = run_years or [default_year]
+        selected_year = req_year if req_year in available_years else max(available_years)
+        display_year = selected_year
         return {
-            "year": year,
+            "year": display_year,
+            "selected_year": selected_year,
+            "available_years": available_years,
             "is_admin": True,
             "totals": {k: round(g[k], 3) for k in g},
-            "company_rows": rows,
-            "breakdown": [],
+            "company_rows": rows_out,
+            "breakdown": breakdown_adm,
+            "reporting_rows": reporting_rows_full,
         }
 
     keys = _company_candidate_keys(getattr(current_user, "company_name", "") or "")
     latest = _latest_sheet_totals_for_company(keys)
+    year = default_year
     if latest and getattr(latest[0], "created_at", None):
         year = latest[0].created_at.year
-    scope1 = sum(float(r.tco2e_total or 0.0) for r in latest if int(r.scope or 0) == 1)
-    scope2 = sum(float(r.tco2e_total or 0.0) for r in latest if int(r.scope or 0) == 2)
-    scope3 = sum(float(r.tco2e_total or 0.0) for r in latest if int(r.scope or 0) == 3)
+
+    scope1 = sum(
+        float(r.tco2e_total or 0.0)
+        for r in latest
+        if _effective_scope(getattr(r, "scope", None), getattr(r, "sheet_name", None)) == 1
+    )
+    scope2 = sum(
+        float(r.tco2e_total or 0.0)
+        for r in latest
+        if _effective_scope(getattr(r, "scope", None), getattr(r, "sheet_name", None)) == 2
+    )
+    scope3 = sum(
+        float(r.tco2e_total or 0.0)
+        for r in latest
+        if _effective_scope(getattr(r, "scope", None), getattr(r, "sheet_name", None)) == 3
+    )
     total_emission = scope1 + scope2 + scope3
     breakdown = [
         {
             "sheet": r.sheet_name,
-            "scope": r.scope,
+            "scope": _effective_scope(getattr(r, "scope", None), getattr(r, "sheet_name", None)),
             "tco2e": round(float(r.tco2e_total or 0.0), 3),
             "updated_at": r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "",
         }
         for r in latest
     ]
 
+    reporting_rows_full: list[dict[str, object]] = []
+    for r in latest:
+        try:
+            reporting_rows_full.extend(_build_reporting_rows_from_summary(r))
+        except Exception:
+            continue
+
+    years_in_data = sorted({_reporting_row_year(x) for x in reporting_rows_full if _reporting_row_year(x)})
+    if years_in_data:
+        selected_year = req_year if req_year in years_in_data else max(years_in_data)
+        reporting_rows = [x for x in reporting_rows_full if _reporting_row_year(x) == selected_year]
+        if reporting_rows:
+            totals, breakdown = _user_totals_and_breakdown_from_reporting_rows(reporting_rows)
+        else:
+            totals = {"total": 0.0, "scope1": 0.0, "scope2": 0.0, "scope3": 0.0}
+            breakdown = []
+        return {
+            "year": selected_year,
+            "selected_year": selected_year,
+            "available_years": years_in_data,
+            "is_admin": False,
+            "totals": totals,
+            "breakdown": breakdown,
+            "company_rows": [],
+            "reporting_rows": reporting_rows,
+        }
+
+    if reporting_rows_full:
+        try:
+            yrs = [int(str(x.get("sortKey", ""))[:4]) for x in reporting_rows_full if x.get("sortKey")]
+            if yrs:
+                year = max(yrs)
+        except Exception:
+            pass
+
     return {
         "year": year,
+        "selected_year": year,
+        "available_years": [year],
         "is_admin": False,
         "totals": {
             "total": round(total_emission, 3),
@@ -7410,6 +8293,7 @@ def _home_overview_context():
         },
         "breakdown": breakdown,
         "company_rows": [],
+        "reporting_rows": reporting_rows_full,
     }
 
 

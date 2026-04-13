@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Category 13 — Methodology{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/methodology.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-methodology">
+  <section class="page-methodology__hero" aria-labelledby="methodology-cat13-title">
+    <div class="container">
+      <p class="page-methodology__section-body mb-2">
+        <a href="{{ url_for('methodology') }}">Methodology</a>
+        <span class="text-muted" aria-hidden="true"> · </span>
+        <a href="{{ url_for('methodology_scope3') }}">Scope 3</a>
+      </p>
+      <h1 class="page-methodology__hero-title" id="methodology-cat13-title">Category 13 — Downstream Leased Assets</h1>
+    </div>
+  </section>
+
+  <section class="page-methodology__section" aria-labelledby="methodology-cat13-title-sec">
+    <div class="container">
+      <h2 class="page-methodology__section-title" id="methodology-cat13-title-sec">Title</h2>
+      <p class="page-methodology__section-body">Placeholder.</p>
+    </div>
+  </section>
+
+  <section class="page-methodology__section" aria-labelledby="methodology-cat13-desc">
+    <div class="container">
+      <h2 class="page-methodology__section-title" id="methodology-cat13-desc">Description</h2>
+      <p class="page-methodology__section-body">Placeholder.</p>
+    </div>
+  </section>
+
+  <section class="page-methodology__section" aria-labelledby="methodology-cat13-calc">
+    <div class="container">
+      <h2 class="page-methodology__section-title" id="methodology-cat13-calc">Calculation methodology</h2>
+      <p class="page-methodology__section-body">Placeholder.</p>
+    </div>
+  </section>
+
+  <section class="page-methodology__section" aria-labelledby="methodology-cat13-inputs">
+    <div class="container">
+      <h2 class="page-methodology__section-title" id="methodology-cat13-inputs">Data inputs</h2>
+      <p class="page-methodology__section-body">Placeholder.</p>
+    </div>
+  </section>
+
+  <section class="page-methodology__section" aria-labelledby="methodology-cat13-ef">
+    <div class="container">
+      <h2 class="page-methodology__section-title" id="methodology-cat13-ef">Emission factors</h2>
+      <p class="page-methodology__section-body">Placeholder.</p>
+    </div>
+  </section>
+
+  <section class="page-methodology__section" aria-labelledby="methodology-cat13-notes">
+    <div class="container">
+      <h2 class="page-methodology__section-title" id="methodology-cat13-notes">Notes</h2>
+      <p class="page-methodology__section-body">Placeholder.</p>
+    </div>
+  </section>
+</div>
+{% endblock %}

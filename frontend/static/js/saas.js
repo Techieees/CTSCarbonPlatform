@@ -87,6 +87,63 @@
     }
   }
 
+  // Landing #features: first 6 feature cards — staggered entrance once
+  const featuresSection = document.getElementById("features");
+  const featuresGrid = featuresSection?.querySelector(".lp-features");
+  if (featuresSection && featuresGrid) {
+    const cards = Array.from(featuresGrid.querySelectorAll(".lp-feature")).slice(0, 6);
+    const revealFeatures = () => {
+      for (const card of cards) {
+        card.classList.add("visible");
+      }
+    };
+    if (prefersReduced || !("IntersectionObserver" in window)) {
+      revealFeatures();
+    } else {
+      const ioFeat = new IntersectionObserver(
+        (entries) => {
+          for (const e of entries) {
+            if (e.isIntersecting) {
+              revealFeatures();
+              ioFeat.unobserve(e.target);
+              break;
+            }
+          }
+        },
+        { threshold: 0.12, rootMargin: "0px 0px -8% 0px" }
+      );
+      ioFeat.observe(featuresSection);
+    }
+  }
+
+  // Hero: lp-trust grid (6 lp-stat cards under headline) — same behaviour
+  const heroTrust = document.getElementById("lp-hero-trust");
+  if (heroTrust) {
+    const stats = Array.from(heroTrust.querySelectorAll(".lp-stat")).slice(0, 6);
+    const revealTrust = () => {
+      for (const el of stats) {
+        el.classList.add("visible");
+      }
+    };
+    if (prefersReduced || !("IntersectionObserver" in window)) {
+      revealTrust();
+    } else {
+      const ioTrust = new IntersectionObserver(
+        (entries) => {
+          for (const e of entries) {
+            if (e.isIntersecting) {
+              revealTrust();
+              ioTrust.unobserve(e.target);
+              break;
+            }
+          }
+        },
+        { threshold: 0.08, rootMargin: "0px 0px -5% 0px" }
+      );
+      ioTrust.observe(heroTrust);
+    }
+  }
+
   // Kick off marquee after DOM is ready
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initMarquees, { once: true });

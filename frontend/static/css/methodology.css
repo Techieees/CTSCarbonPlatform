@@ -44,6 +44,113 @@
   line-height: 1.6;
 }
 
+/* Accordion: native <details> + same name = single open; smooth panel height */
+.methodology-accordion {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.methodology-accordion__summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-4);
+  list-style: none;
+  cursor: pointer;
+  padding: var(--s-2) 0;
+  min-height: 2.75rem;
+  box-sizing: border-box;
+}
+
+.methodology-accordion__summary::-webkit-details-marker {
+  display: none;
+}
+
+.methodology-accordion__summary .page-methodology__hero-title,
+.methodology-accordion__summary .page-methodology__section-title {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.methodology-accordion--hero .methodology-accordion__summary {
+  align-items: center;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.methodology-accordion__icon {
+  flex-shrink: 0;
+  width: 1.35rem;
+  height: 1.35rem;
+  margin-top: 0.2em;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  opacity: 0.75;
+}
+
+.methodology-accordion--hero .methodology-accordion__icon {
+  margin-top: 0;
+}
+
+.methodology-accordion__icon::before {
+  content: "";
+  display: block;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-0.1rem) rotate(45deg);
+  transition: transform 0.22s ease;
+}
+
+details[open] > .methodology-accordion__summary .methodology-accordion__icon::before {
+  transform: translateY(0.1rem) rotate(-135deg);
+}
+
+.methodology-accordion__panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.28s ease;
+}
+
+details[open] > .methodology-accordion__panel {
+  grid-template-rows: 1fr;
+}
+
+.methodology-accordion__inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+details[open] > .methodology-accordion__panel .methodology-accordion__inner {
+  padding-bottom: var(--s-2);
+}
+
+.methodology-accordion__inner .page-methodology__section-body + .page-methodology__section-body,
+.methodology-accordion__inner .page-methodology__section-body + .page-methodology__section_body,
+.methodology-accordion__inner .page-methodology__section_body + .page-methodology__section-body {
+  margin-top: 0.75rem;
+}
+
+.methodology-accordion__summary:focus-visible {
+  outline: 2px solid rgba(47, 95, 179, 0.45);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .methodology-accordion__panel {
+    transition: none;
+  }
+  .methodology-accordion__icon::before {
+    transition: none;
+  }
+}
+
 @media (max-width: 767.98px) {
   .page-methodology__hero {
     padding: var(--s-12) 0 var(--s-10);

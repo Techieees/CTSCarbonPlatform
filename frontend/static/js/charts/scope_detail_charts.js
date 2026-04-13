@@ -12,8 +12,42 @@ import { mountCategoryContributionChart } from "../components/charts/CategoryCon
 import { initChart, formatFull, getAxisLabel, getTooltipBase } from "./echarts_theme.js";
 import { getColorByKey } from "./chart_colors.js";
 
+function inferScopeFromSheetName(sheet) {
+  const s = String(sheet || "").toLowerCase();
+  if (/\bscope\s*3\b/.test(s)) {
+    return 3;
+  }
+  if (/\bscope\s*2\b/.test(s)) {
+    return 2;
+  }
+  if (/\bscope\s*1\b/.test(s)) {
+    return 1;
+  }
+  return 0;
+}
+
 function filterBreakdown(breakdown, scopeNum) {
-  return (breakdown || []).filter((r) => Number(r.scope) === scopeNum);
+  return (breakdown || []).filter((r) => {
+    const n = Number(r.scope);
+    if (n === scopeNum) {
+      return true;
+    }
+    if (n === 0 || Number.isNaN(n)) {
+      return inferScopeFromSheetName(r.sheet) === scopeNum;
+    }
+    return false;
+  });
+}
+
+function rowMatchesScope(r, scopeNum) {
+  const n = Number(r.scope);
+  if (n === scopeNum) {
+    return true;
+  }
+  if (n === 0 || Number.isNaN(n)) {
+    return inferScopeFromSheetName(r.sheet || r.category) === scopeNum;
+  }
+  return false;
 }
 
 function portfolioMonthRowsFromScopeBreakdown(breakdown, scopeNum) {
@@ -51,6 +85,23 @@ function breakdownToRows(breakdown, scopeNum) {
       monthIndex: 0
     };
   });
+}
+
+/** Row-level rows from server: reporting period from workbook + per-row tCO₂e */
+function reportingRowsToChartRows(reportingRows, scopeNum) {
+  return (reportingRows || [])
+    .filter((r) => rowMatchesScope(r, scopeNum))
+    .map((r) => ({
+      company: "—",
+      template: r.sheet || r.category,
+      scope: `Scope ${scopeNum}`,
+      category: r.category || r.sheet,
+      emissions: Number(r.emissions || 0),
+      dateLabel: r.dateLabel,
+      sortKey: r.sortKey,
+      year: 0,
+      monthIndex: 0
+    }));
 }
 
 function mountEmissionsShareCombo(container, labels, values, height, scopeNum) {
@@ -226,7 +277,7 @@ function initScopeAdmin(scopeNum, payload) {
 }
 
 function initScopeUser(scopeNum, payload) {
-  const { totals, breakdown = [] } = payload;
+  const { totals, breakdown = [], reporting_rows: reportingRows = [] } = payload;
   const key = scopeNum === 1 ? "scope1" : scopeNum === 2 ? "scope2" : "scope3";
   const total = Number(totals[key] || 0);
 
@@ -246,17 +297,27 @@ function initScopeUser(scopeNum, payload) {
     return;
   }
 
-  const monthRows = portfolioMonthRowsFromScopeBreakdown(breakdown, scopeNum);
+  const monthRowsRaw = (reportingRows || [])
+    .filter((r) => rowMatchesScope(r, scopeNum))
+    .map((r) => ({
+      company: "Portfolio",
+      dateLabel: r.dateLabel || r.sortKey,
+      sortKey: r.sortKey,
+      emissions: Number(r.emissions || 0)
+    }));
   const sortedSheets = [...fb].sort((a, b) => Number(b.tco2e || 0) - Number(a.tco2e || 0));
   const catLabels = sortedSheets.map((r) => r.sheet || "Category");
   const catVals = sortedSheets.map((r) => Number(r.tco2e || 0));
 
   whenVisible(document.getElementById("scopeDetailMonthly"), (el) => {
-    if (!monthRows.length) {
-      showEmptyState(el, "Add reporting dates on mapped rows to see a monthly trend.");
+    if (!monthRowsRaw.length) {
+      showEmptyState(
+        el,
+        "No time series from mapped files. Ensure “Reporting period (month, year)” or “Purchase Date” has values in the mapped workbook, or re-run mapping after saving data."
+      );
       return;
     }
-    const mt = monthlyTotals(monthRows);
+    const mt = monthlyTotals(monthRowsRaw);
     mountMonthlyTrendChart(el, {
       labels: mt.map((x) => x.dateLabel),
       values: mt.map((x) => x.value),
@@ -291,9 +352,13 @@ function initScopeUser(scopeNum, payload) {
     mountEmissionsShareCombo(el, catLabels.slice(0, 12), catVals.slice(0, 12), scopeNum === 2 ? 360 : 320, scopeNum);
   });
 
-  const rows = breakdownToRows(breakdown, scopeNum);
+  const stackRows = reportingRowsToChartRows(reportingRows, scopeNum);
   whenVisible(document.getElementById("scopeDetailStackMonth"), (el) => {
-    const { labels, series } = monthlyTopCategoryStack(rows, 6);
+    if (!stackRows.length) {
+      showEmptyState(el, "Stacked monthly trend needs reporting-period rows per category in mapped files.");
+      return;
+    }
+    const { labels, series } = monthlyTopCategoryStack(stackRows, 6);
     if (!labels.length) {
       showEmptyState(el, "Not enough monthly category points for a stacked trend.");
       return;
@@ -332,7 +397,16 @@ export function initScopeDetailCharts() {
   }
 
   const scopeNum = payload.scope;
-  if (payload.isAdmin) {
+  const fb = filterBreakdown(payload.breakdown || [], scopeNum);
+
+  // Prefer category / time-series charts whenever this scope has mapped breakdown rows.
+  // (Previously admin + companyRows always used initScopeAdmin, which left Scope 3 mini/stack/month slots empty.)
+  if (fb.length > 0) {
+    initScopeUser(scopeNum, payload);
+    return;
+  }
+
+  if (payload.isAdmin && (payload.companyRows || []).length > 0) {
     initScopeAdmin(scopeNum, payload);
   } else {
     initScopeUser(scopeNum, payload);

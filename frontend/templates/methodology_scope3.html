@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Scope 3 — Methodology{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/methodology.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-methodology">
+  <section class="page-methodology__hero" aria-labelledby="methodology-scope3-title">
+    <div class="container">
+      <p class="page-methodology__section-body mb-3"><a href="{{ url_for('methodology') }}">Methodology</a></p>
+      <h1 class="page-methodology__hero-title" id="methodology-scope3-title">Scope 3</h1>
+    </div>
+  </section>
+
+  <section class="page-methodology__section" aria-labelledby="methodology-scope3-categories">
+    <div class="container">
+      <h2 class="page-methodology__section-title" id="methodology-scope3-categories">Categories</h2>
+      <nav aria-label="Scope 3 categories">
+        <ul class="list-unstyled mb-0">
+          <li class="mb-2"><a href="{{ url_for('methodology_scope3_category1') }}">Category 1 — Purchased Goods and Services</a></li>
+          <li class="mb-2"><a href="{{ url_for('methodology_scope3_category2') }}">Category 2 — Capital Goods</a></li>
+          <li class="mb-2"><a href="{{ url_for('methodology_scope3_category3') }}">Category 3 — Fuel and Energy Related Activities</a></li>
+          <li class="mb-2"><a href="{{ url_for('methodology_scope3_category4') }}">Category 4 — Upstream Transportation</a></li>
+          <li class="mb-2"><a href="{{ url_for('methodology_scope3_category5') }}">Category 5 — Waste</a></li>
+          <li class="mb-2"><a href="{{ url_for('methodology_scope3_category6') }}">Category 6 — Business Travel</a></li>
+          <li class="mb-2"><a href="{{ url_for('methodology_scope3_category7') }}">Category 7 — Employee Commuting</a></li>
+          <li class="mb-2"><a href="{{ url_for('methodology_scope3_category9') }}">Category 9 — Downstream Transportation</a></li>
+          <li class="mb-2"><a href="{{ url_for('methodology_scope3_category10') }}">Category 10 — Processing of Sold Products </a></li>
+          <li class="mb-2"><a href="{{ url_for('methodology_scope3_category11') }}">Category 11 — Indirect Emissions from Sold Products </a></li>
+          <li class="mb-2"><a href="{{ url_for('methodology_scope3_category12') }}">Category 12 — End of Life </a></li>
+          <li class="mb-2"><a href="{{ url_for('methodology_scope3_category13') }}">Category 13 — Downstream Leased Assets</a></li>
+          <li class="mb-2"><a href="{{ url_for('methodology_scope3_category14') }}">Category 14 — Franchises</a></li>
+          <li class="mb-2"><a href="{{ url_for('methodology_scope3_category15') }}">Category 15 — Pensions</a></li>
+          <li class="mb-2"><a href="{{ url_for('methodology_scope3_category16') }}">Category 16 - Investments</a></li>
+        </ul>
+      </nav>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+

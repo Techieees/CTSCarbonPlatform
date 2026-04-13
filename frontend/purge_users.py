@@ -43,10 +43,10 @@ def _table_exists(cur: sqlite3.Cursor, name: str) -> bool:
 
 def purge_users(db_path: Path, keep_user_owned_data: bool) -> None:
     if not db_path.exists():
-        raise SystemExit(f"DB bulunamadi: {db_path}")
+        raise SystemExit(f"Database not found: {db_path}")
 
     backup_path = _backup_db(db_path)
-    print(f"Yedek alindi: {backup_path}")
+    print(f"Backup created: {backup_path}")
 
     con = sqlite3.connect(str(db_path))
     try:
@@ -74,23 +74,23 @@ def purge_users(db_path: Path, keep_user_owned_data: bool) -> None:
                 for t in deleted:
                     cur.execute("DELETE FROM sqlite_sequence WHERE name=?", (t,))
 
-        print("Silinen tablolar:", ", ".join(deleted) if deleted else "(hicbir sey)")
-        print("Tamam. Simdi create_admin.py ile admin hesabi olusturabilirsiniz.")
+        print("Cleared tables:", ", ".join(deleted) if deleted else "(none)")
+        print("Done. You can create an admin account with create_admin.py.")
     finally:
         con.close()
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="SQLite DB'den tüm kullanıcıları temizle.")
+    p = argparse.ArgumentParser(description="Remove all users (and dependent rows) from the SQLite database.")
     p.add_argument(
         "--db",
         default=str(_default_db_path()),
-        help="DB yolu (varsayılan: merkezi config'teki SQLite veritabanı yolu)",
+        help="Path to the database file (default: SQLite path from central config)",
     )
     p.add_argument(
         "--keep-user-owned-data",
         action="store_true",
-        help="Kullanıcıya ait mapping kayıtlarını silme (sadece user tablosunu temizle).",
+        help="Do not delete user-owned mapping rows (only clear the user table).",
     )
     args = p.parse_args()
 

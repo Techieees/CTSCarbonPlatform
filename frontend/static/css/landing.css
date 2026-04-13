@@ -91,7 +91,7 @@ body.dark-mode .landing-scatter-mark img{
   filter: contrast(1.12) brightness(1.16) saturate(1.12);
 }
 
-/* Spread across full page (no rotation; “dağınık” = positions, not tilt) */
+/* Spread across full page (no rotation; scattered = positions, not tilt) */
 .landing-scatter-mark:nth-child(1){ top: 4%; left: 4%; }
 .landing-scatter-mark:nth-child(2){ top: 7%; left: 84%; width: clamp(96px, 11vw, 190px); }
 .landing-scatter-mark:nth-child(3){ top: 18%; left: 11%; }

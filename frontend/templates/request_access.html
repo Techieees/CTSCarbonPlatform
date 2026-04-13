@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% import 'macros/ui_illustrations.html' as illu %}
+
+{% block title %}Request access - GHG Data Collection System{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
+            <div class="card">
+                <div class="card-body p-5">
+                    <div class="text-center mb-4">
+                        {{ illu.illu_hero_register() }}
+                        <h2 class="mt-3">Request access</h2>
+                        <p class="text-muted">Submit a request to join the GHG data collection platform</p>
+                    </div>
+
+                    <form method="POST" id="requestAccessForm">
+                        <div class="mb-3">
+                            <label for="full_name" class="form-label">Full name</label>
+                            <input type="text" class="form-control" id="full_name" name="full_name" required autocomplete="name" maxlength="200">
+                        </div>
+                        <div class="mb-3">
+                            <label for="email" class="form-label">Work email</label>
+                            <div class="input-group">
+                                <span class="input-group-text d-inline-flex align-items-center justify-content-center">
+                                    {{ illu.illu_input_envelope() }}
+                                </span>
+                                <input type="email" class="form-control" id="email" name="email" required autocomplete="email">
+                            </div>
+                            <div class="form-text">Only CTS company email addresses are allowed (@cts-nordics.com).</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="company" class="form-label">Company</label>
+                            <input type="text" class="form-control" id="company" name="company" required maxlength="200" autocomplete="organization">
+                        </div>
+                        <div class="mb-4">
+                            <label for="reason" class="form-label">Reason for access</label>
+                            <textarea class="form-control" id="reason" name="reason" rows="4" required maxlength="4000"></textarea>
+                        </div>
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary btn-lg d-inline-flex align-items-center justify-content-center">
+                                {{ illu.illu_nav_signin('me-2') }}Submit request
+                            </button>
+                        </div>
+                    </form>
+
+                    <div class="text-center mt-4">
+                        <p class="mb-0">Already have an account?
+                            <a href="{{ url_for('login') }}" class="text-decoration-none">Sign in</a>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -3,9 +3,18 @@
 {% block content %}
 <div class="container py-4">
   <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
-    <div>
-      <h2 class="mb-1">Overview</h2>
-      <div class="text-muted">Reporting year: {{ year }}</div>
+    <div class="d-flex flex-wrap align-items-center gap-3">
+      <div>
+        <h2 class="mb-1">Overview</h2>
+        <form method="get" class="d-flex flex-wrap align-items-center gap-2 mb-0" action="{{ url_for('home') }}">
+          <label class="text-muted mb-0" for="overviewReportingYear">Reporting year:</label>
+          <select name="year" id="overviewReportingYear" class="form-select form-select-sm" style="width:auto;min-width:5.5rem" onchange="this.form.submit()" aria-label="Reporting year">
+            {% for y in available_years %}
+            <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      </div>
     </div>
     <a class="btn btn-ghost d-inline-flex align-items-center" href="{{ url_for('dashboard') }}">
       {{ illu.illu_nav_speed('me-1') }}Dashboard
@@ -48,7 +57,7 @@
 
   <div class="row g-3 mt-1">
     <div class="col-md-4">
-      <a href="{{ url_for('scope1_detail') }}" class="cts-scope-card-link text-decoration-none d-block h-100">
+      <a href="{{ url_for('scope1_detail', year=selected_year) }}" class="cts-scope-card-link text-decoration-none d-block h-100">
         <div class="card h-100">
           <div class="card-body">
             <div class="text-muted">Scope 1</div>
@@ -58,7 +67,7 @@
       </a>
     </div>
     <div class="col-md-4">
-      <a href="{{ url_for('scope2_detail') }}" class="cts-scope-card-link text-decoration-none d-block h-100">
+      <a href="{{ url_for('scope2_detail', year=selected_year) }}" class="cts-scope-card-link text-decoration-none d-block h-100">
         <div class="card h-100">
           <div class="card-body">
             <div class="text-muted">Scope 2</div>
@@ -68,7 +77,7 @@
       </a>
     </div>
     <div class="col-md-4">
-      <a href="{{ url_for('scope3_detail') }}" class="cts-scope-card-link text-decoration-none d-block h-100">
+      <a href="{{ url_for('scope3_detail', year=selected_year) }}" class="cts-scope-card-link text-decoration-none d-block h-100">
         <div class="card h-100">
           <div class="card-body">
             <div class="text-muted">Scope 3</div>
@@ -292,7 +301,7 @@
   {% endif %}
 </div>
 <script id="home-scope-chart-data" type="application/json">{{ {"labels": ["Scope 1", "Scope 2", "Scope 3"], "values": [totals.scope1, totals.scope2, totals.scope3], "seriesName": "tCO₂e", "tooltipSuffix": " tCO₂e", "height": 260}|tojson }}</script>
-<script id="home-dashboard-payload" type="application/json">{{ {"isAdmin": is_admin, "totals": totals, "companyRows": company_rows, "breakdown": breakdown}|tojson }}</script>
+<script id="home-dashboard-payload" type="application/json">{{ {"isAdmin": is_admin, "totals": totals, "companyRows": company_rows, "breakdown": breakdown, "reportingRows": reporting_rows}|tojson }}</script>
 {% endblock %} 
 
 {% block scripts %}

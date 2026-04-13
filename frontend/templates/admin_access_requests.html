@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% import 'macros/ui_illustrations.html' as illu %}
+
+{% block title %}Access requests — Admin{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <div class="row mb-3">
+    <div class="col-12">
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-2">
+          <li class="breadcrumb-item"><a href="{{ url_for('admin') }}">Admin</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Access requests</li>
+        </ol>
+      </nav>
+      <div class="card">
+        <div class="card-header">
+          <h4 class="mb-0 d-flex align-items-center">
+            {{ illu.illu_header_cog() }}<span class="ms-2">Access requests</span>
+          </h4>
+        </div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">For each pending request, set an <strong>initial password</strong> and <strong>role</strong>, then approve. No email is sent to the user — share credentials internally.</p>
+          <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+              <thead>
+                <tr>
+                  <th scope="col">Name</th>
+                  <th scope="col">Email</th>
+                  <th scope="col">Company</th>
+                  <th scope="col">Reason</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Created at</th>
+                  <th scope="col" style="min-width: 220px;">Approve (password &amp; role)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for r in requests %}
+                <tr>
+                  <td>{{ r.full_name }}</td>
+                  <td class="font-monospace small">{{ r.email }}</td>
+                  <td>{{ r.company }}</td>
+                  <td class="small">{{ r.reason }}</td>
+                  <td><span class="badge text-bg-secondary">{{ r.status }}</span></td>
+                  <td class="small text-nowrap">{{ r.created_at.strftime('%Y-%m-%d %H:%M') if r.created_at else '' }}</td>
+                  <td>
+                    {% if r.status == 'pending' %}
+                    <form method="post" action="{{ url_for('admin_access_requests') }}" class="d-flex flex-column gap-1">
+                      <input type="hidden" name="action" value="approve">
+                      <input type="hidden" name="request_id" value="{{ r.id }}">
+                      <label class="visually-hidden" for="pw-{{ r.id }}">Initial password for {{ r.email }}</label>
+                      <input type="password" name="password" id="pw-{{ r.id }}" class="form-control form-control-sm" placeholder="Initial password" required minlength="8" autocomplete="new-password">
+                      <label class="visually-hidden" for="role-{{ r.id }}">Role for {{ r.email }}</label>
+                      <select name="role" id="role-{{ r.id }}" class="form-select form-select-sm" aria-label="Role">
+                        {% for role_opt in approve_roles %}
+                        <option value="{{ role_opt }}" {% if role_opt == 'user' %}selected{% endif %}>{{ role_opt }}</option>
+                        {% endfor %}
+                      </select>
+                      <button type="submit" class="btn btn-sm btn-primary">Approve</button>
+                    </form>
+                    {% else %}
+                    <span class="text-muted small">—</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% if not requests %}
+          <p class="text-muted mb-0">No access requests yet.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

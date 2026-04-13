@@ -223,11 +223,6 @@ export function initChart(container) {
     return null;
   }
 
-  const rect = element.getBoundingClientRect();
-  if (!rect.width || !rect.height) {
-    return null;
-  }
-
   ensureTheme();
   ensureResizeBinding();
 
@@ -244,5 +239,21 @@ export function initChart(container) {
 
   chartRegistry.add(chart);
   bindResizeObserver(element, chart);
+
+  const rect = element.getBoundingClientRect();
+  if (!rect.width || !rect.height) {
+    // IntersectionObserver + flex/sidebar layouts can run before the host has a non-zero box.
+    // Defer resize so Scope / Home charts still mount (otherwise blank white surfaces).
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        try {
+          chart.resize();
+        } catch {
+          /* ignore */
+        }
+      });
+    });
+  }
+
   return chart;
 }

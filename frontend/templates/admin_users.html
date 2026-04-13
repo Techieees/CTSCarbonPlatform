@@ -21,8 +21,12 @@
         </div>
         <div class="card-body">
           <p class="text-muted small mb-3">Owner only. Change roles for platform users. Changes apply immediately.</p>
+          <div class="mb-3">
+            <label for="adminUsersSearch" class="visually-hidden">Search users</label>
+            <input type="search" id="adminUsersSearch" class="form-control form-control-sm" placeholder="Search users..." autocomplete="off" style="max-width: 320px;">
+          </div>
           <div class="table-responsive">
-            <table class="table table-sm table-hover align-middle mb-0">
+            <table class="table table-sm table-hover align-middle mb-0" id="adminUsersTable">
               <thead>
                 <tr>
                   <th scope="col">Email</th>
@@ -31,7 +35,7 @@
               </thead>
               <tbody>
                 {% for u in users %}
-                <tr>
+                <tr data-user-email="{{ (u.email or '')|lower }}" data-user-role="{{ ((u.role or 'user')|lower) }}">
                   <td class="font-monospace small">{{ u.email }}</td>
                   <td>
                     <form method="post" action="{{ url_for('admin_users') }}" class="d-flex flex-wrap gap-2 align-items-center">
@@ -57,4 +61,28 @@
     </div>
   </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var input = document.getElementById('adminUsersSearch');
+  var table = document.getElementById('adminUsersTable');
+  if (!input || !table) return;
+  var tbody = table.querySelector('tbody');
+  if (!tbody) return;
+  function filter() {
+    var q = (input.value || '').trim().toLowerCase();
+    var rows = tbody.querySelectorAll('tr');
+    for (var i = 0; i < rows.length; i++) {
+      var tr = rows[i];
+      var em = (tr.getAttribute('data-user-email') || '');
+      var role = (tr.getAttribute('data-user-role') || '');
+      var show = !q || em.indexOf(q) !== -1 || role.indexOf(q) !== -1;
+      tr.style.display = show ? '' : 'none';
+    }
+  }
+  input.addEventListener('input', filter);
+  input.addEventListener('search', filter);
+})();
+</script>
 {% endblock %}

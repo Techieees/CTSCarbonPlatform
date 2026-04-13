@@ -6,19 +6,19 @@
     <div class="search-results-page__hero">
       <h1>Search</h1>
       {% if query %}
-      <p class="text-muted mb-0">`{{ query }}` için {{ total_results }} sonuç bulundu.</p>
+      <p class="text-muted mb-0">{{ total_results }} results found for `{{ query }}`.</p>
       {% else %}
-      <p class="text-muted mb-0">Şirketler, tedarikçiler, faktörler, projeler ve içe aktarımlar arasında arama yapın.</p>
+      <p class="text-muted mb-0">Search across companies, suppliers, emission factors, projects, and imports.</p>
       {% endif %}
     </div>
 
     {% if not query %}
     <div class="search-results-card">
-      <div class="collab-empty-state">Arama başlatmak için üst çubuktaki search alanını kullanın.</div>
+      <div class="collab-empty-state">Use the search field in the top bar to start a search.</div>
     </div>
     {% elif not results %}
     <div class="search-results-card">
-      <div class="collab-empty-state">Sonuç bulunamadı.</div>
+      <div class="collab-empty-state">No results found.</div>
     </div>
     {% else %}
     <div class="search-results-grid">
