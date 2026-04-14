@@ -1,0 +1,22 @@
+{
+  "Austria": {"lat": 47.6, "lon": 14.1},
+  "Australia": {"lat": -25.3, "lon": 133.8},
+  "Belgium": {"lat": 50.8, "lon": 4.5},
+  "Canada": {"lat": 56.1, "lon": -106.3},
+  "Czechia": {"lat": 49.8, "lon": 15.5},
+  "Denmark": {"lat": 56.0, "lon": 9.5},
+  "Finland": {"lat": 64.0, "lon": 26.0},
+  "France": {"lat": 46.2, "lon": 2.2},
+  "Germany": {"lat": 51.2, "lon": 10.4},
+  "Ireland": {"lat": 53.1, "lon": -8.2},
+  "Italy": {"lat": 42.8, "lon": 12.5},
+  "Netherlands": {"lat": 52.1, "lon": 5.3},
+  "Norway": {"lat": 60.5, "lon": 8.5},
+  "Poland": {"lat": 52.0, "lon": 19.1},
+  "Portugal": {"lat": 39.5, "lon": -8.0},
+  "Spain": {"lat": 40.4, "lon": -3.7},
+  "Sweden": {"lat": 62.0, "lon": 15.0},
+  "Switzerland": {"lat": 46.8, "lon": 8.2},
+  "United Kingdom": {"lat": 54.5, "lon": -2.5},
+  "United States": {"lat": 39.8, "lon": -98.6}
+}

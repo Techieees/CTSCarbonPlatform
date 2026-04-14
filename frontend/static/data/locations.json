@@ -1,0 +1,23 @@
+[
+  {"name":"Dublin","country":"Ireland","lat":53.3498,"lng":-6.2603,"type":"Office"},
+  {"name":"Copenhagen","country":"Denmark","lat":55.6761,"lng":12.5683,"type":"Office"},
+  {"name":"London","country":"United Kingdom","lat":51.5074,"lng":-0.1278,"type":"Office"},
+  {"name":"Frankfurt","country":"Germany","lat":50.1109,"lng":8.6821,"type":"Office"},
+  {"name":"Helsinki","country":"Finland","lat":60.1699,"lng":24.9384,"type":"Office"},
+  {"name":"Lisbon","country":"Portugal","lat":38.7223,"lng":-9.1393,"type":"Office"},
+  {"name":"Paris","country":"France","lat":48.8566,"lng":2.3522,"type":"Office"},
+  {"name":"Madrid","country":"Spain","lat":40.4168,"lng":-3.7038,"type":"Office"},
+  {"name":"Milan","country":"Italy","lat":45.4642,"lng":9.19,"type":"Office"},
+  {"name":"Nyon","country":"Switzerland","lat":46.3826,"lng":6.2262,"type":"HQ"},
+  {"name":"Oslo","country":"Norway","lat":59.9139,"lng":10.7522,"type":"Office"},
+  {"name":"Porto","country":"Portugal","lat":41.1579,"lng":-8.6291,"type":"Office"},
+  {"name":"Stockholm","country":"Sweden","lat":59.3293,"lng":18.0686,"type":"Office"},
+  {"name":"Vienna","country":"Austria","lat":48.2082,"lng":16.3738,"type":"Office"},
+  {"name":"Kvandal","country":"Norway","lat":60.39,"lng":5.32,"type":"Production"},
+  {"name":"Pegasus","country":"Norway","lat":59.91,"lng":10.75,"type":"Production"},
+  {"name":"Heli","country":"Norway","lat":58.97,"lng":5.73,"type":"Production"},
+  {"name":"Rock","country":"Norway","lat":63.43,"lng":10.39,"type":"Production"},
+  {"name":"Beluga","country":"Norway","lat":69.65,"lng":18.96,"type":"Production"},
+  {"name":"Oyster","country":"Norway","lat":58.15,"lng":8.0,"type":"Production"},
+  {"name":"Colo","country":"Norway","lat":59.2,"lng":9.61,"type":"Production"}
+]

@@ -35,7 +35,7 @@
 
 {% block scripts %}
 <script>
-  const MAPBOX_TOKEN = "{{ mapbox_token or '' }}";
+  window.MAPBOX_TOKEN = "{{ mapbox_token | default('', true) }}";
   window.__locationsMapConfig = {
     dataUrl: "{{ url_for('static', filename='data/locations.json') }}",
     style: "mapbox://styles/mapbox/streets-v12",

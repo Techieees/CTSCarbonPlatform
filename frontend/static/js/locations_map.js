@@ -1,4 +1,7 @@
-mapboxgl.accessToken = MAPBOX_TOKEN;
+if (!window.MAPBOX_TOKEN) {
+  console.error("Mapbox token missing");
+}
+mapboxgl.accessToken = window.MAPBOX_TOKEN;
 
 (function () {
   const root = document.getElementById("locationsMap");

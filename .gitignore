@@ -52,3 +52,7 @@ config/api_credentials.env
 
 # run history logs
 frontend/run_logs/*.json
+
+# allow map location data (needed for globe markers)
+!frontend/static/data/
+!frontend/static/data/*.json
