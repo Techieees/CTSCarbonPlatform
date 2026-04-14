@@ -305,6 +305,24 @@ body.dark-mode .app-sidebar__link:hover {
   color: inherit;
 }
 
+.app-sidebar__link,
+.app-sidebar__group--collapsible .app-sidebar__group-toggle,
+.app-sidebar__utility {
+  color: var(--ink);
+}
+
+.app-sidebar__icon svg,
+.app-sidebar__toggle svg {
+  transform: scale(1.5);
+  transform-origin: center;
+}
+
+.app-sidebar__link.is-active,
+.app-sidebar__group--collapsible.has-active-child .app-sidebar__group-toggle {
+  font-weight: 600;
+  color: var(--ink);
+}
+
 .app-sidebar__utility {
   display: flex;
   align-items: center;
@@ -413,6 +431,7 @@ body.dark-mode .app-sidebar__link:hover {
   width: 100%;
   max-width: none;
   padding: 0;
+  position: relative;
 }
 
 .app-topbar__brand {
@@ -429,15 +448,21 @@ body.dark-mode .app-sidebar__link:hover {
   color: var(--primary) !important;
 }
 
+.navbar-logo img,
+.navbar-logo svg {
+  height: 44px;
+  width: auto;
+}
+
 .app-topbar__company {
   max-width: 220px;
   font-size: 0.875rem;
   font-weight: 500;
-  color: var(--muted);
+  color: var(--ink);
   padding: 4px 10px;
   border-radius: 999px;
-  background: rgba(47, 95, 179, 0.06);
-  border: 1px solid rgba(47, 95, 179, 0.12);
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 body.dark-mode .app-topbar__company {
@@ -453,6 +478,24 @@ body.dark-mode .app-topbar__company {
   color: var(--nav-link) !important;
   font-weight: 500;
   border-radius: 10px;
+}
+
+.app-topbar .nav-link,
+.app-topbar .dropdown-item {
+  color: var(--ink) !important;
+}
+
+.app-topbar .nav-link svg,
+.app-topbar .dropdown-item svg {
+  transform: scale(1.5);
+  transform-origin: center;
+}
+
+.app-topbar__search {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  justify-content: center;
 }
 
 .app-topbar .nav-link:hover,
@@ -553,6 +596,17 @@ body.dark-mode .saas-nav .dropdown-divider {
 
 /* Narrow screens: default collapsed; user can expand */
 @media (max-width: 991.98px) {
+  .navbar-logo img,
+  .navbar-logo svg {
+    height: 36px;
+  }
+
+  .app-topbar__search {
+    position: static;
+    transform: none;
+    margin-left: auto;
+  }
+
   .app-layout--mobile-narrow:not(.app-layout--mobile-expanded) .app-sidebar {
     width: var(--app-sidebar-w-collapsed);
   }

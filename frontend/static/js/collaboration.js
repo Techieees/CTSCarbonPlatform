@@ -24,6 +24,31 @@
     element.textContent = value > 99 ? "99+" : String(value);
   }
 
+  function initialsFromName(name) {
+    const parts = String(name || "").trim().split(/\s+/).filter(Boolean).slice(0, 2);
+    if (!parts.length) return "?";
+    return parts.map(function (part) { return part.charAt(0).toUpperCase(); }).join("");
+  }
+
+  function renderAvatar(person) {
+    const photoUrl = person && person.profile_photo_url ? String(person.profile_photo_url) : "";
+    const name = person && person.name ? person.name : "";
+    if (photoUrl) {
+      return '<img class="chat-widget__avatar" src="' + escapeHtml(photoUrl) + '" alt="' + escapeHtml(name) + '">';
+    }
+    return '<span class="chat-widget__avatar chat-widget__avatar--placeholder" aria-hidden="true">' + escapeHtml(initialsFromName(name)) + '</span>';
+  }
+
+  function renderPersonHeading(person) {
+    return '' +
+      '<span class="chat-widget__person">' +
+        renderAvatar(person) +
+        '<span class="chat-widget__person-copy">' +
+          '<span class="collab-notification-item__title">' + escapeHtml(person.name || "") + '</span>' +
+        '</span>' +
+      '</span>';
+  }
+
   if (notificationRoot) {
     const list = notificationRoot.querySelector("[data-collab-notification-list]");
     const badge = notificationRoot.querySelector("[data-collab-notification-badge]");
@@ -82,6 +107,16 @@
       });
     }
 
+    document.querySelectorAll("[data-open-notifications]").forEach(function (button) {
+      button.addEventListener("click", function (event) {
+        event.preventDefault();
+        const toggle = notificationRoot.querySelector("[data-bs-toggle='dropdown']");
+        if (!toggle || typeof bootstrap === "undefined") return;
+        const dropdown = bootstrap.Dropdown.getOrCreateInstance(toggle);
+        dropdown.show();
+      });
+    });
+
     loadNotifications().catch(function () {});
     window.setInterval(function () {
       fetchJson("/api/notifications/unread_count")
@@ -134,10 +169,13 @@
         const unread = row.unread_count ? '<span class="search-result-item__kind">' + Number(row.unread_count) + '</span>' : '';
         return '' +
           '<button type="button" data-user-id="' + Number(person.id) + '"' + (Number(person.id) === Number(activeId) ? ' class="is-active"' : '') + '>' +
-            '<div>' +
-              '<div class="collab-notification-item__title">' + escapeHtml(person.name) + '</div>' +
-              '<div class="chat-widget__meta">' + escapeHtml(person.company_name || person.email || '') + '</div>' +
-              lastMessage +
+            '<div class="chat-widget__person-row">' +
+              renderAvatar(person) +
+              '<div class="chat-widget__person-copy">' +
+                '<div class="collab-notification-item__title">' + escapeHtml(person.name) + '</div>' +
+                '<div class="chat-widget__meta">' + escapeHtml(person.company_name || person.email || '') + '</div>' +
+                lastMessage +
+              '</div>' +
             '</div>' +
             unread +
           '</button>';
@@ -158,7 +196,7 @@
     async function openThread(userId) {
       const data = await fetchJson("/api/messages/thread?user_id=" + encodeURIComponent(userId));
       activeUserId = Number(userId);
-      title.textContent = data.contact ? data.contact.name : "Conversation";
+      title.innerHTML = data.contact ? renderPersonHeading(data.contact) : "Conversation";
       renderThread(Array.isArray(data.messages) ? data.messages : []);
       await fetchJson("/api/messages/mark-read", {
         method: "POST",
@@ -228,4 +266,49 @@
       }
     }, 10000);
   }
+
+  document.querySelectorAll("[data-collab-search]").forEach(function (searchRoot) {
+    const toggle = searchRoot.querySelector(".collab-search__toggle");
+    const input = searchRoot.querySelector(".collab-search__input");
+    const submit = searchRoot.querySelector(".collab-search__submit");
+    if (!toggle || !input) return;
+
+    function setOpen(open) {
+      searchRoot.classList.toggle("is-open", open);
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      if (!open) {
+        input.blur();
+      }
+    }
+
+    if (searchRoot.classList.contains("is-persistent")) {
+      setOpen(true);
+    }
+
+    toggle.addEventListener("click", function () {
+      const shouldOpen = !searchRoot.classList.contains("is-open");
+      setOpen(shouldOpen);
+      if (shouldOpen) {
+        window.setTimeout(function () { input.focus(); }, 140);
+      } else if (String(input.value || "").trim()) {
+        submit?.click();
+      }
+    });
+
+    input.addEventListener("keydown", function (event) {
+      if (event.key === "Escape" && !searchRoot.classList.contains("is-persistent")) {
+        input.value = "";
+        setOpen(false);
+      }
+    });
+
+    document.addEventListener("click", function (event) {
+      if (searchRoot.classList.contains("is-persistent")) return;
+      if (!searchRoot.contains(event.target)) {
+        if (!String(input.value || "").trim()) {
+          setOpen(false);
+        }
+      }
+    });
+  });
 })();

@@ -34,11 +34,12 @@ from functools import lru_cache
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 from email.message import EmailMessage
+from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
-
+    
 from config import (
     CCC_API_BASE_URL,
     CCC_GET_ENDPOINTS_PATH,
@@ -544,13 +545,7 @@ def sync_user_admin_flag(user: "User") -> None:
 
 def _user_public_dict_for_admin(u: "User") -> dict:
     """Safe user fields for admin panel JSON (no password)."""
-    rel = getattr(u, "profile_photo_path", None)
-    photo = None
-    if rel:
-        try:
-            photo = url_for("static", filename=str(rel))
-        except Exception:
-            photo = None
+    photo = _profile_photo_url_for_user(u)
     r = normalize_user_role(getattr(u, "role", None))
     raw_role = (getattr(u, "role", None) or "").strip() or r
     fn = (getattr(u, "first_name", None) or "").strip()
@@ -579,6 +574,18 @@ def _user_display_name(u: User | None) -> str:
     last = (getattr(u, "last_name", None) or "").strip()
     full = " ".join(part for part in (first, last) if part).strip()
     return full or (getattr(u, "email", None) or "").strip() or f"User {getattr(u, 'id', '')}"
+
+
+def _profile_photo_url_for_user(u: User | None) -> str | None:
+    if u is None:
+        return None
+    rel = getattr(u, "profile_photo_path", None)
+    if not rel:
+        return None
+    try:
+        return url_for("static", filename=str(rel))
+    except Exception:
+        return None
 
 
 def _notification_payload(row: "Notification") -> dict[str, object]:
@@ -617,6 +624,7 @@ def _contact_payload(u: "User") -> dict[str, object]:
         "name": _user_display_name(u),
         "email": u.email,
         "company_name": (getattr(u, "company_name", None) or "").strip(),
+        "profile_photo_url": _profile_photo_url_for_user(u),
     }
 
 
@@ -4010,6 +4018,12 @@ def who_we_are():
 @app.route('/platform')
 def platform():
     return render_template('platform.html')
+
+
+@app.route('/locations')
+def locations():
+    load_dotenv(PROJECT_ROOT / ".env", override=True)
+    return render_template("locations.html", mapbox_token=(os.getenv("MAPBOX_TOKEN") or "").strip())
 
 def _render_methodology_scope3_category(category_num, category_title, category_slug):
     chart_payload = _scope3_category_charts_payload(int(category_num))

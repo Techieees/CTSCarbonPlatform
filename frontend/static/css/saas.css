@@ -1697,3 +1697,203 @@ body.dark-mode .badge-role-user{
   font-size: 0.88rem;
 }
 
+/* Enterprise UI refinement */
+:root{
+  --ink: #000000;
+  --muted: #000000;
+  --muted-2: #000000;
+  --body-text: #000000;
+  --nav-link: #000000;
+  --nav-link-hover: #000000;
+  --text-primary: #000000;
+  --table-head-bg: #f5f5f5;
+  --table-row-hover: rgba(0, 0, 0, 0.03);
+  --border: rgba(0, 0, 0, 0.12);
+  --border-subtle: rgba(0, 0, 0, 0.12);
+  --input-bg: #ffffff;
+  --surface-elevated: #ffffff;
+  --footer-bg: #ffffff;
+}
+
+body.dark-mode{
+  --ink: #f7f7f7;
+  --muted: #f1f1f1;
+  --muted-2: #d7d7d7;
+  --body-text: #ececec;
+  --nav-link: #f3f3f3;
+  --nav-link-hover: #ffffff;
+  --text-primary: #f7f7f7;
+  --table-head-bg: #1f1f1f;
+  --table-row-hover: rgba(255, 255, 255, 0.04);
+  --border: rgba(255, 255, 255, 0.14);
+  --border-subtle: rgba(255, 255, 255, 0.14);
+  --input-bg: #121212;
+  --surface-elevated: #111111;
+  --footer-bg: #0e0e0e;
+}
+
+body{
+  font-family: 'Overused Grotesk', sans-serif;
+  color: var(--ink);
+}
+
+body:not(.dark-mode) .text-muted,
+body:not(.dark-mode) .text-secondary,
+body:not(.dark-mode) .text-body-secondary,
+body:not(.dark-mode) .small,
+body:not(.dark-mode) small,
+body:not(.dark-mode) .form-text,
+body:not(.dark-mode) .table thead th,
+body:not(.dark-mode) .table td,
+body:not(.dark-mode) .table th,
+body:not(.dark-mode) .form-label,
+body:not(.dark-mode) .card-title,
+body:not(.dark-mode) .card-header,
+body:not(.dark-mode) .app-topbar__company,
+body:not(.dark-mode) .logo-marquee__name{
+  color: #000 !important;
+}
+
+body.dark-mode .text-muted,
+body.dark-mode .text-secondary,
+body.dark-mode .text-body-secondary,
+body.dark-mode .small,
+body.dark-mode small,
+body.dark-mode .form-text,
+body.dark-mode .table thead th,
+body.dark-mode .table td,
+body.dark-mode .table th,
+body.dark-mode .form-label,
+body.dark-mode .card-title,
+body.dark-mode .card-header,
+body.dark-mode .app-topbar__company,
+body.dark-mode .logo-marquee__name{
+  color: var(--ink) !important;
+}
+
+.card .card-body{
+  padding: 18px;
+}
+
+.form-control,
+.input-group-text,
+.form-select{
+  min-height: 42px;
+}
+
+.form-control::placeholder,
+.form-select::placeholder,
+textarea::placeholder{
+  color: rgba(0, 0, 0, 0.55);
+}
+
+body.dark-mode .form-control::placeholder,
+body.dark-mode .form-select::placeholder,
+body.dark-mode textarea::placeholder{
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.table{
+  color: var(--ink);
+  margin-bottom: 0;
+}
+
+.table > :not(caption) > * > *{
+  border: 1px solid var(--border);
+  padding: 0.72rem 0.8rem;
+}
+
+.table thead th{
+  background: var(--table-head-bg) !important;
+  color: var(--ink) !important;
+  font-weight: 600;
+  border-bottom-width: 1px;
+}
+
+.table tbody tr:hover > *{
+  background: var(--table-row-hover);
+}
+
+.table-responsive{
+  border-radius: 0;
+}
+
+.saas-footer{
+  position: relative;
+  padding: 14px 0 12px;
+  color: var(--ink);
+}
+
+.saas-footer__watermark{
+  position: absolute;
+  left: 0;
+  top: 50%;
+  height: 78px;
+  width: auto;
+  opacity: 0.05;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.saas-footer__row{
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 0.5rem 1rem;
+  align-items: center;
+}
+
+.saas-footer__row--primary{
+  grid-template-columns: 1fr auto 1fr;
+  margin-bottom: 0.5rem;
+}
+
+.saas-footer__row--primary > :last-child{
+  justify-self: end;
+}
+
+.saas-footer__row--secondary{
+  text-align: center;
+  line-height: 1.35;
+}
+
+.saas-footer .brand,
+.saas-footer small,
+.saas-footer p,
+.saas-footer a{
+  color: inherit !important;
+}
+
+.saas-footer-social a{
+  color: inherit;
+}
+
+.saas-footer-social svg{
+  transform: scale(1.5);
+  transform-origin: center;
+}
+
+.btn .dash-admin-illu svg,
+.saas-nav .nav-link svg,
+.saas-nav .dropdown-item svg,
+.collab-icon-button svg,
+.chat-widget__launcher svg {
+  transform: scale(1.5);
+  transform-origin: center;
+}
+
+@media (max-width: 767.98px){
+  .saas-footer__row--primary{
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+
+  .saas-footer__row--primary > :last-child{
+    justify-self: center;
+  }
+
+  .saas-footer__watermark{
+    height: 64px;
+  }
+}
+

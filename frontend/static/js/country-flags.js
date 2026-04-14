@@ -37,8 +37,20 @@
     target.textContent = flag ? `${flag} ${label}` : label;
   }
 
+  function decorateOptions(select, flagsMap) {
+    Array.from(select.options || []).forEach((option) => {
+      const code = String(option.value || "").trim().toUpperCase();
+      if (!code || option.dataset.flagDecorated === "1") return;
+      const flag = flagsMap[code] || fallbackFlag(code);
+      if (!flag) return;
+      option.textContent = `${flag} ${option.textContent.replace(/^[^\w(]+\s*/, "")}`;
+      option.dataset.flagDecorated = "1";
+    });
+  }
+
   function initFlags(flagsMap) {
     document.querySelectorAll("select[data-country-flag-target]").forEach((select) => {
+      decorateOptions(select, flagsMap);
       updateSelect(select, flagsMap);
       select.addEventListener("change", () => updateSelect(select, flagsMap));
     });

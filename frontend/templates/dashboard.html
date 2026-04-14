@@ -4,7 +4,7 @@
 {% block title %}Data Entry - CTS Carbon Platform{% endblock %}
 
 {% block content %}
-<div class="container-fluid mt-4 px-3 px-md-4">
+<div class="container-fluid dashboard-page mt-4 px-3 px-md-4">
     <!-- Welcome Section -->
     <div class="row mb-4">
         <div class="col-12">
@@ -16,7 +16,7 @@
                                 {% if company_logo_rel %}
                                 <img src="{{ url_for('static', filename=company_logo_rel) }}" alt="" width="40" height="40" style="object-fit:contain;" class="flex-shrink-0">
                                 {% endif %}
-                                <span class="d-inline-flex align-items-center">{{ illu.illu_nav_pen_entry('me-2') }}Data Entry, {{ user.company_name }}</span>
+                                <span class="d-inline-flex align-items-center">Data Entry, {{ user.company_name }}</span>
                             </h2>
                             <p class="text-muted mb-0">Manage your GHG data entry and mapping workflow</p>
                         </div>
@@ -28,6 +28,23 @@
             </div>
         </div>
     </div>
+
+<section>
+  <div class="text-muted mb-1">
+    <div class ="col-12" style= padding:18px id="global_map_v2 "> 
+      <div class="text-muted mb-0" id="second_section" style="text-align: center">
+        <div class="card">
+          <h2 class="header_for_section2" id ="header_section2" style="text-align: left">
+            <p> Simdi burada senden istedigim oncelikle Favicon'u 1 numarada gosterdigim logomuzun bir kesitini yapmani istiyorum yani 1 numaranin aynisi. Ayrica 1 numaradaki logo buyumeli, 2 numarali notification iconu kuculmeli birde ne zaman bildirm olsa bildirimler o icondan tasiyor ve bir kismi gozukmuyor. 
+            
+            </p>
+          </h2>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 
     <!-- Excel-driven data entry (schema = sheet headers) -->
     <div class="row mb-4">
@@ -273,20 +290,21 @@
 <style>
 .data-entry-table-shell {
   --data-grid-zoom: 1;
-  --data-grid-font-size: calc(0.82rem * var(--data-grid-zoom));
+  --data-grid-font-size: calc(0.84rem * var(--data-grid-zoom));
   --data-grid-index-font-size: calc(0.75rem * var(--data-grid-zoom));
   --data-grid-cell-min-width: calc(110px * var(--data-grid-zoom));
   --data-grid-cell-max-width: calc(280px * var(--data-grid-zoom));
-  --data-grid-cell-pad-y: calc(0.24rem * var(--data-grid-zoom));
-  --data-grid-cell-pad-x: calc(0.42rem * var(--data-grid-zoom));
-  --data-grid-input-pad-y: calc(0.26rem * var(--data-grid-zoom));
-  --data-grid-input-pad-x: calc(0.42rem * var(--data-grid-zoom));
+  --data-grid-cell-pad-y: calc(0.38rem * var(--data-grid-zoom));
+  --data-grid-cell-pad-x: calc(0.55rem * var(--data-grid-zoom));
+  --data-grid-input-pad-y: calc(0.42rem * var(--data-grid-zoom));
+  --data-grid-input-pad-x: calc(0.55rem * var(--data-grid-zoom));
   --data-grid-error-font-size: calc(0.68rem * var(--data-grid-zoom));
   --data-grid-row-actions-width: calc(48px * var(--data-grid-zoom));
-  border-radius: 14px !important;
+  border-radius: 10px !important;
   overflow: hidden;
   border-color: var(--bs-border-color) !important;
-  background: var(--bs-body-bg);
+  background: #ffffff;
+  box-shadow: none;
 }
 
 .data-entry-main {
@@ -318,12 +336,13 @@
   position: sticky;
   top: 0;
   z-index: 4;
-  background: var(--bs-secondary-bg) !important;
-  color: var(--bs-body-color);
-  border-bottom: 1px solid var(--bs-border-color);
-  box-shadow: 0 1px 0 var(--bs-border-color);
+  background: #f5f5f5 !important;
+  color: #000;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  box-shadow: none;
   white-space: nowrap;
   font-weight: 600;
+  text-align: left;
 }
 
 .data-entry-grid-table tbody td,
@@ -331,8 +350,8 @@
 .data-entry-grid-table thead th {
   padding: var(--data-grid-cell-pad-y) var(--data-grid-cell-pad-x);
   vertical-align: middle;
-  border-color: var(--bs-border-color);
-  background-color: var(--bs-body-bg);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background-color: #ffffff;
 }
 
 .data-entry-grid-table tbody tr.is-locked-row {
@@ -356,7 +375,7 @@
 .data-grid__meta {
   white-space: nowrap;
   font-size: var(--data-grid-index-font-size);
-  background: var(--bs-body-bg) !important;
+  background: #ffffff !important;
 }
 
 .data-grid__index {
@@ -373,7 +392,7 @@
   min-width: var(--data-grid-cell-min-width);
   max-width: var(--data-grid-cell-max-width);
   padding: 0 !important;
-  background: var(--bs-body-bg) !important;
+  background: #ffffff !important;
 }
 
 .data-grid__cell.is-active {
@@ -393,16 +412,20 @@
   border: 0;
   border-radius: 0;
   padding: var(--data-grid-input-pad-y) var(--data-grid-input-pad-x);
-  background: var(--bs-secondary-bg);
-  color: var(--bs-body-color);
+  background: #ffffff;
+  color: #000;
   box-shadow: none !important;
   font-size: var(--data-grid-font-size);
   line-height: 1.25;
 }
 
+.data-grid__input[type="number"] {
+  text-align: right;
+}
+
 .data-grid__input:focus {
   outline: none;
-  background: var(--bs-body-bg);
+  background: #ffffff;
 }
 
 .data-grid__input[readonly] {
@@ -431,7 +454,7 @@
 .data-grid__row-actions {
   width: var(--data-grid-row-actions-width);
   text-align: center;
-  background: var(--bs-body-bg) !important;
+  background: #ffffff !important;
 }
 
 .data-grid__meta-badge {
@@ -456,10 +479,49 @@
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
+  padding: 0.42rem 0.7rem;
   border-radius: 999px;
   border: 1px solid var(--bs-border-color);
   background: var(--bs-tertiary-bg);
+}
+
+.dashboard-page .row.mb-4 {
+  margin-bottom: 1rem !important;
+}
+
+.dashboard-page .row.mt-4 {
+  margin-top: 1rem !important;
+}
+
+.dashboard-page .card .card-body {
+  padding: 1rem;
+}
+
+#sheetList {
+  border-radius: 10px !important;
+}
+
+body.dark-mode .data-entry-table-shell,
+body.dark-mode .data-entry-table-scroll,
+body.dark-mode .data-entry-grid-table tbody td,
+body.dark-mode .data-entry-grid-table tbody th,
+body.dark-mode .data-entry-grid-table thead th,
+body.dark-mode .data-grid__cell,
+body.dark-mode .data-grid__index,
+body.dark-mode .data-grid__meta,
+body.dark-mode .data-grid__input,
+body.dark-mode .data-grid__row-actions {
+  background: #101010 !important;
+  color: #f5f5f5 !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+body.dark-mode .data-entry-grid-table thead.data-grid__thead th {
+  background: #1b1b1b !important;
+}
+
+body.dark-mode .data-grid__input::placeholder {
+  color: rgba(255, 255, 255, 0.58);
 }
 
 .data-entry-toolbar__chip--zoom {
