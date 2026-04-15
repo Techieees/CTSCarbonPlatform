@@ -91,6 +91,26 @@ app.config['UPLOAD_FOLDER'] = str(FRONTEND_UPLOAD_DIR)
 
 TEMPLATES_PATH = APP_DIR / "data" / "templates.json"
 ISO_COUNTRIES_PATH = APP_DIR / "data" / "iso_countries.json"
+EMPLOYEE_COMMUTING_DATA_DIR = STAGE2_MAPPING_DIR / "Employee Commuting National Averages"
+EMPLOYEE_COMMUTING_NATIONAL_AVERAGES_XLSX = (
+    EMPLOYEE_COMMUTING_DATA_DIR / "Employee_headcount_national_averages.xlsx"
+)
+EMPLOYEE_COMMUTING_HEADCOUNT_CSV = (
+    EMPLOYEE_COMMUTING_DATA_DIR / "employee_commuting_headcount.csv"
+)
+EMPLOYEE_COMMUTING_HEADCOUNT_FIELDS: tuple[dict[str, str], ...] = (
+    {"key": "company_name", "label": "Company_Name", "input_type": "text"},
+    {"key": "headcount", "label": "Headcount", "input_type": "number"},
+)
+EMPLOYEE_COMMUTING_NATIONAL_AVERAGE_FIELDS: tuple[dict[str, str], ...] = (
+    {"key": "company_name", "label": "Company_Name", "input_type": "text"},
+    {"key": "country", "label": "Country", "input_type": "text"},
+    {"key": "average_one_day", "label": "Average one day", "input_type": "number"},
+    {"key": "car_pct", "label": "Car %", "input_type": "number"},
+    {"key": "bus_pct", "label": "Bus %", "input_type": "number"},
+    {"key": "walking_and_cycling_pct", "label": "Walking and Cycling %", "input_type": "number"},
+    {"key": "mixed_pct", "label": "Mixed %", "input_type": "number"},
+)
 ALLOWED_EMAIL_DOMAIN = "cts-nordics.com"
 PROFILE_PHOTO_ALLOWED_EXT = frozenset({".png", ".jpg", ".jpeg", ".webp"})
 COMPANY_LOGO_ALLOWED_EXT = frozenset({".png"})
@@ -728,6 +748,29 @@ class CsrdPolicy(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class EmployeeCommutingHeadcount(db.Model):
+    __tablename__ = "employee_commuting_headcount"
+    id = db.Column(db.Integer, primary_key=True)
+    company_name = db.Column(db.String(200), nullable=False, unique=True)
+    headcount = db.Column(db.Integer, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class EmployeeCommutingNationalAverage(db.Model):
+    __tablename__ = "employee_commuting_national_average"
+    id = db.Column(db.Integer, primary_key=True)
+    company_name = db.Column(db.String(200), nullable=False, unique=True)
+    country = db.Column(db.String(100), nullable=False)
+    average_one_day = db.Column(db.Float, nullable=False)
+    car_pct = db.Column(db.Float, nullable=False)
+    bus_pct = db.Column(db.Float, nullable=False)
+    walking_and_cycling_pct = db.Column(db.Float, nullable=False)
+    mixed_pct = db.Column(db.Float, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class Notification(db.Model):
     __tablename__ = "notifications"
     id = db.Column(db.Integer, primary_key=True)
@@ -791,6 +834,297 @@ def _csrd_policy_upload_dir() -> Path:
 
 def _csrd_filename_is_pdf(filename: str) -> bool:
     return Path(secure_filename(filename or "")).suffix.lower() == ".pdf"
+
+
+def _employee_commuting_data_dir() -> Path:
+    EMPLOYEE_COMMUTING_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    return EMPLOYEE_COMMUTING_DATA_DIR
+
+
+def _clean_employee_commuting_company(value: object) -> str:
+    return " ".join(str(value or "").replace("\u00A0", " ").strip().split())
+
+
+def _serialize_employee_commuting_headcount_rows() -> list[dict[str, object]]:
+    rows = EmployeeCommutingHeadcount.query.order_by(EmployeeCommutingHeadcount.company_name.asc()).all()
+    return [
+        {
+            "company_name": _clean_employee_commuting_company(row.company_name),
+            "headcount": int(row.headcount or 0),
+        }
+        for row in rows
+    ]
+
+
+def _serialize_employee_commuting_national_average_rows() -> list[dict[str, object]]:
+    rows = (
+        EmployeeCommutingNationalAverage.query
+        .order_by(EmployeeCommutingNationalAverage.company_name.asc())
+        .all()
+    )
+    return [
+        {
+            "company_name": _clean_employee_commuting_company(row.company_name),
+            "country": str(row.country or "").strip(),
+            "average_one_day": float(row.average_one_day or 0),
+            "car_pct": float(row.car_pct or 0),
+            "bus_pct": float(row.bus_pct or 0),
+            "walking_and_cycling_pct": float(row.walking_and_cycling_pct or 0),
+            "mixed_pct": float(row.mixed_pct or 0),
+        }
+        for row in rows
+    ]
+
+
+def _publish_employee_commuting_files() -> None:
+    _employee_commuting_data_dir()
+
+    headcount_rows = _serialize_employee_commuting_headcount_rows()
+    national_average_rows = _serialize_employee_commuting_national_average_rows()
+
+    headcount_df = pd.DataFrame(
+        [
+            {
+                "Company_Name": row["company_name"],
+                "Headcount": int(row["headcount"] or 0),
+            }
+            for row in headcount_rows
+        ]
+    )
+    if headcount_df.empty:
+        headcount_df = pd.DataFrame(columns=["Company_Name", "Headcount"])
+    headcount_df.to_csv(EMPLOYEE_COMMUTING_HEADCOUNT_CSV, index=False)
+
+    national_average_df = pd.DataFrame(
+        [
+            {
+                "Company_Name": row["company_name"],
+                "Country": row["country"],
+                "Average one day": float(row["average_one_day"] or 0),
+                "Car %": float(row["car_pct"] or 0),
+                "Bus %": float(row["bus_pct"] or 0),
+                "Walking and Cycling %": float(row["walking_and_cycling_pct"] or 0),
+                "Mixed %": float(row["mixed_pct"] or 0),
+            }
+            for row in national_average_rows
+        ]
+    )
+    if national_average_df.empty:
+        national_average_df = pd.DataFrame(
+            columns=[
+                "Company_Name",
+                "Country",
+                "Average one day",
+                "Car %",
+                "Bus %",
+                "Walking and Cycling %",
+                "Mixed %",
+            ]
+        )
+
+    merged_df = national_average_df.merge(headcount_df, on="Company_Name", how="outer")
+    for col in [
+        "Country",
+        "Average one day",
+        "Car %",
+        "Bus %",
+        "Walking and Cycling %",
+        "Mixed %",
+        "Headcount",
+    ]:
+        if col not in merged_df.columns:
+            merged_df[col] = ""
+    merged_df = merged_df[
+        [
+            "Company_Name",
+            "Country",
+            "Average one day",
+            "Car %",
+            "Bus %",
+            "Walking and Cycling %",
+            "Mixed %",
+            "Headcount",
+        ]
+    ].sort_values("Company_Name", na_position="last")
+
+    with pd.ExcelWriter(EMPLOYEE_COMMUTING_NATIONAL_AVERAGES_XLSX, engine="openpyxl") as writer:
+        merged_df.to_excel(writer, sheet_name="Sheet1", index=False)
+
+
+def _seed_employee_commuting_defaults() -> None:
+    _employee_commuting_data_dir()
+    seeded = False
+
+    workbook_exists = EMPLOYEE_COMMUTING_NATIONAL_AVERAGES_XLSX.exists()
+    if not workbook_exists:
+        _publish_employee_commuting_files()
+        return
+
+    try:
+        source_df = pd.read_excel(EMPLOYEE_COMMUTING_NATIONAL_AVERAGES_XLSX, engine="openpyxl")
+    except Exception:
+        return
+    if source_df is None or source_df.empty:
+        return
+
+    if EmployeeCommutingNationalAverage.query.count() == 0:
+        for _, row in source_df.iterrows():
+            company_name = _clean_employee_commuting_company(row.get("Company_Name"))
+            if not company_name:
+                continue
+            db.session.add(
+                EmployeeCommutingNationalAverage(
+                    company_name=company_name,
+                    country=str(row.get("Country") or "").strip(),
+                    average_one_day=float(pd.to_numeric(row.get("Average one day"), errors="coerce") or 0),
+                    car_pct=float(pd.to_numeric(row.get("Car %"), errors="coerce") or 0),
+                    bus_pct=float(pd.to_numeric(row.get("Bus %"), errors="coerce") or 0),
+                    walking_and_cycling_pct=float(pd.to_numeric(row.get("Walking and Cycling %"), errors="coerce") or 0),
+                    mixed_pct=float(pd.to_numeric(row.get("Mixed %"), errors="coerce") or 0),
+                )
+            )
+        seeded = True
+
+    if EmployeeCommutingHeadcount.query.count() == 0:
+        for _, row in source_df.iterrows():
+            company_name = _clean_employee_commuting_company(row.get("Company_Name"))
+            headcount_value = pd.to_numeric(row.get("Headcount"), errors="coerce")
+            if not company_name or pd.isna(headcount_value):
+                continue
+            db.session.add(
+                EmployeeCommutingHeadcount(
+                    company_name=company_name,
+                    headcount=int(round(float(headcount_value))),
+                )
+            )
+        seeded = True
+
+    if seeded:
+        db.session.commit()
+        _publish_employee_commuting_files()
+
+
+def _parse_employee_commuting_non_negative_float(value: object, label: str, row_no: int) -> float:
+    numeric = pd.to_numeric(value, errors="coerce")
+    if pd.isna(numeric):
+        raise ValueError(f"Row {row_no}: `{label}` must be numeric.")
+    out = float(numeric)
+    if out < 0:
+        raise ValueError(f"Row {row_no}: `{label}` cannot be negative.")
+    return out
+
+
+def _normalize_employee_commuting_headcount_payload(rows: object) -> list[dict[str, object]]:
+    if not isinstance(rows, list):
+        raise ValueError("Rows payload must be a list.")
+
+    normalized: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for idx, raw in enumerate(rows, start=1):
+        if not isinstance(raw, dict):
+            continue
+        company_name = _clean_employee_commuting_company(raw.get("company_name"))
+        headcount_raw = str(raw.get("headcount") or "").strip()
+        if not company_name and not headcount_raw:
+            continue
+        if not company_name:
+            raise ValueError(f"Row {idx}: `Company_Name` is required.")
+        headcount = int(round(_parse_employee_commuting_non_negative_float(headcount_raw, "Headcount", idx)))
+        dedup_key = company_name.lower()
+        if dedup_key in seen:
+            raise ValueError(f"Row {idx}: `{company_name}` appears more than once.")
+        seen.add(dedup_key)
+        normalized.append({"company_name": company_name, "headcount": headcount})
+    return normalized
+
+
+def _normalize_employee_commuting_national_average_payload(rows: object) -> list[dict[str, object]]:
+    if not isinstance(rows, list):
+        raise ValueError("Rows payload must be a list.")
+
+    normalized: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for idx, raw in enumerate(rows, start=1):
+        if not isinstance(raw, dict):
+            continue
+        company_name = _clean_employee_commuting_company(raw.get("company_name"))
+        country = str(raw.get("country") or "").strip()
+        raw_values = [
+            str(raw.get("average_one_day") or "").strip(),
+            str(raw.get("car_pct") or "").strip(),
+            str(raw.get("bus_pct") or "").strip(),
+            str(raw.get("walking_and_cycling_pct") or "").strip(),
+            str(raw.get("mixed_pct") or "").strip(),
+        ]
+        if not company_name and not country and not any(raw_values):
+            continue
+        if not company_name:
+            raise ValueError(f"Row {idx}: `Company_Name` is required.")
+        if not country:
+            raise ValueError(f"Row {idx}: `Country` is required.")
+
+        average_one_day = _parse_employee_commuting_non_negative_float(raw.get("average_one_day"), "Average one day", idx)
+        car_pct = _parse_employee_commuting_non_negative_float(raw.get("car_pct"), "Car %", idx)
+        bus_pct = _parse_employee_commuting_non_negative_float(raw.get("bus_pct"), "Bus %", idx)
+        walking_and_cycling_pct = _parse_employee_commuting_non_negative_float(
+            raw.get("walking_and_cycling_pct"),
+            "Walking and Cycling %",
+            idx,
+        )
+        mixed_pct = _parse_employee_commuting_non_negative_float(raw.get("mixed_pct"), "Mixed %", idx)
+        total_pct = car_pct + bus_pct + walking_and_cycling_pct + mixed_pct
+        if abs(total_pct - 100.0) > 1.0:
+            raise ValueError(
+                f"Row {idx}: transport shares must add up to 100. Current total: {total_pct:.2f}"
+            )
+
+        dedup_key = company_name.lower()
+        if dedup_key in seen:
+            raise ValueError(f"Row {idx}: `{company_name}` appears more than once.")
+        seen.add(dedup_key)
+        normalized.append(
+            {
+                "company_name": company_name,
+                "country": country,
+                "average_one_day": average_one_day,
+                "car_pct": car_pct,
+                "bus_pct": bus_pct,
+                "walking_and_cycling_pct": walking_and_cycling_pct,
+                "mixed_pct": mixed_pct,
+            }
+        )
+    return normalized
+
+
+def _replace_employee_commuting_headcount_rows(rows: list[dict[str, object]]) -> None:
+    EmployeeCommutingHeadcount.query.delete()
+    for row in rows:
+        db.session.add(
+            EmployeeCommutingHeadcount(
+                company_name=str(row["company_name"]),
+                headcount=int(row["headcount"]),
+            )
+        )
+    db.session.commit()
+    _publish_employee_commuting_files()
+
+
+def _replace_employee_commuting_national_average_rows(rows: list[dict[str, object]]) -> None:
+    EmployeeCommutingNationalAverage.query.delete()
+    for row in rows:
+        db.session.add(
+            EmployeeCommutingNationalAverage(
+                company_name=str(row["company_name"]),
+                country=str(row["country"]),
+                average_one_day=float(row["average_one_day"]),
+                car_pct=float(row["car_pct"]),
+                bus_pct=float(row["bus_pct"]),
+                walking_and_cycling_pct=float(row["walking_and_cycling_pct"]),
+                mixed_pct=float(row["mixed_pct"]),
+            )
+        )
+    db.session.commit()
+    _publish_employee_commuting_files()
 
 
 def _ensure_db_tables() -> None:
@@ -6353,6 +6687,114 @@ def analytics_output_download_file(filename: str):
     candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     path = candidates[0]
     return send_file(str(path), as_attachment=True, download_name=path.name)
+
+
+def _employee_commuting_data_source_context(
+    *,
+    page_title: str,
+    page_heading: str,
+    page_description: str,
+    save_url: str,
+    fields: tuple[dict[str, str], ...],
+    rows: list[dict[str, object]],
+) -> dict[str, object]:
+    return {
+        "page_title": page_title,
+        "page_heading": page_heading,
+        "page_description": page_description,
+        "save_url": save_url,
+        "fields": list(fields),
+        "rows": rows,
+        "published_workbook_name": EMPLOYEE_COMMUTING_NATIONAL_AVERAGES_XLSX.name,
+    }
+
+
+@app.route("/data-sources/employee-commuting/headcount", methods=["GET", "POST"])
+@login_required
+def data_sources_employee_commuting_headcount():
+    if not bool(getattr(current_user, "is_admin", False)):
+        flash("Access denied")
+        return redirect(url_for("dashboard"))
+
+    _ensure_db_tables()
+    _seed_employee_commuting_defaults()
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or {}
+        try:
+            rows = _normalize_employee_commuting_headcount_payload(payload.get("rows"))
+            _replace_employee_commuting_headcount_rows(rows)
+            return jsonify(
+                {
+                    "ok": True,
+                    "saved_rows": len(rows),
+                    "rows": _serialize_employee_commuting_headcount_rows(),
+                    "published_workbook": EMPLOYEE_COMMUTING_NATIONAL_AVERAGES_XLSX.name,
+                }
+            )
+        except ValueError as exc:
+            db.session.rollback()
+            return jsonify({"error": str(exc)}), 400
+        except Exception as exc:
+            db.session.rollback()
+            return jsonify({"error": f"Failed to save headcount: {exc}"}), 500
+
+    context = _employee_commuting_data_source_context(
+        page_title="Employee Commuting Headcount",
+        page_heading="Employee Commuting Headcount",
+        page_description=(
+            "Manage monthly employee commuting headcount values here. "
+            "The national averages workbook is updated automatically after each save."
+        ),
+        save_url=url_for("data_sources_employee_commuting_headcount"),
+        fields=EMPLOYEE_COMMUTING_HEADCOUNT_FIELDS,
+        rows=_serialize_employee_commuting_headcount_rows(),
+    )
+    return render_template("data_source_table.html", user=current_user, **context)
+
+
+@app.route("/data-sources/employee-commuting/national-averages", methods=["GET", "POST"])
+@login_required
+def data_sources_employee_commuting_national_averages():
+    if not bool(getattr(current_user, "is_admin", False)):
+        flash("Access denied")
+        return redirect(url_for("dashboard"))
+
+    _ensure_db_tables()
+    _seed_employee_commuting_defaults()
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or {}
+        try:
+            rows = _normalize_employee_commuting_national_average_payload(payload.get("rows"))
+            _replace_employee_commuting_national_average_rows(rows)
+            return jsonify(
+                {
+                    "ok": True,
+                    "saved_rows": len(rows),
+                    "rows": _serialize_employee_commuting_national_average_rows(),
+                    "published_workbook": EMPLOYEE_COMMUTING_NATIONAL_AVERAGES_XLSX.name,
+                }
+            )
+        except ValueError as exc:
+            db.session.rollback()
+            return jsonify({"error": str(exc)}), 400
+        except Exception as exc:
+            db.session.rollback()
+            return jsonify({"error": f"Failed to save national averages: {exc}"}), 500
+
+    context = _employee_commuting_data_source_context(
+        page_title="Employee Commuting National Averages",
+        page_heading="Employee Commuting National Averages",
+        page_description=(
+            "Manage country, average one day, and mode of transport shares here. "
+            "These values are combined with the headcount page and used in the Category 7 calculation."
+        ),
+        save_url=url_for("data_sources_employee_commuting_national_averages"),
+        fields=EMPLOYEE_COMMUTING_NATIONAL_AVERAGE_FIELDS,
+        rows=_serialize_employee_commuting_national_average_rows(),
+    )
+    return render_template("data_source_table.html", user=current_user, **context)
 
 
 @app.route("/data-sources/ccc-api", methods=["GET", "POST"])

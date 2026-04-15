@@ -5,7 +5,7 @@
 {% set carbon_open = ep in ('carbon_accounting', 'scope1_detail', 'scope2_detail', 'scope3_detail') %}
 {% set data_open = ep in ('dashboard', 'mapping_runs', 'admin_mapping_runs') %}
 {% set analytics_open = ep in ('analytics_forecasting', 'analytics_decarbonization', 'analytics_emissions_map', 'governance_double_counting_check') %}
-{% set data_sources_open = ep in ('data_sources_ccc_api', 'admin') %}
+{% set data_sources_open = ep in ('data_sources_ccc_api', 'data_sources_employee_commuting_headcount', 'data_sources_employee_commuting_national_averages', 'admin') %}
 {% set data_outputs_open = ep in ('analytics_mapped_window_output', 'analytics_emissions_totals', 'analytics_share_analysis') %}
 {% set governance_open = ep in ('governance_audit_ready_output',) %}
 {% set esg_open = ep in ('csrd', 'csrd_policies', 'lca', 'lca_tool') %}
@@ -118,6 +118,14 @@
               <span class="app-sidebar__label">CCC API</span>
             </a>
             {% if current_user.is_admin %}
+            <a href="{{ url_for('data_sources_employee_commuting_headcount') }}" class="app-sidebar__link app-sidebar__link--sub {% if ep == 'data_sources_employee_commuting_headcount' %}is-active{% endif %}" {% if ep == 'data_sources_employee_commuting_headcount' %}aria-current="page"{% endif %} title="Employee Commuting Headcount">
+              {{ illu.illu_nav_data('app-sidebar__icon') }}
+              <span class="app-sidebar__label">Headcount</span>
+            </a>
+            <a href="{{ url_for('data_sources_employee_commuting_national_averages') }}" class="app-sidebar__link app-sidebar__link--sub {% if ep == 'data_sources_employee_commuting_national_averages' %}is-active{% endif %}" {% if ep == 'data_sources_employee_commuting_national_averages' %}aria-current="page"{% endif %} title="Employee Commuting National Averages">
+              {{ illu.illu_nav_data('app-sidebar__icon') }}
+              <span class="app-sidebar__label">National Averages</span>
+            </a>
             <a href="{{ url_for('admin') }}#travel-preprocessing-upload" class="app-sidebar__link app-sidebar__link--sub" title="Travel Preprocessing Upload">
               {{ illu.illu_nav_pen_entry('app-sidebar__icon') }}
               <span class="app-sidebar__label">Travel Preprocessing Upload</span>

@@ -43,10 +43,18 @@ OVERRIDE_SHEET_NAMES = {
     "Scope 3 Cat 1 Goods Spend",
 }
 
-# Cat 7 proportional preprocessor configuration
-CAT7_PREPROCESS_ENABLED = True
+# Cat 7 preprocessor configuration
+CAT7_NATIONAL_AVERAGES_ENABLED = True
+CAT7_LEGACY_SURVEY_PREPROCESS_ENABLED = False
 CAT7_HEADCOUNT_CSV = STAGE2_HEADCOUNT_CSV
 CAT7_SHEET_NAME = "Scope 3 Cat 7 Employee Commute"
+CAT7_NATIONAL_AVERAGES_XLSX = (
+    PROJECT_ROOT
+    / "engine"
+    / "stage2_mapping"
+    / "Employee Commuting National Averages"
+    / "Employee_headcount_national_averages.xlsx"
+)
 
 # BillOfQuantity header mapping per input sheet (where to read BoQ from)
 BOQ_INPUT_HEADERS_PER_SHEET: Dict[str, List[str]] = {
@@ -800,13 +808,135 @@ def _preprocess_cat7_proportional(
     except Exception:
         return in_sheets
 
+
+def _preprocess_cat7_national_averages(
+    in_sheets: Dict[str, pd.DataFrame],
+    national_averages_xlsx: Path,
+) -> Dict[str, pd.DataFrame]:
+    """Generate Cat 7 rows from national averages + headcount source data."""
+    try:
+        if not national_averages_xlsx.exists():
+            return in_sheets
+
+        source_df = pd.read_excel(national_averages_xlsx)
+        if source_df is None or source_df.empty:
+            return in_sheets
+
+        months_all = pd.date_range(start="2025-01-01", end="2025-12-01", freq="MS")
+
+        def _clean_company(value: object) -> str:
+            try:
+                s = str(value or "").strip()
+            except Exception:
+                return ""
+            s = s.replace("\u00A0", " ")
+            s = s.replace(".xlsx", "").replace(".xls", "")
+            return " ".join(s.split())
+
+        def _num(value: object) -> float:
+            try:
+                parsed = pd.to_numeric(value, errors="coerce")
+                return float(parsed) if not pd.isna(parsed) else float("nan")
+            except Exception:
+                return float("nan")
+
+        def _allocate_counts(headcount: int, ratios: Dict[str, float]) -> Dict[str, int]:
+            if headcount <= 0 or not ratios:
+                return {}
+            raw = {mode: (headcount * max(0.0, float(ratio)) / 100.0) for mode, ratio in ratios.items()}
+            counts = {mode: int(math.floor(val)) for mode, val in raw.items()}
+            remainder = max(0, int(headcount - sum(counts.values())))
+            order = sorted(
+                raw.keys(),
+                key=lambda mode: (raw[mode] - counts[mode], raw[mode], mode),
+                reverse=True,
+            )
+            for idx in range(remainder):
+                counts[order[idx % len(order)]] += 1
+            return counts
+
+        final_pieces: List[pd.DataFrame] = []
+        for _, row in source_df.iterrows():
+            company_name = _clean_company(row.get("Company_Name"))
+            country = str(row.get("Country") or "").strip()
+            km_one_way = _num(row.get("Average one day"))
+            headcount_value = _num(row.get("Headcount"))
+            if not company_name or not country or pd.isna(km_one_way) or pd.isna(headcount_value):
+                continue
+
+            headcount = int(round(headcount_value))
+            if headcount <= 0:
+                continue
+
+            mode_counts = _allocate_counts(
+                headcount,
+                {
+                    "Car": _num(row.get("Car %")),
+                    "Bus": _num(row.get("Bus %")),
+                    "Walking and Cycling": _num(row.get("Walking and Cycling %")),
+                    "Mixed": _num(row.get("Mixed %")),
+                },
+            )
+            if not mode_counts:
+                continue
+
+            km_per_day = round(float(km_one_way) * 2, 2)
+            km_per_month = round(km_per_day * 20, 2)
+
+            month_rows: List[Dict[str, object]] = []
+            for mode_name, person_count in mode_counts.items():
+                if person_count <= 0:
+                    continue
+                for _ in range(person_count):
+                    month_rows.append(
+                        {
+                            "Source_File": company_name,
+                            "Country": country,
+                            "Reporting period (month, year)": datetime.now().strftime("%Y-%m-01"),
+                            "Mode of Transport": mode_name,
+                            "km travelled one way": round(float(km_one_way), 2),
+                            "km travelled per day": km_per_day,
+                            "km travelled per month": km_per_month,
+                            "Synthetic": True,
+                            "Synthetic_Record_Note": (
+                                f"Generated from national averages for {company_name} "
+                                f"using headcount and transport share '{mode_name}'"
+                            ),
+                            "Data_Type": "National Average",
+                        }
+                    )
+
+            if not month_rows:
+                continue
+
+            one_month_df = pd.DataFrame(month_rows)
+            months = months_all
+            if company_name.strip().lower() == "fortica":
+                months = pd.date_range(start="2025-10-01", end="2025-12-01", freq="MS")
+            for month in months:
+                copy_df = one_month_df.copy()
+                copy_df["Reporting period (month, year)"] = month.strftime("%Y-%m-%d")
+                final_pieces.append(copy_df)
+
+        if final_pieces:
+            in_sheets[CAT7_SHEET_NAME] = pd.concat(final_pieces, ignore_index=True)
+        return in_sheets
+    except Exception:
+        return in_sheets
+
 def process_all_sheets() -> None:
     base_dir = Path(__file__).resolve().parent
     output_dir = STAGE2_OUTPUT_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load input sheets (with optional Cat7 preprocessing)
-    if CAT7_PREPROCESS_ENABLED and Path.exists(CAT7_HEADCOUNT_CSV):
+    if CAT7_NATIONAL_AVERAGES_ENABLED and CAT7_NATIONAL_AVERAGES_XLSX.exists():
+        try:
+            raw_sheets = _load_input_workbook(base_dir)
+            in_sheets = _preprocess_cat7_national_averages(raw_sheets, CAT7_NATIONAL_AVERAGES_XLSX)
+        except Exception:
+            in_sheets = _load_input_workbook(base_dir)
+    elif CAT7_LEGACY_SURVEY_PREPROCESS_ENABLED and Path.exists(CAT7_HEADCOUNT_CSV):
         try:
             raw_sheets = _load_input_workbook(base_dir)
             in_sheets = _preprocess_cat7_proportional(raw_sheets, CAT7_HEADCOUNT_CSV)

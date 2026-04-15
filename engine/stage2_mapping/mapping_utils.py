@@ -881,6 +881,7 @@ def map_emission_factor(
                 "bicycle": "bike",
                 "walk/bicycle": "walking",
                 "walk/bicycle ect": "walking",
+                "walking and cycling": "walking",
                 "train or bus": "bus",
                 "metro and walk": "metro",
                 "car, train, walk": "mixed",
