@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 
 
 BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "data"
 PROJECT_ROOT = BASE_DIR.parent
 
 
@@ -17,7 +18,7 @@ load_dotenv(BASE_DIR / "api_credentials.env")
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
 FRONTEND_INSTANCE_DIR = FRONTEND_DIR / "instance"
 FRONTEND_UPLOAD_DIR = FRONTEND_DIR / "uploads"
-FRONTEND_DB_PATH = FRONTEND_INSTANCE_DIR / "app.db"
+FRONTEND_DB_PATH = FRONTEND_INSTANCE_DIR / "ghg_data.db"
 
 
 # -----------------

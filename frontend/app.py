@@ -6337,7 +6337,7 @@ def _load_ccc_available_projects(
 def _load_ccc_purchase_orders_summary(project_id: int | None) -> dict[str, object]:
     default_preview = {
         "name": "Latest purchase orders",
-        "columns": ["supplier", "amount", "currency", "createdOn", "statusDescription"],
+        "columns": ["Supplier", "Total Price", "Currency", "CreatedOn", "Status"],
         "rows": [],
         "row_count": 0,
         "column_count": 5,
@@ -6346,7 +6346,7 @@ def _load_ccc_purchase_orders_summary(project_id: int | None) -> dict[str, objec
     default_payload: dict[str, object] = {
         "available": False,
         "has_rows": False,
-        "output_file": "purchase_orders.parquet",
+        "output_file": "purchase_orders.csv",
         "records_synced": 0,
         "records_synced_display": "0",
         "last_sync_time": "",
@@ -6371,7 +6371,7 @@ def _load_ccc_purchase_orders_summary(project_id: int | None) -> dict[str, objec
     return {
         "available": available,
         "has_rows": records_synced > 0,
-        "output_file": str(raw.get("output_file") or "purchase_orders.parquet"),
+        "output_file": str(raw.get("output_file") or "purchase_orders.csv"),
         "records_synced": records_synced,
         "records_synced_display": f"{records_synced:,}",
         "last_sync_time": str(raw.get("last_sync_time") or ""),

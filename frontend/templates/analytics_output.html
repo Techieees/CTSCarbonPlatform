@@ -214,7 +214,7 @@
         </div>
       </div>
       <p class="analytics-output-inline-note mb-0 mt-3">
-        Purchase orders are cached per project under `data/external/ccc/{projectId}_purchase_orders.parquet` or `.csv` when no parquet engine is installed. Other CCC GET endpoints continue to save tabular outputs under `data/stage1_preprocess/input/`.
+        Purchase orders are cached per project under `data/external/ccc/{projectId}_purchase_orders.csv`. Legacy parquet files are still tolerated when reading older cache data. Other CCC GET endpoints continue to save tabular outputs under `data/stage1_preprocess/input/`.
       </p>
       {% if ccc_connection_status.message %}
       <p class="analytics-output-inline-note mb-0 mt-2">{{ ccc_connection_status.message }}</p>
