@@ -66,19 +66,47 @@
       <div class="col-md-3">
         <article class="analytics-output-stat">
           <span class="analytics-output-stat__label">Last sync</span>
-          <strong class="analytics-output-stat__value">{{ ccc_last_sync.timestamp if ccc_last_sync else "Not synced yet" }}</strong>
+          <strong class="analytics-output-stat__value">{{ ccc_purchase_orders.last_sync_time if ccc_purchase_orders and ccc_purchase_orders.last_sync_time else (ccc_last_sync.timestamp if ccc_last_sync else "Not synced yet") }}</strong>
         </article>
       </div>
       <div class="col-md-3">
         <article class="analytics-output-stat">
-          <span class="analytics-output-stat__label">Imported records</span>
-          <strong class="analytics-output-stat__value">{{ ccc_last_sync.records_imported if ccc_last_sync else 0 }}</strong>
+          <span class="analytics-output-stat__label">Records synced</span>
+          <strong class="analytics-output-stat__value">{{ ccc_purchase_orders.records_synced_display if ccc_purchase_orders else (ccc_last_sync.records_imported if ccc_last_sync else 0) }}</strong>
         </article>
       </div>
       <div class="col-md-3">
         <article class="analytics-output-stat">
           <span class="analytics-output-stat__label">Latest output</span>
-          <strong class="analytics-output-stat__value">{{ ccc_last_sync.output_filename if ccc_last_sync and ccc_last_sync.output_filename else "None" }}</strong>
+          <strong class="analytics-output-stat__value">
+            {% if ccc_purchase_orders and ccc_purchase_orders.available %}
+            {{ ccc_purchase_orders.output_file if ccc_purchase_orders and ccc_purchase_orders.available else "None" }}
+            {% elif ccc_last_sync and ccc_last_sync.output_filename %}
+            {{ ccc_last_sync.output_filename }}
+            {% else %}
+            None
+            {% endif %}
+          </strong>
+        </article>
+      </div>
+    </div>
+    <div class="row g-3 mb-4">
+      <div class="col-md-4">
+        <article class="analytics-output-stat">
+          <span class="analytics-output-stat__label">Purchase Orders</span>
+          <strong class="analytics-output-stat__value">{{ ccc_purchase_orders.records_synced_display if ccc_purchase_orders else 0 }}</strong>
+        </article>
+      </div>
+      <div class="col-md-4">
+        <article class="analytics-output-stat">
+          <span class="analytics-output-stat__label">Total spend</span>
+          <strong class="analytics-output-stat__value">{{ ccc_purchase_orders.total_amount_display if ccc_purchase_orders else "0.00" }}</strong>
+        </article>
+      </div>
+      <div class="col-md-4">
+        <article class="analytics-output-stat">
+          <span class="analytics-output-stat__label">Unique suppliers</span>
+          <strong class="analytics-output-stat__value">{{ ccc_purchase_orders.supplier_count_display if ccc_purchase_orders else 0 }}</strong>
         </article>
       </div>
     </div>
@@ -134,6 +162,17 @@
           >
         </div>
         <div class="col-lg-4">
+          <label class="form-label" for="cccApiProjectId">Project</label>
+          <select id="cccApiProjectId" class="form-select" name="project_id" onchange="window.location='{{ url_for('data_sources_ccc_api') }}?project_id=' + encodeURIComponent(this.value)">
+            {% for project in ccc_available_projects or [] %}
+            <option value="{{ project.id }}" {% if form_state.project_id == project.id %}selected{% endif %}>{{ project.label }}</option>
+            {% endfor %}
+            {% if not ccc_available_projects %}
+            <option value="">No projects available</option>
+            {% endif %}
+          </select>
+        </div>
+        <div class="col-lg-4">
           <label class="form-label" for="cccApiEndpointName">Available endpoints</label>
           <select id="cccApiEndpointName" class="form-select" name="endpoint_name">
             {% for endpoint_name, endpoint_path in ccc_get_endpoints.items() %}
@@ -175,7 +214,7 @@
         </div>
       </div>
       <p class="analytics-output-inline-note mb-0 mt-3">
-        Syncs any configured CCC GET endpoint, flattens the JSON into tabular form, adds import metadata, and saves the result under `data/stage1_preprocess/input/`.
+        Purchase orders are cached per project under `data/external/ccc/{projectId}_purchase_orders.parquet` or `.csv` when no parquet engine is installed. Other CCC GET endpoints continue to save tabular outputs under `data/stage1_preprocess/input/`.
       </p>
       {% if ccc_connection_status.message %}
       <p class="analytics-output-inline-note mb-0 mt-2">{{ ccc_connection_status.message }}</p>
@@ -495,10 +534,62 @@
   </section>
   {% endif %}
   {% else %}
+  {% if page_key == 'ccc_api_source' and ccc_purchase_orders and ccc_purchase_orders.has_rows %}
+  <section class="analytics-output-sheets mt-4">
+    <div class="analytics-output-sheets__header">
+      <h2 class="analytics-output-sheets__title">Purchase order preview</h2>
+      <p class="analytics-output-sheets__subtitle mb-0">
+        Latest 20 locally cached purchase orders from the last CCC sync.
+      </p>
+    </div>
+    <article class="analytics-output-card mt-3">
+      <div class="analytics-output-card__header">
+        <div>
+          <h3 class="analytics-output-card__title">{{ ccc_purchase_orders.preview.name }}</h3>
+          <p class="analytics-output-card__meta mb-0">
+            {{ ccc_purchase_orders.records_synced_display }} records synced{% if ccc_purchase_orders.last_sync_time %} · Last sync {{ ccc_purchase_orders.last_sync_time }}{% endif %}
+          </p>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table analytics-output-table mb-0">
+          <thead>
+            <tr>
+              {% for col in ccc_purchase_orders.preview.columns %}
+              <th>{{ col }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in ccc_purchase_orders.preview.rows %}
+            <tr>
+              {% for cell in row %}
+              <td>{{ cell }}</td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if ccc_purchase_orders.preview.truncated %}
+      <div class="analytics-output-card__footer">
+        Preview limited to the latest 20 rows for UI performance.
+      </div>
+      {% endif %}
+    </article>
+  </section>
+  {% else %}
   <section class="analytics-output-empty mt-4">
     <h2 class="analytics-output-empty__title">No output available yet</h2>
-    <p class="analytics-output-empty__text mb-0">{{ empty_message }}</p>
+    <p class="analytics-output-empty__text mb-0">
+      {% if page_key == 'ccc_api_source' and ccc_purchase_orders %}
+      {{ ccc_purchase_orders.message or empty_message }}
+      {% else %}
+      {{ empty_message }}
+      {% endif %}
+    </p>
   </section>
+  {% endif %}
   {% endif %}
 
   {% if run_history and page_key == 'ccc_api_source' %}

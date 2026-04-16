@@ -47,6 +47,7 @@ from config import (
     CCC_PASSWORD,
     CCC_SHEET_MAPPING_PATH,
     CCC_USERNAME,
+    DATA_DIR,
     FRONTEND_DB_PATH,
     FRONTEND_INSTANCE_DIR,
     FRONTEND_UPLOAD_DIR,
@@ -5956,7 +5957,7 @@ def _find_output_file_by_name(filename: str) -> Path | None:
     if not safe_name:
         return None
     candidates: list[Path] = []
-    for root in (STAGE2_OUTPUT_DIR, STAGE1_INPUT_DIR):
+    for root in (STAGE2_OUTPUT_DIR, STAGE1_INPUT_DIR, DATA_DIR):
         candidates.extend([p for p in root.rglob(safe_name) if p.is_file()])
     if not candidates:
         return None
@@ -6307,12 +6308,119 @@ def _ccc_connection_status_payload(*, state: str = "unknown", message: str = "",
     }
 
 
-def _ccc_ui_context() -> dict[str, object]:
-    context = _analytics_output_context("ccc_api_source")
+def _coerce_ccc_project_id(value: object, default: int | None = None) -> int | None:
+    try:
+        project_id = int(value)  # type: ignore[arg-type]
+    except Exception:
+        return default
+    return project_id if project_id > 0 else default
+
+
+def _load_ccc_available_projects(
+    *,
+    base_url: str | None = None,
+    username: str | None = None,
+    password: str | None = None,
+    force_refresh: bool = False,
+) -> list[dict[str, object]]:
+    ccc_api = _load_stage1_api_source_module("ccc_purchase_orders")
+    return list(
+        ccc_api.load_available_projects(
+            base_url=str(base_url or "").strip(),
+            username=str(username or "").strip(),
+            password=str(password or ""),
+            force_refresh=bool(force_refresh),
+        )
+    )
+
+
+def _load_ccc_purchase_orders_summary(project_id: int | None) -> dict[str, object]:
+    default_preview = {
+        "name": "Latest purchase orders",
+        "columns": ["supplier", "amount", "currency", "createdOn", "statusDescription"],
+        "rows": [],
+        "row_count": 0,
+        "column_count": 5,
+        "truncated": False,
+    }
+    default_payload: dict[str, object] = {
+        "available": False,
+        "has_rows": False,
+        "output_file": "purchase_orders.parquet",
+        "records_synced": 0,
+        "records_synced_display": "0",
+        "last_sync_time": "",
+        "total_amount": 0.0,
+        "total_amount_display": "0.00",
+        "supplier_count": 0,
+        "supplier_count_display": "0",
+        "preview": default_preview,
+        "message": "No purchase orders found",
+    }
+    try:
+        ccc_api = _load_stage1_api_source_module("ccc_purchase_orders")
+        raw = dict(ccc_api.load_purchase_orders_cache_summary(project_id=project_id))
+    except Exception as exc:
+        default_payload["message"] = f"Could not read cached purchase orders: {exc}"
+        return default_payload
+    records_synced = int(raw.get("records_synced") or 0)
+    total_amount = _safe_float(raw.get("total_amount") or 0.0)
+    supplier_count = int(raw.get("supplier_count") or 0)
+    preview = raw.get("preview") if isinstance(raw.get("preview"), dict) else default_preview
+    available = bool(raw.get("available"))
+    return {
+        "available": available,
+        "has_rows": records_synced > 0,
+        "output_file": str(raw.get("output_file") or "purchase_orders.parquet"),
+        "records_synced": records_synced,
+        "records_synced_display": f"{records_synced:,}",
+        "last_sync_time": str(raw.get("last_sync_time") or ""),
+        "total_amount": total_amount,
+        "total_amount_display": f"{total_amount:,.2f}",
+        "supplier_count": supplier_count,
+        "supplier_count_display": f"{supplier_count:,}",
+        "preview": preview,
+        "message": "" if records_synced > 0 else "No purchase orders found",
+    }
+
+
+def _resolve_ccc_selected_project_id(projects: list[dict[str, object]], preferred_project_id: int | None) -> int | None:
+    if preferred_project_id is not None:
+        for project in projects:
+            project_id = _coerce_ccc_project_id(project.get("id"))
+            if project_id == preferred_project_id:
+                return project_id
+    if projects:
+        return _coerce_ccc_project_id(projects[0].get("id"))
+    return preferred_project_id
+
+
+def _ccc_ui_context(
+    *,
+    selected_project_id: int | None = None,
+    base_url: str | None = None,
+    username: str | None = None,
+    password: str | None = None,
+    refresh_projects: bool = False,
+) -> dict[str, object]:
     defaults = _ccc_runtime_defaults()
     endpoints = _load_ccc_get_endpoints()
+    projects = _load_ccc_available_projects(
+        base_url=base_url or defaults["base_url"],
+        username=username or defaults["username"],
+        password=password or "",
+        force_refresh=refresh_projects,
+    )
+    resolved_project_id = _resolve_ccc_selected_project_id(projects, selected_project_id)
     latest_sync = _latest_run_history_entry("ccc_api_source", statuses={"success"}, types={"ccc_api_sync"})
+    latest_sync_endpoint = str((latest_sync or {}).get("endpoint") or "").strip().lower()
+    context = (
+        _analytics_output_context_for_path("ccc_api_source", None)
+        if latest_sync_endpoint == "purchase_order"
+        else _analytics_output_context("ccc_api_source")
+    )
     latest_test = _latest_run_history_entry("ccc_api_source", types={"ccc_api_test", "ccc_api_sync"})
+    purchase_orders_summary = _load_ccc_purchase_orders_summary(resolved_project_id)
     if latest_test:
         test_status = _ccc_connection_status_payload(
             state="connected" if str(latest_test.get("status") or "") == "success" else "failed",
@@ -6336,12 +6444,16 @@ def _ccc_ui_context() -> dict[str, object]:
                 "username": defaults["username"],
                 "page_size": defaults["page_size"],
                 "has_password": defaults["has_password"],
+                "project_id": resolved_project_id,
                 "endpoint_name": next(iter(endpoints.keys()), "purchase_order"),
                 "path_params": "",
                 "query_params": "",
             },
             "ccc_connection_status": test_status,
             "ccc_last_sync": latest_sync,
+            "ccc_available_projects": projects,
+            "ccc_selected_project_id": resolved_project_id,
+            "ccc_purchase_orders": purchase_orders_summary,
             "ccc_mapping_rules": _load_ccc_mapping_rules(),
             "ccc_get_endpoints": endpoints,
         }
@@ -6375,13 +6487,22 @@ def _run_ccc_generic_ingest_from_ui(*, endpoint_name: str, base_url: str, userna
     return output_path, dict(result)
 
 
-def _run_ccc_purchase_orders_from_ui(*, base_url: str, username: str, password: str, page_size: int) -> tuple[Path, dict[str, object]]:
+def _run_ccc_purchase_orders_from_ui(
+    *,
+    base_url: str,
+    username: str,
+    password: str,
+    page_size: int,
+    project_id: int | None,
+    query_params: dict[str, object] | None,
+) -> tuple[Path, dict[str, object]]:
     ccc_api = _load_stage1_api_source_module("ccc_purchase_orders")
-    result = ccc_api.sync_purchase_orders(
+    result = ccc_api.sync_purchase_orders_cache(
         base_url=str(base_url or "").strip(),
         username=str(username or "").strip(),
         password=str(password or ""),
-        page_size=int(page_size or 100),
+        project_id=project_id,
+        query_params=dict(query_params or {}),
     )
     output_path = Path(result.get("output_path"))
     return output_path, dict(result)
@@ -6679,7 +6800,7 @@ def analytics_output_download_file(filename: str):
         flash("Output file not found.")
         return redirect(url_for("home"))
     candidates: list[Path] = []
-    for root in (STAGE2_OUTPUT_DIR, STAGE1_INPUT_DIR):
+    for root in (STAGE2_OUTPUT_DIR, STAGE1_INPUT_DIR, DATA_DIR):
         candidates.extend([p for p in root.rglob(safe_name) if p.is_file()])
     if not candidates:
         flash("Output file not found.")
@@ -6800,7 +6921,8 @@ def data_sources_employee_commuting_national_averages():
 @app.route("/data-sources/ccc-api", methods=["GET", "POST"])
 @login_required
 def data_sources_ccc_api():
-    context = _ccc_ui_context()
+    selected_project_id = _coerce_ccc_project_id(request.args.get("project_id"))
+    context = _ccc_ui_context(selected_project_id=selected_project_id)
     form_state = dict(context.get("form_state") or {})
     if request.method == "POST":
         action = str(request.form.get("action", "sync") or "sync").strip().lower()
@@ -6808,6 +6930,7 @@ def data_sources_ccc_api():
             "base_url": str(request.form.get("base_url", "") or "").strip(),
             "username": str(request.form.get("username", "") or "").strip(),
             "page_size": _parse_int_form("page_size", 100, minimum=1, maximum=500),
+            "project_id": _coerce_ccc_project_id(request.form.get("project_id")),
             "endpoint_name": str(request.form.get("endpoint_name", "") or "").strip(),
             "path_params": str(request.form.get("path_params", "") or "").strip(),
             "query_params": str(request.form.get("query_params", "") or "").strip(),
@@ -6821,7 +6944,13 @@ def data_sources_ccc_api():
                     username=form_state["username"],
                     password=password,
                 )
-                context = _ccc_ui_context()
+                context = _ccc_ui_context(
+                    selected_project_id=form_state["project_id"],
+                    base_url=form_state["base_url"],
+                    username=form_state["username"],
+                    password=password,
+                    refresh_projects=True,
+                )
                 context["run_notice"] = "CCC API connection test succeeded. JWT token received."
                 context["ccc_connection_status"] = _ccc_connection_status_payload(
                     state="connected",
@@ -6845,69 +6974,148 @@ def data_sources_ccc_api():
                     },
                 )
             else:
-                path_params = _parse_json_object_form_field("path_params")
-                query_params = _parse_json_object_form_field("query_params")
                 endpoint_name = str(form_state["endpoint_name"] or "").strip()
-                out_path, result = _run_ccc_generic_ingest_from_ui(
-                    endpoint_name=endpoint_name,
-                    base_url=form_state["base_url"],
-                    username=form_state["username"],
-                    password=password,
-                    page_size=int(form_state["page_size"]),
-                    path_params=path_params,
-                    query_params=query_params,
-                )
-                context = _ccc_ui_context()
-                context = {**context, **_analytics_output_context_for_path("ccc_api_source", out_path)}
-                imported = int(result.get("records_imported") or 0)
-                if not imported:
-                    context["run_notice"] = f"Endpoint `{endpoint_name}` synced successfully but returned no rows."
-                else:
-                    context["run_notice"] = (
-                        f"Endpoint `{endpoint_name}` synced successfully. "
-                        f"Imported {imported} records and saved {out_path.name}."
+                if endpoint_name == "purchase_order":
+                    query_params = _parse_json_object_form_field("query_params")
+                    project_id = _coerce_ccc_project_id(form_state.get("project_id"))
+                    if project_id is None:
+                        project_id = _coerce_ccc_project_id((context.get("ccc_selected_project_id")))
+                    out_path, result = _run_ccc_purchase_orders_from_ui(
+                        base_url=form_state["base_url"],
+                        username=form_state["username"],
+                        password=password,
+                        page_size=int(form_state["page_size"]),
+                        project_id=project_id,
+                        query_params=query_params,
                     )
-                context["run_notice"] = (
-                    context["run_notice"]
-                )
-                context["ccc_connection_status"] = _ccc_connection_status_payload(
-                    state="connected",
-                    message="Last sync authenticated successfully.",
-                    tested_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
-                )
-                _append_run_history(
-                    "ccc_api_source",
-                    {
-                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                        "type": "ccc_api_sync",
-                        "status": "success",
-                        "scenario": endpoint_name,
-                        "parameters_summary": (
-                            f"Base URL: {form_state['base_url']}, "
-                            f"Endpoint: {endpoint_name}, "
-                            f"Page size: {int(form_state['page_size'])}, "
-                            f"Rows: {imported}"
+                    context = _ccc_ui_context(
+                        selected_project_id=_coerce_ccc_project_id(result.get("project_id"), project_id),
+                        base_url=form_state["base_url"],
+                        username=form_state["username"],
+                        password=password,
+                        refresh_projects=True,
+                    )
+                    imported = int(result.get("records_imported") or 0)
+                    total_amount = _safe_float(result.get("total_amount") or 0.0)
+                    supplier_count = int(result.get("supplier_count") or 0)
+                    selected_project_id = _coerce_ccc_project_id(result.get("project_id"), project_id)
+                    if not imported:
+                        context["run_notice"] = "No purchase orders found"
+                    else:
+                        context["run_notice"] = (
+                            f"Purchase orders synced successfully. Imported {imported} records for project {selected_project_id}."
+                        )
+                    context["ccc_connection_status"] = _ccc_connection_status_payload(
+                        state="connected",
+                        message="Last sync authenticated successfully.",
+                        tested_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    )
+                    _append_run_history(
+                        "ccc_api_source",
+                        {
+                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                            "type": "ccc_api_sync",
+                            "status": "success",
+                            "scenario": endpoint_name,
+                            "parameters_summary": f"Project ID: {selected_project_id}, Sorting: D, Page size: 200",
+                            "base_url": form_state["base_url"],
+                            "endpoint": endpoint_name,
+                            "project_id": selected_project_id,
+                            "page_size": 200,
+                            "records_imported": imported,
+                            "output_filename": out_path.name,
+                            "output_file": out_path.name,
+                            "message": (
+                                "No purchase orders found"
+                                if not imported
+                                else f"Imported {imported} records, total spend {total_amount:,.2f}, suppliers {supplier_count}."
+                            ),
+                        },
+                    )
+                    _create_user_notification(
+                        current_user.id,
+                        title="CCC purchase orders synced",
+                        message=(
+                            f"No purchase orders found for project {selected_project_id}."
+                            if not imported
+                            else f"Purchase orders synced successfully with {imported} imported records."
                         ),
-                        "base_url": form_state["base_url"],
-                        "endpoint": endpoint_name,
-                        "page_size": int(form_state["page_size"]),
-                        "records_imported": imported,
-                        "output_filename": out_path.name,
-                        "output_file": out_path.name,
-                        "message": f"Imported {imported} records.",
-                    },
-                )
-                _create_user_notification(
-                    current_user.id,
-                    title="CCC API sync completed",
-                    message=f"{endpoint_name or 'Selected endpoint'} synced successfully with {imported} imported records.",
-                    notification_type="success",
-                    link=url_for("data_sources_ccc_api"),
-                )
+                        notification_type="success",
+                        link=url_for("data_sources_ccc_api"),
+                    )
+                else:
+                    path_params = _parse_json_object_form_field("path_params")
+                    query_params = _parse_json_object_form_field("query_params")
+                    out_path, result = _run_ccc_generic_ingest_from_ui(
+                        endpoint_name=endpoint_name,
+                        base_url=form_state["base_url"],
+                        username=form_state["username"],
+                        password=password,
+                        page_size=int(form_state["page_size"]),
+                        path_params=path_params,
+                        query_params=query_params,
+                    )
+                    context = _ccc_ui_context(
+                        selected_project_id=form_state["project_id"],
+                        base_url=form_state["base_url"],
+                        username=form_state["username"],
+                        password=password,
+                    )
+                    context = {**context, **_analytics_output_context_for_path("ccc_api_source", out_path)}
+                    imported = int(result.get("records_imported") or 0)
+                    if not imported:
+                        context["run_notice"] = f"Endpoint `{endpoint_name}` synced successfully but returned no rows."
+                    else:
+                        context["run_notice"] = (
+                            f"Endpoint `{endpoint_name}` synced successfully. "
+                            f"Imported {imported} records and saved {out_path.name}."
+                        )
+                    context["run_notice"] = (
+                        context["run_notice"]
+                    )
+                    context["ccc_connection_status"] = _ccc_connection_status_payload(
+                        state="connected",
+                        message="Last sync authenticated successfully.",
+                        tested_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    )
+                    _append_run_history(
+                        "ccc_api_source",
+                        {
+                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                            "type": "ccc_api_sync",
+                            "status": "success",
+                            "scenario": endpoint_name,
+                            "parameters_summary": (
+                                f"Base URL: {form_state['base_url']}, "
+                                f"Endpoint: {endpoint_name}, "
+                                f"Page size: {int(form_state['page_size'])}, "
+                                f"Rows: {imported}"
+                            ),
+                            "base_url": form_state["base_url"],
+                            "endpoint": endpoint_name,
+                            "page_size": int(form_state["page_size"]),
+                            "records_imported": imported,
+                            "output_filename": out_path.name,
+                            "output_file": out_path.name,
+                            "message": f"Imported {imported} records.",
+                        },
+                    )
+                    _create_user_notification(
+                        current_user.id,
+                        title="CCC API sync completed",
+                        message=f"{endpoint_name or 'Selected endpoint'} synced successfully with {imported} imported records.",
+                        notification_type="success",
+                        link=url_for("data_sources_ccc_api"),
+                    )
             context["run_history"] = _read_run_history("ccc_api_source")
             context["ccc_last_sync"] = _latest_run_history_entry("ccc_api_source", statuses={"success"}, types={"ccc_api_sync"})
         except Exception as exc:
-            context = _ccc_ui_context()
+            context = _ccc_ui_context(
+                selected_project_id=form_state.get("project_id"),
+                base_url=form_state.get("base_url"),
+                username=form_state.get("username"),
+                password=password,
+            )
             error_message = f"CCC API {'connection test' if action == 'test_connection' else 'sync'} failed: {exc}"
             context["run_error"] = error_message
             context["ccc_connection_status"] = _ccc_connection_status_payload(

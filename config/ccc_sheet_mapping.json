@@ -2,23 +2,52 @@
   "common_purchases": {
     "suppliers": [],
     "keywords": [
+      "steel",
+      "metal",
       "material",
       "equipment",
       "hardware",
       "product",
-      "parts"
+      "parts",
+      "concrete",
+      "cable",
+      "pipe",
+      "valve",
+      "pump",
+      "panel",
+      "transformer",
+      "generator",
+      "battery",
+      "cooling unit",
+      "heat pump"
     ]
   },
+
   "services_spend": {
     "suppliers": [],
     "keywords": [
       "service",
+      "installation",
+      "commissioning",
       "consulting",
-      "subscription",
+      "engineering",
+      "design",
+      "testing",
+      "inspection",
       "maintenance",
-      "software"
+      "software",
+      "subscription",
+      "support",
+      "plastering",
+      "painting",
+      "construction",
+      "electrical work",
+      "mechanical work",
+      "hvac",
+      "wiring"
     ]
   },
+
   "waste_review": {
     "suppliers": [],
     "keywords": [
@@ -29,7 +58,9 @@
       "landfill",
       "disposal",
       "hazardous",
-      "skip"
+      "skip",
+      "demolition waste",
+      "construction waste"
     ]
   }
 }

@@ -123,7 +123,7 @@ def login(*, base_url: str | None = None, username: str | None = None, password:
     data = _request_json(
         "POST",
         _build_api_url(creds["base_url"], "/user/login"),
-        payload={"email": creds["username"], "password": creds["password"]},
+        payload={"username": creds["username"], "email": creds["username"], "password": creds["password"]},
     )
     token = (
         _get_nested(data, "token")
@@ -181,7 +181,7 @@ def _extract_items(payload: Any) -> list[Any]:
     if isinstance(payload, list):
         return payload
     if isinstance(payload, dict):
-        for key in ("items", "results", "rows", "data", "purchaseOrders"):
+        for key in ("items", "results", "result", "rows", "data", "purchaseOrders"):
             value = payload.get(key)
             if isinstance(value, list):
                 return value
