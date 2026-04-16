@@ -50,8 +50,8 @@ frontend/static/company_logos/
 # API credentials
 config/api_credentials.env
 
-# run history logs
-frontend/run_logs/*.json
+# run history logs (runtime generated)
+frontend/run_logs/
 
 # allow map location data (needed for globe markers)
 !frontend/static/data/
