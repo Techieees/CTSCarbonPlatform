@@ -1,9 +1,13 @@
-# Environment
+# ======================
+# ENVIRONMENT
+# ======================
 .env
 .env.*
 !.env.example
 
-# Data and large files
+# ======================
+# DATA & FILES
+# ======================
 data/
 *.xlsx
 *.xls
@@ -12,7 +16,9 @@ data/
 *.zip
 !engine/stage2_mapping/CTS_Emission_factors_short_list.xlsx
 
-# Python cache and tooling
+# ======================
+# PYTHON CACHE
+# ======================
 __pycache__/
 *.py[cod]
 *.pyo
@@ -21,38 +27,49 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 
-# Virtual environments
+# ======================
+# VIRTUAL ENV
+# ======================
 .venv/
 venv/
 env/
 
-# Local runtime files
+# ======================
+# RUNTIME / LOCAL
+# ======================
 instance/
 uploads/
 *.db
 *.sqlite
 *.sqlite3
 
-# Logs
+# ======================
+# LOGS
+# ======================
 *.log
+frontend/run_logs/
 
-# OS / editor files
+# ======================
+# STATIC FILES (USER UPLOADS)
+# ======================
+frontend/static/profile_photos/
+frontend/static/company_logos/
+
+# ======================
+# API CREDENTIALS
+# ======================
+config/api_credentials.env
+
+# ======================
+# OS / EDITOR
+# ======================
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
 
-CTSCarbonPlatform/
-Carbon-platform/
-frontend/static/profile_photos/
-frontend/static/company_logos/
-
-# API credentials
-config/api_credentials.env
-
-# run history logs (runtime generated)
-frontend/run_logs/
-
-# allow map location data (needed for globe markers)
+# ======================
+# ALLOWED STATIC DATA
+# ======================
 !frontend/static/data/
 !frontend/static/data/*.json
