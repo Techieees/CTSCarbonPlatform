@@ -53,10 +53,10 @@
   --shadow-md: 0 10px 30px rgba(16,24,40,.10);
   --shadow-lg: 0 25px 60px rgba(16,24,40,.12);
 
-  --r-sm: 12px;
-  --r-md: 16px;
-  --r-lg: 22px;
-  --r-xl: 28px;
+  --r-sm: 8px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 18px;
 
   --s-1: 4px;
   --s-2: 8px;
@@ -89,7 +89,7 @@
   --prose-width: 680px;
   --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.06);
   --shadow-card-hover: 0 14px 34px rgba(0, 0, 0, 0.1);
-  --r-card: 16px;
+  --r-card: 10px;
   --transition-premium: all 0.2s ease;
 
   /* Elevated surfaces (dropdowns, popovers) — aligned with theme tokens */
@@ -256,7 +256,7 @@ main{ flex: 1 0 auto; }
 
 /* Buttons */
 .btn{
-  border-radius: 999px;
+  border-radius: 8px;
   padding: 10px 16px;
   font-weight: 600;
   letter-spacing: -0.01em;
@@ -276,7 +276,7 @@ main{ flex: 1 0 auto; }
   box-shadow: 0 16px 34px rgba(47,95,179,.28);
 }
 .btn-outline-light, .btn-outline-secondary, .btn-outline-primary{
-  border-radius: 999px;
+  border-radius: 8px;
 }
 .btn-ghost{
   background: var(--surface);
@@ -326,7 +326,7 @@ body.dark-mode .card{
 .form-control, .input-group-text, .form-select{
   background: var(--input-bg) !important;
   color: var(--ink) !important;
-  border-radius: 14px !important;
+  border-radius: 10px !important;
   border: 1px solid var(--border) !important;
 }
 .form-control:focus, .form-select:focus{

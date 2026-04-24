@@ -33,6 +33,7 @@ import ssl
 from functools import lru_cache
 from urllib import error as urllib_error
 from urllib import request as urllib_request
+from urllib.parse import quote
 from email.message import EmailMessage
 from dotenv import load_dotenv
 
@@ -77,6 +78,13 @@ from preprocess_jobs import (
     validate_travel_upload,
 )
 from frontend.services import messaging_service, notification_service, search_service
+from frontend.utils.template_registry import (
+    TEMPLATE_MODE_2026,
+    TEMPLATE_MODE_LEGACY,
+    VALID_TEMPLATE_MODES,
+    TemplateRegistry,
+    normalize_template_mode,
+)
 
 APP_DIR = Path(__file__).resolve().parent
 INSTANCE_DIR = FRONTEND_INSTANCE_DIR
@@ -90,7 +98,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + str(FRONTEND_DB_PATH)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = str(FRONTEND_UPLOAD_DIR)
 
-TEMPLATES_PATH = APP_DIR / "data" / "templates.json"
+TEMPLATES_2026_PATH = APP_DIR / "data" / "templates2026.json"
 ISO_COUNTRIES_PATH = APP_DIR / "data" / "iso_countries.json"
 EMPLOYEE_COMMUTING_DATA_DIR = STAGE2_MAPPING_DIR / "Employee Commuting National Averages"
 EMPLOYEE_COMMUTING_NATIONAL_AVERAGES_XLSX = (
@@ -116,6 +124,57 @@ ALLOWED_EMAIL_DOMAIN = "cts-nordics.com"
 PROFILE_PHOTO_ALLOWED_EXT = frozenset({".png", ".jpg", ".jpeg", ".webp"})
 COMPANY_LOGO_ALLOWED_EXT = frozenset({".png"})
 TRAVEL_ALLOWED_EXT = frozenset({".xlsb"})
+FEED_IMAGE_ALLOWED_EXT = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif"})
+FEED_VIDEO_ALLOWED_EXT = frozenset({".mp4", ".webm", ".mov", ".m4v"})
+FEED_FILE_ALLOWED_EXT = frozenset({".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".csv", ".txt"})
+FEED_POST_TYPES: tuple[str, ...] = ("update", "report", "alert")
+FEED_POST_TYPES_SET = frozenset(FEED_POST_TYPES)
+FEED_FILTER_OPTIONS: tuple[str, ...] = ("all",) + FEED_POST_TYPES
+FEED_REACTION_OPTIONS: tuple[dict[str, str], ...] = (
+    {"type": "like", "label": "Like", "icon": "👍"},
+    {"type": "celebrate", "label": "Celebrate", "icon": "👏"},
+    {"type": "support", "label": "Support", "icon": "❤️"},
+    {"type": "insightful", "label": "Insightful", "icon": "💡"},
+    {"type": "funny", "label": "Funny", "icon": "😂"},
+)
+FEED_REACTION_META: dict[str, dict[str, str]] = {
+    item["type"]: item for item in FEED_REACTION_OPTIONS
+}
+FEED_REACTION_TYPES: tuple[str, ...] = tuple(item["type"] for item in FEED_REACTION_OPTIONS)
+FEED_REACTION_TYPES_SET = frozenset(FEED_REACTION_TYPES)
+AVERAGES_WASTE_TYPES: tuple[str, ...] = ("General", "Plastic", "Metal", "Paper", "Organic", "Hazardous")
+AVERAGES_WASTE_UNITS: tuple[str, ...] = ("kg", "tonnes", "lbs")
+SCENARIO_COMPANY_OPTIONS: tuple[str, ...] = ("GT Nordics", "Nordic EPOD", "DC Piping")
+SCENARIO_CATEGORY_CONFIG: dict[str, tuple[str, ...]] = {
+    "GT Nordics": ("9", "11", "12"),
+    "Nordic EPOD": ("9", "11", "12"),
+    "DC Piping": ("9", "12"),
+}
+TEMPLATE_MODE_OPTIONS: tuple[str, ...] = (TEMPLATE_MODE_LEGACY, TEMPLATE_MODE_2026)
+BUSINESS_TYPE_OPTIONS: tuple[str, ...] = (
+    "Service provider",
+    "Manufacturer",
+    "Construction",
+    "Execution",
+)
+HEATING_SOURCE_OPTIONS: tuple[str, ...] = (
+    "District heating",
+    "Electricity",
+    "Gas",
+    "Fuel",
+)
+TRAVEL_PROVIDER_OPTIONS: tuple[tuple[str, str], ...] = (
+    ("", "Select option"),
+    ("yes", "Yes"),
+    ("no", "No"),
+)
+OPERATING_SITE_TYPE_OPTIONS: tuple[str, ...] = ("office", "factory", "warehouse", "other")
+STAGE2_2026_SHEET_ALIASES: dict[str, str] = {
+    "Scope 3 Category 1 Purchased Goods & Services": "Scope 3 Cat 1 Goods Spend",
+    "Scope 3 Category 6 Business Travel": "Scope 3 Cat 6 Business Travel",
+    "Scope 3 Category 9 Downstream Transportation": "Scope 3 Cat 4+9 Transport Spend",
+    "Scope 3 Category 12 End of Life": "Scope 3 Cat 12 End of Life",
+}
 
 
 def _email_domain_allowed(email: str) -> bool:
@@ -252,56 +311,128 @@ def _normalize_template_key(value: str) -> str:
     return " ".join(str(value or "").strip().lower().split())
 
 
-def _load_templates_from_json() -> dict[str, dict[str, list[str]]]:
-    try:
-        with TEMPLATES_PATH.open("r", encoding="utf-8") as f:
-            raw = json.load(f)
-    except Exception:
-        raw = {}
-
-    templates: dict[str, dict[str, list[str]]] = {}
-    if not isinstance(raw, dict):
-        return templates
-
-    for company_name, sheets in raw.items():
-        if not isinstance(company_name, str) or not isinstance(sheets, dict):
-            continue
-        clean_company = company_name.strip()
-        if not clean_company:
-            continue
-        clean_sheets: dict[str, list[str]] = {}
-        for sheet_name, headers in sheets.items():
-            if not isinstance(sheet_name, str) or not isinstance(headers, list):
-                continue
-            clean_sheet = sheet_name.strip()
-            if not clean_sheet:
-                continue
-            clean_headers = [str(h).strip() for h in headers if str(h).strip()]
-            clean_sheets[clean_sheet] = clean_headers
-        templates[clean_company] = clean_sheets
-    return templates
-
-
-def _build_template_index() -> dict[str, dict[str, object]]:
-    index: dict[str, dict[str, object]] = {}
-    for company_name, sheets in TEMPLATES.items():
-        norm_company = _normalize_template_key(company_name)
-        sheet_index: dict[str, dict[str, object]] = {}
-        for sheet_name, headers in sheets.items():
-            sheet_index[_normalize_template_key(sheet_name)] = {
-                "name": sheet_name,
-                "headers": headers,
-            }
-        index[norm_company] = {"name": company_name, "sheets": sheet_index}
-    return index
-
-
-TEMPLATES = _load_templates_from_json()
-TEMPLATE_INDEX = _build_template_index()
-print("Templates loaded:", len(TEMPLATES))
+TEMPLATE_REGISTRY = TemplateRegistry(
+    templates2026_path=TEMPLATES_2026_PATH,
+)
+print("Templates loaded:", len(TEMPLATE_REGISTRY.templates_2026))
 
 KLARAKARBON_SHEET_NAME = "Klarakarbon"
 TRAVEL_SHEET_NAME = "Travel"
+
+
+def _template_mode_from_request() -> str | None:
+    raw = (
+        request.args.get("template_mode")
+        or request.form.get("template_mode")
+        or ((request.get_json(silent=True) or {}).get("template_mode") if request.is_json else None)
+    )
+    if raw is None:
+        return None
+    mode = normalize_template_mode(raw)
+    if str(raw).strip() not in VALID_TEMPLATE_MODES:
+        return None
+    return mode
+
+
+def _current_template_mode() -> str:
+    requested = _template_mode_from_request()
+    if requested:
+        return requested
+    session_mode = normalize_template_mode(session.get("template_mode"))
+    if str(session.get("template_mode") or "").strip() in VALID_TEMPLATE_MODES:
+        return session_mode
+    user_mode = normalize_template_mode(getattr(current_user, "template_mode", None))
+    if str(getattr(current_user, "template_mode", "") or "").strip() in VALID_TEMPLATE_MODES:
+        return user_mode
+    return TEMPLATE_MODE_LEGACY
+
+
+def _persist_template_mode(mode: object) -> str:
+    resolved = normalize_template_mode(mode)
+    session["template_mode"] = resolved
+    return resolved
+
+
+def _operating_locations_from_json(raw: object) -> list[dict[str, str]]:
+    try:
+        rows = json.loads(str(raw or "[]"))
+    except Exception:
+        rows = []
+    if not isinstance(rows, list):
+        return []
+    out: list[dict[str, str]] = []
+    valid_country_codes = {code for code, _name in ISO_COUNTRIES}
+    valid_site_types = set(OPERATING_SITE_TYPE_OPTIONS)
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        country = str(item.get("country") or "").strip().upper()
+        site_type = str(item.get("site_type") or "").strip().lower()
+        if not country and not site_type:
+            continue
+        if country and country not in valid_country_codes:
+            continue
+        if site_type and site_type not in valid_site_types:
+            continue
+        out.append({"country": country, "site_type": site_type})
+    return out
+
+
+def _operating_locations_for_user(u: object) -> list[dict[str, str]]:
+    return _operating_locations_from_json(getattr(u, "operating_locations_json", None))
+
+
+def _profile_template_context(
+    *,
+    companies: list[str] | None = None,
+    resolved_company: str = "",
+    show_logo_upload: bool = False,
+) -> dict[str, object]:
+    return {
+        "companies": companies or [],
+        "resolved_company": resolved_company,
+        "show_logo_upload": show_logo_upload,
+        "iso_countries": ISO_COUNTRIES,
+        "template_mode_options": TEMPLATE_MODE_OPTIONS,
+        "business_type_options": BUSINESS_TYPE_OPTIONS,
+        "heating_source_options": HEATING_SOURCE_OPTIONS,
+        "travel_provider_options": TRAVEL_PROVIDER_OPTIONS,
+        "operating_site_type_options": OPERATING_SITE_TYPE_OPTIONS,
+        "current_template_mode": _current_template_mode(),
+        "operating_locations_initial": _operating_locations_for_user(current_user),
+    }
+
+
+def _current_profile_payload() -> dict[str, object]:
+    return {
+        "company_name": (getattr(current_user, "company_name", None) or "").strip(),
+        "business_type": (getattr(current_user, "business_type", None) or "").strip(),
+        "product_type": (getattr(current_user, "product_type", None) or "").strip(),
+        "heating_source": (getattr(current_user, "heating_source", None) or "").strip(),
+        "travel_provider": (getattr(current_user, "travel_provider", None) or "").strip(),
+        "template_mode": _current_template_mode(),
+    }
+
+
+def _template_bundle_for_company(company_name: str) -> dict[str, object]:
+    return TEMPLATE_REGISTRY.get_bundle(
+        template_mode=_current_template_mode(),
+        company_name=company_name,
+        profile=_current_profile_payload(),
+    )
+
+
+def _stage2_sheet_name_for_run(sheet_name: str, template_mode: str) -> str:
+    if normalize_template_mode(template_mode) != TEMPLATE_MODE_2026:
+        return str(sheet_name or "").strip()
+    return STAGE2_2026_SHEET_ALIASES.get(str(sheet_name or "").strip(), str(sheet_name or "").strip())
+
+
+def _restore_env_var(name: str, original_value: str | None) -> None:
+    if original_value is None:
+        os.environ.pop(name, None)
+    else:
+        os.environ[name] = original_value
 
 # ---- Stage2 mapping (web single-company runner) ----
 STAGE2_MAPPING_OUTPUT_DIR = STAGE2_OUTPUT_DIR
@@ -528,6 +659,16 @@ class User(UserMixin, db.Model):
     company_country = db.Column(db.String(100), nullable=True)
     profile_photo_path = db.Column(db.String(500), nullable=True)
     is_profile_complete = db.Column(db.Boolean, default=False)
+    template_mode = db.Column(db.String(20), nullable=True, default=TEMPLATE_MODE_LEGACY)
+    business_type = db.Column(db.String(100), nullable=True)
+    product_type = db.Column(db.String(100), nullable=True)
+    quantity = db.Column(db.String(100), nullable=True)
+    quantity_unit = db.Column(db.String(100), nullable=True)
+    number_of_products_in_use = db.Column(db.String(100), nullable=True)
+    end_use_location = db.Column(db.String(200), nullable=True)
+    heating_source = db.Column(db.String(100), nullable=True)
+    travel_provider = db.Column(db.String(20), nullable=True)
+    operating_locations_json = db.Column(db.Text, nullable=True)
 
 
 USER_ROLES: tuple[str, ...] = ("owner", "super_admin", "admin", "manager", "user")
@@ -644,9 +785,52 @@ def _contact_payload(u: "User") -> dict[str, object]:
         "id": int(u.id),
         "name": _user_display_name(u),
         "email": u.email,
+        "job_title": (getattr(u, "job_title", None) or "").strip(),
         "company_name": (getattr(u, "company_name", None) or "").strip(),
         "profile_photo_url": _profile_photo_url_for_user(u),
     }
+
+
+_MESSAGE_TYPING_STATE_LOCK = threading.Lock()
+_MESSAGE_TYPING_STATE: dict[str, dict[str, object]] = {}
+
+
+def _message_typing_state_key(sender_id: int, receiver_id: int) -> str:
+    return f"{int(sender_id)}:{int(receiver_id)}"
+
+
+def _set_message_typing_state(sender_id: int, receiver_id: int, *, is_typing: bool) -> None:
+    key = _message_typing_state_key(sender_id, receiver_id)
+    now = time.time()
+    with _MESSAGE_TYPING_STATE_LOCK:
+        expired_keys = [
+            item_key
+            for item_key, item in _MESSAGE_TYPING_STATE.items()
+            if float(item.get("expires_at") or 0.0) <= now
+        ]
+        for item_key in expired_keys:
+            _MESSAGE_TYPING_STATE.pop(item_key, None)
+        if not is_typing:
+            _MESSAGE_TYPING_STATE.pop(key, None)
+            return
+        _MESSAGE_TYPING_STATE[key] = {
+            "sender_id": int(sender_id),
+            "receiver_id": int(receiver_id),
+            "expires_at": now + 1.5,
+        }
+
+
+def _message_typing_status(sender_id: int, receiver_id: int) -> bool:
+    key = _message_typing_state_key(sender_id, receiver_id)
+    now = time.time()
+    with _MESSAGE_TYPING_STATE_LOCK:
+        item = _MESSAGE_TYPING_STATE.get(key)
+        if not item:
+            return False
+        if float(item.get("expires_at") or 0.0) <= now:
+            _MESSAGE_TYPING_STATE.pop(key, None)
+            return False
+        return True
 
 
 class Company(db.Model):
@@ -655,6 +839,60 @@ class Company(db.Model):
     company_name = db.Column(db.String(200), unique=True, nullable=False)
     company_logo_path = db.Column(db.String(500), nullable=True)
     created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+
+
+class AveragesData(db.Model):
+    __tablename__ = "averages_data"
+    id = db.Column(db.Integer, primary_key=True)
+    company_name = db.Column(db.String(200), unique=True, nullable=False, index=True)
+    saved_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    electricity_kwh = db.Column(db.Float, nullable=True)
+    electricity_country = db.Column(db.String(120), nullable=True)
+    electricity_emission_factor = db.Column(db.Float, nullable=True)
+    district_heating_kwh = db.Column(db.Float, nullable=True)
+    district_heating_supplier = db.Column(db.String(200), nullable=True)
+    waste_type = db.Column(db.String(120), nullable=True)
+    waste_weight = db.Column(db.Float, nullable=True)
+    waste_unit = db.Column(db.String(40), nullable=True)
+    water_total_m3 = db.Column(db.Float, nullable=True)
+    building_size_m2 = db.Column(db.Float, nullable=True)
+    water_per_m2 = db.Column(db.Float, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class ScenariosData(db.Model):
+    __tablename__ = "scenarios_data"
+    id = db.Column(db.Integer, primary_key=True)
+    company_name = db.Column(db.String(200), unique=True, nullable=False, index=True)
+    saved_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    categories_json = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class FeedPost(db.Model):
+    __tablename__ = "feed_post"
+    id = db.Column(db.Integer, primary_key=True)
+    author_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    content = db.Column(db.Text, nullable=False, default="")
+    post_type = db.Column(db.String(20), nullable=False, default="update", index=True)
+    media_type = db.Column(db.String(20), nullable=True)
+    media_path = db.Column(db.String(500), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    author = db.relationship("User", lazy="joined")
+
+
+class PostReaction(db.Model):
+    __tablename__ = "post_reactions"
+    __table_args__ = (db.UniqueConstraint("post_id", "user_id", name="uq_post_reactions_post_user"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    post_id = db.Column(db.Integer, db.ForeignKey("feed_post.id"), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    reaction_type = db.Column(db.String(20), nullable=False, default="like", index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
 class PasswordResetToken(db.Model):
@@ -1545,6 +1783,10 @@ def _create_user_notification(
     message: str,
     notification_type: str = "info",
     link: str | None = None,
+    feed_event: str | None = None,
+    feed_company: str | None = None,
+    feed_api_name: str | None = None,
+    feed_timestamp: datetime | None = None,
 ) -> None:
     try:
         notification_service.create_notification(
@@ -1557,6 +1799,13 @@ def _create_user_notification(
             link=link,
         )
         db.session.commit()
+        if str(notification_type or "").strip().lower() == "success":
+            _create_system_feed_post_for_event(
+                event_key=feed_event,
+                company_name=feed_company,
+                api_name=feed_api_name,
+                event_timestamp=feed_timestamp,
+            )
     except Exception:
         db.session.rollback()
 
@@ -1652,6 +1901,683 @@ def _save_profile_photo_file(storage, user_id: int) -> str | None:
     return dest.relative_to(APP_DIR / "static").as_posix()
 
 
+_AVATAR_COLOR_PAIRS: tuple[tuple[str, str], ...] = (
+    ("#dbeafe", "#1d4ed8"),
+    ("#dcfce7", "#166534"),
+    ("#fae8ff", "#9333ea"),
+    ("#fee2e2", "#b91c1c"),
+    ("#fef3c7", "#b45309"),
+    ("#e0f2fe", "#0369a1"),
+)
+
+
+def _initials(value: str) -> str:
+    parts = [part for part in str(value or "").strip().split() if part]
+    if not parts:
+        return "CP"
+    return "".join(part[0].upper() for part in parts[:2]) or "CP"
+
+
+def _svg_data_url(markup: str) -> str:
+    return "data:image/svg+xml;utf8," + quote(markup)
+
+
+def _default_avatar_url(seed_text: str) -> str:
+    seed = str(seed_text or "").strip() or "Carbon Platform"
+    bg, fg = _AVATAR_COLOR_PAIRS[sum(ord(ch) for ch in seed) % len(_AVATAR_COLOR_PAIRS)]
+    initials = _initials(seed)
+    svg = (
+        "<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'>"
+        f"<rect width='160' height='160' rx='80' fill='{bg}'/>"
+        f"<text x='50%' y='54%' text-anchor='middle' font-family='Arial, sans-serif' font-size='56' font-weight='700' fill='{fg}'>{initials}</text>"
+        "</svg>"
+    )
+    return _svg_data_url(svg)
+
+
+def _default_company_logo_url(company_name: str) -> str:
+    seed = str(company_name or "").strip() or "Company"
+    initials = _initials(seed[:2] if len(seed.split()) == 1 else seed)
+    svg = (
+        "<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'>"
+        "<rect width='160' height='160' rx='28' fill='#eef2f7'/>"
+        "<rect x='24' y='32' width='112' height='96' rx='18' fill='#dbe3ee'/>"
+        f"<text x='50%' y='57%' text-anchor='middle' font-family='Arial, sans-serif' font-size='42' font-weight='700' fill='#4b5563'>{initials}</text>"
+        "</svg>"
+    )
+    return _svg_data_url(svg)
+
+
+def _user_avatar_url(u: User | None) -> str:
+    photo = _profile_photo_url_for_user(u)
+    if photo:
+        return photo
+    return _default_avatar_url(_user_display_name(u))
+
+
+def _company_logo_url(company_name: str | None) -> str:
+    key = (company_name or "").strip()
+    rel = _company_logo_static_rel(key) if key else None
+    if rel:
+        return url_for("static", filename=rel)
+    return _default_company_logo_url(key)
+
+
+def _normalize_feed_post_type(raw: object) -> str:
+    value = str(raw or "").strip().lower()
+    return value if value in FEED_POST_TYPES_SET else "update"
+
+
+def _normalize_feed_reaction_type(raw: object) -> str:
+    value = str(raw or "").strip().lower()
+    return value if value in FEED_REACTION_TYPES_SET else ""
+
+
+def _feed_reaction_button_state(current_reaction: object | None) -> dict[str, object]:
+    normalized = _normalize_feed_reaction_type(current_reaction)
+    meta = FEED_REACTION_META.get(normalized) or FEED_REACTION_META["like"]
+    return {
+        "type": normalized,
+        "label": str(meta.get("label") or "Like"),
+        "icon": str(meta.get("icon") or "👍"),
+        "is_active": bool(normalized),
+    }
+
+
+def _build_feed_reaction_summary(counts_by_type: dict[str, int] | Counter[str]) -> list[dict[str, object]]:
+    items: list[dict[str, object]] = []
+    for index, reaction_type in enumerate(FEED_REACTION_TYPES):
+        count = int(counts_by_type.get(reaction_type) or 0)
+        if count <= 0:
+            continue
+        meta = FEED_REACTION_META.get(reaction_type) or {}
+        items.append(
+            {
+                "type": reaction_type,
+                "label": str(meta.get("label") or reaction_type.title()),
+                "icon": str(meta.get("icon") or ""),
+                "count": count,
+                "_order": index,
+            }
+        )
+    items.sort(key=lambda item: (-int(item.get("count") or 0), int(item.get("_order") or 0)))
+    return [{key: value for key, value in item.items() if key != "_order"} for item in items[:3]]
+
+
+def _feed_reaction_maps(post_ids: list[int], user_id: int | None = None) -> tuple[dict[int, list[dict[str, object]]], dict[int, str]]:
+    if not post_ids:
+        return {}, {}
+
+    summary_counts: dict[int, Counter[str]] = defaultdict(Counter)
+    aggregate_rows = (
+        db.session.query(
+            PostReaction.post_id,
+            PostReaction.reaction_type,
+            db.func.count(PostReaction.id),
+        )
+        .filter(PostReaction.post_id.in_(post_ids))
+        .group_by(PostReaction.post_id, PostReaction.reaction_type)
+        .all()
+    )
+    for post_id, reaction_type, count in aggregate_rows:
+        normalized = _normalize_feed_reaction_type(reaction_type)
+        if not normalized:
+            continue
+        summary_counts[int(post_id)][normalized] = int(count or 0)
+
+    summary_map = {
+        int(post_id): _build_feed_reaction_summary(counter)
+        for post_id, counter in summary_counts.items()
+    }
+
+    current_map: dict[int, str] = {}
+    if user_id:
+        current_rows = (
+            PostReaction.query.filter(
+                PostReaction.post_id.in_(post_ids),
+                PostReaction.user_id == int(user_id),
+            )
+            .all()
+        )
+        for row in current_rows:
+            normalized = _normalize_feed_reaction_type(getattr(row, "reaction_type", None))
+            if normalized:
+                current_map[int(row.post_id)] = normalized
+
+    return summary_map, current_map
+
+
+def _platform_owner_user() -> User | None:
+    return (
+        User.query.filter(db.func.lower(User.role) == "owner")
+        .order_by(User.created_at.asc(), User.id.asc())
+        .first()
+    )
+
+
+def _create_feed_post_record(
+    *,
+    author_id: int,
+    content: str,
+    post_type: str = "alert",
+    created_at: datetime | None = None,
+) -> FeedPost | None:
+    clean_content = str(content or "").strip()
+    if not author_id or not clean_content:
+        return None
+    normalized_post_type = _normalize_feed_post_type(post_type)
+    post_created_at = created_at if isinstance(created_at, datetime) else datetime.utcnow()
+    duplicate_window_start = post_created_at - timedelta(seconds=90)
+    duplicate_window_end = post_created_at + timedelta(seconds=90)
+    existing = (
+        FeedPost.query.filter(
+            FeedPost.author_user_id == int(author_id),
+            FeedPost.post_type == normalized_post_type,
+            FeedPost.content == clean_content,
+            FeedPost.created_at >= duplicate_window_start,
+            FeedPost.created_at <= duplicate_window_end,
+        )
+        .order_by(FeedPost.created_at.desc(), FeedPost.id.desc())
+        .first()
+    )
+    if existing is not None:
+        return existing
+
+    row = FeedPost(
+        author_user_id=int(author_id),
+        content=clean_content,
+        post_type=normalized_post_type,
+        created_at=post_created_at,
+    )
+    try:
+        db.session.add(row)
+        db.session.commit()
+        return row
+    except Exception:
+        db.session.rollback()
+        return None
+
+
+def _build_system_feed_post_message(
+    *,
+    event_key: str | None,
+    company_name: str | None = None,
+    api_name: str | None = None,
+) -> str:
+    event_name = str(event_key or "").strip().lower()
+    company_label = _clean_company_name(company_name or "") or "Platform"
+    api_label = str(api_name or "").strip() or "API"
+    if event_name == "data_upload":
+        return f"{company_label} uploaded new data successfully."
+    if event_name == "api_connection":
+        return f"{company_label} connected to {api_label}."
+    if event_name == "mapping_completed":
+        return f"Mapping completed for {company_label}."
+    if event_name == "pipeline_completed":
+        return f"Data pipeline executed successfully for {company_label}."
+    return ""
+
+
+def _create_system_feed_post_for_event(
+    *,
+    event_key: str | None,
+    company_name: str | None = None,
+    api_name: str | None = None,
+    event_timestamp: datetime | None = None,
+) -> FeedPost | None:
+    message = _build_system_feed_post_message(
+        event_key=event_key,
+        company_name=company_name,
+        api_name=api_name,
+    )
+    if not message:
+        return None
+    owner = _platform_owner_user()
+    if owner is None:
+        return None
+    return _create_feed_post_record(
+        author_id=int(owner.id),
+        content=message,
+        post_type="alert",
+        created_at=event_timestamp,
+    )
+
+
+def _normalize_feed_filter(raw: object) -> str:
+    value = str(raw or "").strip().lower()
+    return value if value in FEED_FILTER_OPTIONS else "all"
+
+
+def _clean_company_name(value: object) -> str:
+    raw = str(value or "").strip()
+    return _resolve_template_company_name(raw) or raw
+
+
+def _safe_float(value: object) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return float(str(value).strip())
+    except Exception:
+        return None
+
+
+def _positive_ratio(numerator: float | None, denominator: float | None) -> float | None:
+    if numerator is None or denominator is None or denominator <= 0:
+        return None
+    return numerator / denominator
+
+
+def _is_owner_user(u: object | None) -> bool:
+    return normalize_user_role(getattr(u, "role", None)) == "owner"
+
+
+def _allowed_companies_for_averages() -> list[str]:
+    if _is_owner_user(current_user):
+        return list(COMPANIES)
+    company_name = _clean_company_name(getattr(current_user, "company_name", "") or "")
+    return [company_name] if company_name else []
+
+
+def _resolve_averages_company(raw_company: object | None = None) -> tuple[str | None, str | None]:
+    allowed_companies = _allowed_companies_for_averages()
+    if _is_owner_user(current_user):
+        company_name = _clean_company_name(raw_company or "")
+        if not company_name:
+            company_name = _clean_company_name(getattr(current_user, "company_name", "") or "")
+        if not company_name and allowed_companies:
+            company_name = allowed_companies[0]
+        if company_name not in allowed_companies:
+            return None, "Select a valid company."
+        return company_name, None
+
+    company_name = _clean_company_name(getattr(current_user, "company_name", "") or "")
+    if not company_name:
+        return None, "Company is required."
+    return company_name, None
+
+
+def _format_relative_datetime(value: datetime | None) -> str:
+    if not value:
+        return "No data saved yet"
+    now = datetime.utcnow()
+    delta = now - value
+    seconds = max(0, int(delta.total_seconds()))
+    if seconds < 60:
+        return "Last updated: just now"
+    if seconds < 3600:
+        minutes = seconds // 60
+        return f"Last updated: {minutes} minute{'s' if minutes != 1 else ''} ago"
+    if seconds < 86400:
+        hours = seconds // 3600
+        return f"Last updated: {hours} hour{'s' if hours != 1 else ''} ago"
+    days = seconds // 86400
+    if days < 7:
+        return f"Last updated: {days} day{'s' if days != 1 else ''} ago"
+    return "Last updated: " + value.strftime("%d %b %Y %H:%M")
+
+
+def _averages_payload(row: AveragesData | None) -> dict[str, object]:
+    if row is None:
+        return {
+            "electricity_kwh": "",
+            "electricity_country": "",
+            "electricity_emission_factor": "",
+            "district_heating_kwh": "",
+            "district_heating_supplier": "",
+            "waste_type": "",
+            "waste_weight": "",
+            "waste_unit": "",
+            "water_total_m3": "",
+            "building_size_m2": "",
+            "water_per_m2": "",
+            "has_data": False,
+            "updated_at_label": "No data saved yet",
+            "updated_at_iso": "",
+            "summary": {
+                "electricity_kwh": "--",
+                "district_heating_kwh": "--",
+                "waste_total": "--",
+                "water_per_m2": "--",
+            },
+        }
+    waste_total = "--"
+    if row.waste_weight is not None:
+        waste_total = f"{row.waste_weight:g} {row.waste_unit or ''}".strip()
+    water_per_m2 = row.water_per_m2 if row.water_per_m2 is not None else ""
+    has_data = any(
+        value not in (None, "", 0)
+        for value in (
+            row.electricity_kwh,
+            row.district_heating_kwh,
+            row.waste_weight,
+            row.water_total_m3,
+            row.building_size_m2,
+        )
+    )
+    return {
+        "electricity_kwh": row.electricity_kwh if row.electricity_kwh is not None else "",
+        "electricity_country": row.electricity_country or "",
+        "electricity_emission_factor": row.electricity_emission_factor if row.electricity_emission_factor is not None else "",
+        "district_heating_kwh": row.district_heating_kwh if row.district_heating_kwh is not None else "",
+        "district_heating_supplier": row.district_heating_supplier or "",
+        "waste_type": row.waste_type or "",
+        "waste_weight": row.waste_weight if row.waste_weight is not None else "",
+        "waste_unit": row.waste_unit or "",
+        "water_total_m3": row.water_total_m3 if row.water_total_m3 is not None else "",
+        "building_size_m2": row.building_size_m2 if row.building_size_m2 is not None else "",
+        "water_per_m2": water_per_m2,
+        "has_data": has_data,
+        "updated_at_label": _format_relative_datetime(getattr(row, "updated_at", None)),
+        "updated_at_iso": getattr(row, "updated_at", None).isoformat() if getattr(row, "updated_at", None) else "",
+        "summary": {
+            "electricity_kwh": f"{row.electricity_kwh:g}" if row.electricity_kwh is not None else "--",
+            "district_heating_kwh": f"{row.district_heating_kwh:g}" if row.district_heating_kwh is not None else "--",
+            "waste_total": waste_total,
+            "water_per_m2": f"{row.water_per_m2:.4f}" if row.water_per_m2 is not None else "--",
+        },
+    }
+
+
+def _default_scenario_inputs(categories: tuple[str, ...]) -> dict[str, dict[str, object]]:
+    data: dict[str, dict[str, object]] = {}
+    if "9" in categories:
+        data["9"] = {
+            "annual_production": "",
+            "transport_distance": "",
+            "transport_type": "",
+        }
+    if "11" in categories:
+        data["11"] = {
+            "number_of_products_in_use": "",
+            "usage_factor": "",
+        }
+    if "12" in categories:
+        data["12"] = {
+            "product_weight": "",
+            "waste_type": "",
+            "disposal_method": "",
+        }
+    return data
+
+
+def _scenario_rows_payload(rows: list[ScenariosData]) -> dict[str, dict[str, object]]:
+    out: dict[str, dict[str, object]] = {}
+    for row in rows:
+        company_name = _clean_company_name(getattr(row, "company_name", None))
+        categories = SCENARIO_CATEGORY_CONFIG.get(company_name, tuple())
+        payload = _default_scenario_inputs(categories)
+        raw = getattr(row, "categories_json", None)
+        try:
+            saved = json.loads(str(raw or "{}"))
+        except Exception:
+            saved = {}
+        if isinstance(saved, dict):
+            for key, value in saved.items():
+                if key in payload and isinstance(value, dict):
+                    payload[key].update({k: value.get(k, "") for k in payload[key].keys()})
+        summary_values: list[str] = []
+        if "9" in payload:
+            summary_values.append("Production: " + (str(payload["9"].get("annual_production") or "--")))
+        if "11" in payload:
+            summary_values.append("Usage factor: " + (str(payload["11"].get("usage_factor") or "--")))
+        if "12" in payload:
+            summary_values.append("Weight: " + (str(payload["12"].get("product_weight") or "--")))
+        has_data = any(
+            str(field_value or "").strip()
+            for category_data in payload.values()
+            for field_value in category_data.values()
+        )
+        out[company_name] = {
+            "inputs": payload,
+            "active_categories": list(categories),
+            "has_data": has_data,
+            "updated_at_label": _format_relative_datetime(getattr(row, "updated_at", None)),
+            "updated_at_iso": getattr(row, "updated_at", None).isoformat() if getattr(row, "updated_at", None) else "",
+            "summary_values": summary_values,
+        }
+    for company_name in SCENARIO_COMPANY_OPTIONS:
+        if company_name not in out:
+            out[company_name] = {
+                "inputs": _default_scenario_inputs(SCENARIO_CATEGORY_CONFIG.get(company_name, tuple())),
+                "active_categories": list(SCENARIO_CATEGORY_CONFIG.get(company_name, tuple())),
+                "has_data": False,
+                "updated_at_label": "No data saved yet",
+                "updated_at_iso": "",
+                "summary_values": [],
+            }
+    return out
+
+
+def _make_template_row(company_name: str, sheet_name: str, values: dict[str, object]) -> pd.DataFrame:
+    headers = _get_template_sheet_headers(company_name, sheet_name)
+    if not headers:
+        raise RuntimeError(f"Template headers not found for {sheet_name}.")
+    row = {header: "" for header in headers}
+    for key, value in values.items():
+        if key in row:
+            row[key] = value
+    return pd.DataFrame([[row.get(header, "") for header in headers]], columns=headers)
+
+
+def _averages_mapping_frames(company_name: str, payload: dict[str, object]) -> list[tuple[str, pd.DataFrame]]:
+    period_label = datetime.utcnow().strftime("%B %Y")
+    _canon_company, canon_country = _canonical_company_name_and_country(company_name)
+    company_country = str(payload.get("electricity_country") or "").strip() or (canon_country or "")
+    shared_source = "Averages input"
+    frames: list[tuple[str, pd.DataFrame]] = []
+
+    electricity_kwh = _safe_float(payload.get("electricity_kwh"))
+    if electricity_kwh is not None and electricity_kwh > 0:
+        frames.append(
+            (
+                "Scope 2 Electricity",
+                _make_template_row(
+                    company_name,
+                    "Scope 2 Electricity",
+                    {
+                        "Reporting period (month, year)": period_label,
+                        "Consumption": electricity_kwh,
+                        "Unit": "kWh",
+                        "Country": company_country,
+                        "Site Tag": company_name,
+                        "Data Source": shared_source,
+                    },
+                ),
+            )
+        )
+
+    district_heating_kwh = _safe_float(payload.get("district_heating_kwh"))
+    if district_heating_kwh is not None and district_heating_kwh > 0:
+        supplier = str(payload.get("district_heating_supplier") or "").strip()
+        frames.append(
+            (
+                "Scope 2 District Heating",
+                _make_template_row(
+                    company_name,
+                    "Scope 2 District Heating",
+                    {
+                        "Reporting period (month, year)": period_label,
+                        "Country": canon_country or company_country,
+                        "Consumption": district_heating_kwh,
+                        "Unit": "kWh",
+                        "Site Tag": company_name,
+                        "Data Source": f"{shared_source}{' - ' + supplier if supplier else ''}",
+                    },
+                ),
+            )
+        )
+
+    waste_weight = _safe_float(payload.get("waste_weight"))
+    waste_type = str(payload.get("waste_type") or "").strip()
+    waste_unit = str(payload.get("waste_unit") or "").strip()
+    if waste_weight is not None and waste_weight > 0 and waste_type:
+        frames.append(
+            (
+                "Scope 3 Category 5 Waste",
+                _make_template_row(
+                    company_name,
+                    "Scope 3 Category 5 Waste",
+                    {
+                        "Reporting period (month, year)": period_label,
+                        "Site": company_name,
+                        "Waste Stream": waste_type,
+                        "Weight": waste_weight,
+                        "Weight Unit": waste_unit,
+                        "Treatment Method": "",
+                        "Country": canon_country or company_country,
+                        "Data Source": shared_source,
+                    },
+                ),
+            )
+        )
+
+    return frames
+
+
+def _run_mapping_for_virtual_sheet(user_id: int, company_name: str, sheet_name: str, df: pd.DataFrame) -> dict[str, object]:
+    run_id = uuid.uuid4().hex[:12]
+    mr = MappingRun(
+        id=run_id,
+        user_id=int(user_id),
+        company_name=company_name,
+        sheet_name=sheet_name,
+        status="running",
+        created_at=datetime.utcnow(),
+        source_entry_group="averages",
+    )
+    try:
+        db.session.add(mr)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+    try:
+        mapped_df, out_path, input_path = run_mapping(company_name, sheet_name, df)
+    except Exception as exc:
+        try:
+            mr.status = "failed"
+            mr.error_message = str(exc)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        return {"ok": False, "sheet": sheet_name, "error": str(exc)}
+
+    total_tco2e, rows_count, _used_col = _sum_tco2e(mapped_df)
+
+    try:
+        mr.status = "succeeded"
+        mr.output_path = str(out_path)
+        mr.input_path = str(input_path)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+    try:
+        _upsert_mapping_run_summary(
+            run_id=run_id,
+            company_name=company_name,
+            sheet_name=sheet_name,
+            mapped_df=mapped_df,
+            output_path=out_path,
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+    return {
+        "ok": True,
+        "sheet": sheet_name,
+        "run_id": run_id,
+        "rows_count": int(rows_count or 0),
+        "tco2e_total": round(float(total_tco2e or 0.0), 6),
+    }
+
+
+def _format_feed_timestamp(value: datetime | None) -> str:
+    if not value:
+        return ""
+    now = datetime.utcnow()
+    delta = now - value
+    seconds = max(0, int(delta.total_seconds()))
+    if seconds < 60:
+        return "Just now"
+    if seconds < 3600:
+        return f"{seconds // 60}m ago"
+    if seconds < 86400:
+        return f"{seconds // 3600}h ago"
+    if seconds < 604800:
+        return f"{seconds // 86400}d ago"
+    return value.strftime("%d %b %Y %H:%M")
+
+
+def _feed_media_url(rel_path: str | None) -> str | None:
+    rel = str(rel_path or "").strip()
+    if not rel:
+        return None
+    return url_for("static", filename=rel)
+
+
+def _save_feed_media_file(storage, *, user_id: int) -> tuple[str | None, str | None, str | None]:
+    if not storage or not getattr(storage, "filename", None):
+        return (None, None, None)
+    filename = secure_filename(storage.filename or "")
+    ext = Path(filename).suffix.lower()
+    if not ext:
+        return (None, None, "Unsupported file type.")
+
+    media_type = None
+    if ext in FEED_IMAGE_ALLOWED_EXT:
+        media_type = "image"
+    elif ext in FEED_VIDEO_ALLOWED_EXT:
+        media_type = "video"
+    elif ext in FEED_FILE_ALLOWED_EXT:
+        media_type = "file"
+    if not media_type:
+        return (None, None, "Unsupported file type.")
+
+    dest_dir = _static_subdir("feed_uploads")
+    stored_name = f"user_{user_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:10]}{ext}"
+    dest = dest_dir / stored_name
+    storage.save(str(dest))
+    return (dest.relative_to(APP_DIR / "static").as_posix(), media_type, None)
+
+
+def _feed_post_payload(
+    row: FeedPost,
+    *,
+    reaction_summary: list[dict[str, object]] | None = None,
+    current_reaction: str | None = None,
+) -> dict[str, object]:
+    author = getattr(row, "author", None)
+    company_name = (getattr(author, "company_name", None) or "").strip() or "CTS Carbon Platform"
+    author_title = (getattr(author, "job_title", None) or "").strip() or "Team Member"
+    author_name = _user_display_name(author) or "CTS User"
+    summary = list(reaction_summary or [])
+    reaction_state = _feed_reaction_button_state(current_reaction)
+    return {
+        "id": int(row.id),
+        "content": str(getattr(row, "content", "") or "").strip(),
+        "post_type": _normalize_feed_post_type(getattr(row, "post_type", None)),
+        "post_type_label": _normalize_feed_post_type(getattr(row, "post_type", None)).title(),
+        "media_type": (getattr(row, "media_type", None) or "").strip() or None,
+        "media_url": _feed_media_url(getattr(row, "media_path", None)),
+        "media_name": Path(str(getattr(row, "media_path", "") or "")).name if getattr(row, "media_path", None) else None,
+        "created_at_label": _format_feed_timestamp(getattr(row, "created_at", None)),
+        "created_at_iso": getattr(row, "created_at", None).isoformat() if getattr(row, "created_at", None) else "",
+        "author_name": author_name,
+        "author_title": author_title,
+        "author_company": company_name,
+        "author_avatar_url": _user_avatar_url(author),
+        "company_logo_url": _company_logo_url(company_name),
+        "reaction_summary": summary,
+        "reaction_total": sum(int(item.get("count") or 0) for item in summary),
+        "current_reaction": str(reaction_state.get("type") or ""),
+        "current_reaction_label": str(reaction_state.get("label") or "Like"),
+        "current_reaction_icon": str(reaction_state.get("icon") or "👍"),
+    }
+
+
 def _ensure_user_profile_columns() -> None:
     try:
         from sqlalchemy import inspect, text
@@ -1677,6 +2603,26 @@ def _ensure_user_profile_columns() -> None:
         if "is_profile_complete" not in existing:
             alters.append("ALTER TABLE user ADD COLUMN is_profile_complete BOOLEAN")
             backfill_profile_complete = True
+        if "template_mode" not in existing:
+            alters.append("ALTER TABLE user ADD COLUMN template_mode VARCHAR(20)")
+        if "business_type" not in existing:
+            alters.append("ALTER TABLE user ADD COLUMN business_type VARCHAR(100)")
+        if "product_type" not in existing:
+            alters.append("ALTER TABLE user ADD COLUMN product_type VARCHAR(100)")
+        if "quantity" not in existing:
+            alters.append("ALTER TABLE user ADD COLUMN quantity VARCHAR(100)")
+        if "quantity_unit" not in existing:
+            alters.append("ALTER TABLE user ADD COLUMN quantity_unit VARCHAR(100)")
+        if "number_of_products_in_use" not in existing:
+            alters.append("ALTER TABLE user ADD COLUMN number_of_products_in_use VARCHAR(100)")
+        if "end_use_location" not in existing:
+            alters.append("ALTER TABLE user ADD COLUMN end_use_location VARCHAR(200)")
+        if "heating_source" not in existing:
+            alters.append("ALTER TABLE user ADD COLUMN heating_source VARCHAR(100)")
+        if "travel_provider" not in existing:
+            alters.append("ALTER TABLE user ADD COLUMN travel_provider VARCHAR(20)")
+        if "operating_locations_json" not in existing:
+            alters.append("ALTER TABLE user ADD COLUMN operating_locations_json TEXT")
         role_added = False
         if "role" not in existing:
             alters.append("ALTER TABLE user ADD COLUMN role VARCHAR(32)")
@@ -1688,6 +2634,7 @@ def _ensure_user_profile_columns() -> None:
                 conn.execute(text(stmt))
             if backfill_profile_complete:
                 conn.execute(text("UPDATE user SET is_profile_complete = 1 WHERE is_profile_complete IS NULL"))
+            conn.execute(text(f"UPDATE user SET template_mode = '{TEMPLATE_MODE_LEGACY}' WHERE template_mode IS NULL"))
             if role_added:
                 conn.execute(text("UPDATE user SET role = 'admin' WHERE is_admin = 1"))
                 conn.execute(text("UPDATE user SET role = 'user' WHERE role IS NULL"))
@@ -1713,38 +2660,22 @@ def _ensure_mapping_run_source_entry_group_column() -> None:
 
 def _resolve_template_company_name(company_name: str) -> str | None:
     raw = (company_name or "").strip()
-    candidates = [raw]
+    if not raw:
+        return None
     canon, _country = _canonical_company_name_and_country(raw)
-    if canon and canon not in candidates:
-        candidates.append(canon)
-
-    for candidate in candidates:
-        norm_candidate = _normalize_template_key(candidate)
-        entry = TEMPLATE_INDEX.get(norm_candidate)
-        if entry:
-            return str(entry["name"])
-    return None
+    return (canon or raw).strip() or None
 
 
 def _resolve_template_sheet_name(company_name: str, sheet_name: str) -> str | None:
-    company_key = _resolve_template_company_name(company_name)
-    if not company_key:
-        return None
     if str(sheet_name or "").strip().lower() == KLARAKARBON_SHEET_NAME.lower():
         return KLARAKARBON_SHEET_NAME
-    company_entry = TEMPLATE_INDEX.get(_normalize_template_key(company_key)) or {}
-    sheets = company_entry.get("sheets") or {}
-    if not isinstance(sheets, dict):
-        return None
-    sheet_entry = sheets.get(_normalize_template_key(sheet_name))
-    if not isinstance(sheet_entry, dict):
-        return None
-    return str(sheet_entry.get("name") or "")
+    resolved = TEMPLATE_REGISTRY.resolve_sheet_name(company_name, sheet_name, template_mode=_current_template_mode())
+    return resolved or None
 
 
 def _list_template_companies_for_user() -> list[dict[str, str]]:
     if bool(getattr(current_user, "is_admin", False)):
-        return [{"key": name, "label": name} for name in TEMPLATES.keys()]
+        return [{"key": name, "label": name} for name in sorted(_COMPANY_COUNTRY_CANONICAL.keys())]
 
     resolved = _resolve_template_company_name(getattr(current_user, "company_name", "") or "")
     if not resolved:
@@ -1753,25 +2684,24 @@ def _list_template_companies_for_user() -> list[dict[str, str]]:
 
 
 def _get_template_company_sheets(company_name: str) -> list[str]:
-    resolved_company = _resolve_template_company_name(company_name)
-    if not resolved_company:
-        return []
-    sheets = list((TEMPLATES.get(resolved_company) or {}).keys())
-    if klarakarbon_company_supported(resolved_company) and KLARAKARBON_SHEET_NAME not in sheets:
-        sheets.append(KLARAKARBON_SHEET_NAME)
-    return sheets
+    resolved_company = _resolve_template_company_name(company_name) or (company_name or "").strip()
+    bundle = _template_bundle_for_company(resolved_company)
+    return [str(item.get("sheet_name") or "") for item in (bundle.get("visible_templates") or []) if str(item.get("sheet_name") or "").strip()]
 
 
 def _get_template_sheet_headers(company_name: str, sheet_name: str) -> list[str]:
-    resolved_company = _resolve_template_company_name(company_name)
-    if not resolved_company:
-        return []
     if str(sheet_name or "").strip().lower() == KLARAKARBON_SHEET_NAME.lower():
+        resolved_company = _resolve_template_company_name(company_name)
+        if not resolved_company:
+            return []
         return list(klarakarbon_entry_headers(resolved_company))
     resolved_sheet = _resolve_template_sheet_name(company_name, sheet_name)
     if not resolved_sheet:
         return []
-    return list((TEMPLATES.get(resolved_company) or {}).get(resolved_sheet) or [])
+    for item in _template_bundle_for_company(company_name).get("visible_templates") or []:
+        if _normalize_template_key(str(item.get("sheet_name") or "")) == _normalize_template_key(resolved_sheet):
+            return list(item.get("headers") or [])
+    return []
 
 
 def _build_template_workbook(company_name: str) -> BytesIO:
@@ -4132,8 +5062,8 @@ def _run_pipeline_background(run_id: int) -> None:
         run.status = "succeeded" if rc == 0 else "failed"
         db.session.commit()
 
-# Registration dropdown: exact template.json top-level keys only
-COMPANIES = list(TEMPLATES.keys())
+# Registration dropdown: canonical company names only
+COMPANIES = sorted(_COMPANY_COUNTRY_CANONICAL.keys())
 
 # Utility: Calculate emissions from excel data (loads factors from the database)
 def calculate_emissions_from_excel(file_path, template_name):
@@ -4724,11 +5654,12 @@ def login():
         if user and check_password_hash(user.password_hash, password):
             login_user(user)
             session["activity_session_id"] = uuid.uuid4().hex
+            _persist_template_mode(getattr(user, "template_mode", None))
             request.environ["skip_activity_log"] = True
             _write_activity_log_for_user(user, action="login")
             if not _user_profile_complete(user):
                 return redirect(url_for('profile_setup'))
-            return redirect(url_for('dashboard'))
+            return redirect(url_for('feed'))
         flash('Invalid email or password')
 
     return render_template('login.html')
@@ -4969,6 +5900,78 @@ def reset_password(token):
     return redirect(url_for("login"))
 
 
+def _normalize_profile_select(raw: object, allowed: tuple[str, ...]) -> str | None:
+    value = str(raw or "").strip()
+    if not value:
+        return None
+    return value if value in set(allowed) else None
+
+
+def _normalize_yes_no(raw: object) -> str | None:
+    value = str(raw or "").strip().lower()
+    if value in {"yes", "no"}:
+        return value
+    return None
+
+
+def _parse_operating_locations_form(raw: object) -> tuple[list[dict[str, str]], str | None]:
+    try:
+        rows = json.loads(str(raw or "[]"))
+    except Exception:
+        return [], "Operating locations payload is invalid."
+    if not isinstance(rows, list):
+        return [], "Operating locations payload is invalid."
+    valid_country_codes = {code for code, _name in ISO_COUNTRIES}
+    valid_site_types = set(OPERATING_SITE_TYPE_OPTIONS)
+    out: list[dict[str, str]] = []
+    for idx, item in enumerate(rows, start=1):
+        if not isinstance(item, dict):
+            return [], f"Operating location {idx} is invalid."
+        country = str(item.get("country") or "").strip().upper()
+        site_type = str(item.get("site_type") or "").strip().lower()
+        if not country and not site_type:
+            continue
+        if country and country not in valid_country_codes:
+            return [], f"Operating location {idx} has an invalid country."
+        if site_type and site_type not in valid_site_types:
+            return [], f"Operating location {idx} has an invalid site type."
+        out.append({"country": country, "site_type": site_type})
+    return out, None
+
+
+def _apply_profile_form_fields(user: User, form) -> str | None:
+    mode_raw = str(form.get("template_mode") or "").strip()
+    mode = normalize_template_mode(mode_raw) if mode_raw in VALID_TEMPLATE_MODES else TEMPLATE_MODE_LEGACY
+    business_type = _normalize_profile_select(form.get("business_type"), BUSINESS_TYPE_OPTIONS)
+    product_type = (form.get("product_type") or "").strip() or None
+    quantity = (form.get("quantity") or "").strip() or None
+    quantity_unit = (form.get("quantity_unit") or "").strip() or None
+    number_of_products_in_use = (form.get("number_of_products_in_use") or "").strip() or None
+    end_use_location = (form.get("end_use_location") or "").strip() or None
+    heating_source = _normalize_profile_select(form.get("heating_source"), HEATING_SOURCE_OPTIONS)
+    travel_provider = _normalize_yes_no(form.get("travel_provider"))
+    operating_locations, operating_error = _parse_operating_locations_form(form.get("operating_locations_json"))
+    if operating_error:
+        return operating_error
+    if business_type != "Manufacturer":
+        product_type = None
+    if travel_provider is None and str(form.get("travel_provider") or "").strip():
+        return "Travel provider must be Yes or No."
+
+    user.template_mode = mode
+    user.business_type = business_type
+    user.product_type = product_type
+    user.quantity = quantity
+    user.quantity_unit = quantity_unit
+    user.number_of_products_in_use = number_of_products_in_use
+    user.end_use_location = end_use_location
+    user.heating_source = heating_source
+    user.travel_provider = travel_provider
+    user.operating_locations_json = json.dumps(operating_locations, ensure_ascii=True)
+    _persist_template_mode(mode)
+    return None
+
+
 @app.route("/profile/setup", methods=["GET", "POST"])
 @login_required
 def profile_setup():
@@ -4976,9 +5979,14 @@ def profile_setup():
     if _user_profile_complete(current_user):
         return redirect(url_for("dashboard"))
 
-    companies = list(TEMPLATES.keys())
+    companies = list(COMPANIES)
     resolved_company = _resolve_template_company_name(current_user.company_name or "") or (current_user.company_name or "").strip()
     show_logo_upload = bool(resolved_company) and not _company_has_logo_for_key(resolved_company)
+    template_ctx = _profile_template_context(
+        companies=companies,
+        resolved_company=resolved_company,
+        show_logo_upload=show_logo_upload,
+    )
 
     if request.method == "POST":
         first_name = (request.form.get("first_name") or "").strip()
@@ -4990,34 +5998,16 @@ def profile_setup():
 
         if not first_name or not last_name or not job_title:
             flash("First name, last name, and job title are required.")
-            return render_template(
-                "profile_setup.html",
-                companies=companies,
-                iso_countries=ISO_COUNTRIES,
-                show_logo_upload=show_logo_upload,
-                resolved_company=resolved_company,
-            )
+            return render_template("profile_setup.html", **template_ctx)
 
-        if co not in TEMPLATES:
+        if co not in COMPANIES:
             flash("Invalid company selection.")
-            return render_template(
-                "profile_setup.html",
-                companies=companies,
-                iso_countries=ISO_COUNTRIES,
-                show_logo_upload=show_logo_upload,
-                resolved_company=resolved_company,
-            )
+            return render_template("profile_setup.html", **template_ctx)
 
         valid_codes = {c for c, _n in ISO_COUNTRIES}
         if country_code not in valid_codes:
             flash("Please select a valid country.")
-            return render_template(
-                "profile_setup.html",
-                companies=companies,
-                iso_countries=ISO_COUNTRIES,
-                show_logo_upload=show_logo_upload,
-                resolved_company=resolved_company,
-            )
+            return render_template("profile_setup.html", **template_ctx)
 
         logo_rel_to_set: str | None = None
         if show_logo_upload:
@@ -5026,13 +6016,7 @@ def profile_setup():
                 logo_rel_to_set = _save_company_logo_png(lfile, co)
                 if not logo_rel_to_set:
                     flash("Company logo must be a PNG file.")
-                    return render_template(
-                        "profile_setup.html",
-                        companies=companies,
-                        iso_countries=ISO_COUNTRIES,
-                        show_logo_upload=show_logo_upload,
-                        resolved_company=resolved_company,
-                    )
+                    return render_template("profile_setup.html", **template_ctx)
 
         current_user.first_name = first_name
         current_user.last_name = last_name
@@ -5040,6 +6024,10 @@ def profile_setup():
         current_user.phone = phone or None
         current_user.company_name = co
         current_user.company_country = country_code
+        profile_error = _apply_profile_form_fields(current_user, request.form)
+        if profile_error:
+            flash(profile_error)
+            return render_template("profile_setup.html", **template_ctx)
 
         pfile = request.files.get("profile_photo")
         rel_photo = _save_profile_photo_file(pfile, int(current_user.id))
@@ -5059,13 +6047,7 @@ def profile_setup():
         flash("Profile saved.")
         return redirect(url_for("dashboard"))
 
-    return render_template(
-        "profile_setup.html",
-        companies=companies,
-        iso_countries=ISO_COUNTRIES,
-        show_logo_upload=show_logo_upload,
-        resolved_company=resolved_company,
-    )
+    return render_template("profile_setup.html", **template_ctx)
 
 
 @app.route("/profile", methods=["GET", "POST"])
@@ -5080,6 +6062,10 @@ def profile_page():
         current_user.last_name = (request.form.get("last_name") or "").strip() or None
         current_user.job_title = (request.form.get("job_title") or "").strip() or None
         current_user.phone = (request.form.get("phone") or "").strip() or None
+        profile_error = _apply_profile_form_fields(current_user, request.form)
+        if profile_error:
+            flash(profile_error)
+            return redirect(url_for("profile_page"))
 
         if current_user.is_admin:
             country_code = (request.form.get("company_country") or "").strip().upper()
@@ -5105,9 +6091,9 @@ def profile_page():
 
     return render_template(
         "profile.html",
-        iso_countries=ISO_COUNTRIES,
         company_display=(current_user.company_name or ""),
         country_readonly_label=country_readonly_label,
+        **_profile_template_context(),
     )
 
 
@@ -5341,13 +6327,14 @@ def _user_can_access_company_file(company_file: Path) -> bool:
 @app.route("/api/excel_schema/companies", methods=["GET"])
 @login_required
 def api_excel_schema_companies():
+    mode = _current_template_mode()
     if current_user.is_admin:
-        companies = list(TEMPLATES.keys())
-        return jsonify({"companies": companies})
+        companies = list(COMPANIES)
+        return jsonify({"companies": companies, "template_mode": mode})
 
     company_name = _resolve_template_company_name(getattr(current_user, "company_name", "") or "")
     companies = [company_name] if company_name else []
-    return jsonify({"companies": companies})
+    return jsonify({"companies": companies, "template_mode": mode})
 
 
 @app.route("/api/excel_schema/sheets", methods=["GET"])
@@ -5359,8 +6346,21 @@ def api_excel_schema_sheets():
     resolved_company = _resolve_template_company_name(company)
     if not resolved_company:
         return jsonify({"error": "Company not found"}), 404
-    sheets = _get_template_company_sheets(resolved_company)
-    return jsonify({"company": resolved_company, "sheets": sheets})
+    bundle = _template_bundle_for_company(resolved_company)
+    visible_templates = [str(item.get("sheet_name") or "") for item in (bundle.get("visible_templates") or []) if str(item.get("sheet_name") or "").strip()]
+    print("TEMPLATES SOURCE:", "2026 ONLY")
+    print("VISIBLE TEMPLATES:", visible_templates)
+    return jsonify(
+        {
+            "company": resolved_company,
+            "template_mode": bundle.get("template_mode"),
+            "sheets": visible_templates,
+            "visible_templates": bundle.get("visible_templates", []),
+            "enabled_categories": bundle.get("enabled_categories", []),
+            "disabled_categories": bundle.get("disabled_categories", []),
+            "metadata_validation": bundle.get("metadata_validation", []),
+        }
+    )
 
 
 @app.route("/api/excel_schema/headers", methods=["GET"])
@@ -5382,13 +6382,22 @@ def api_excel_schema_headers():
     if not resolved_sheet:
         return jsonify({"error": "Sheet not found"}), 404
     headers = _get_template_sheet_headers(resolved_company, resolved_sheet)
+    bundle = _template_bundle_for_company(resolved_company)
+    metadata_status = [
+        item for item in (bundle.get("metadata_validation") or [])
+        if _normalize_template_key(str(item.get("sheet_name") or "")) == _normalize_template_key(resolved_sheet)
+    ]
     return jsonify(
         {
             "company": resolved_company,
             "sheet": resolved_sheet,
+            "template_mode": bundle.get("template_mode"),
             "header_row": 1,
             "headers": headers,
             "rules": {h: _infer_column_rule(h) for h in headers},
+            "enabled_categories": bundle.get("enabled_categories", []),
+            "disabled_categories": bundle.get("disabled_categories", []),
+            "metadata_status": metadata_status,
         }
     )
 
@@ -5411,10 +6420,12 @@ def api_data_entry_rows():
         return jsonify({"error": "Sheet not found"}), 404
 
     headers, _rules = _get_data_entry_template_schema(resolved_company, resolved_sheet)
+    bundle = _template_bundle_for_company(resolved_company)
     return jsonify(
         {
             "company": resolved_company,
             "sheet": resolved_sheet,
+            "template_mode": bundle.get("template_mode"),
             "headers": headers,
             "rows": _load_data_entry_grid_rows(resolved_company, resolved_sheet, headers),
         }
@@ -5481,6 +6492,17 @@ def api_excel_schema_save():
     saved_rows_count = int(result.get("saved_rows_count") or 0)
     duplicate_rows_count = int(result.get("duplicate_rows_count") or 0)
     saved_entry_groups = list(result.get("saved_entry_groups") or [])
+    if saved_rows_count > 0:
+        _create_user_notification(
+            current_user.id,
+            title="Data upload completed",
+            message=f"{resolved_company} uploaded new data successfully.",
+            notification_type="success",
+            link=url_for("home"),
+            feed_event="data_upload",
+            feed_company=resolved_company,
+            feed_timestamp=datetime.utcnow(),
+        )
     return jsonify(
         {
             "ok": True,
@@ -5624,6 +6646,9 @@ def api_mapping_run():
         message=f"{resolved_company} / {resolved_sheet} mapping finished successfully.",
         notification_type="success",
         link=url_for("home"),
+        feed_event="mapping_completed",
+        feed_company=resolved_company,
+        feed_timestamp=datetime.utcnow(),
     )
 
     preview = mapped_df.head(40).fillna("").to_dict(orient="records")
@@ -5675,6 +6700,16 @@ def api_pipeline_append_run():
         result = _run_append_and_pipeline(resolved_company, resolved_sheet)
     except Exception as e:
         return jsonify({"error": f"Pipeline failed: {e}"}), 500
+    _create_user_notification(
+        current_user.id,
+        title="Pipeline run completed",
+        message=f"Data pipeline executed successfully for {resolved_company}.",
+        notification_type="success",
+        link=url_for("home"),
+        feed_event="pipeline_completed",
+        feed_company=resolved_company,
+        feed_timestamp=datetime.utcnow(),
+    )
     return jsonify(result)
 
 
@@ -6973,6 +8008,17 @@ def data_sources_ccc_api():
                         "message": str(result.get("token_received") and "JWT token received successfully." or "Connection test completed."),
                     },
                 )
+                _create_user_notification(
+                    current_user.id,
+                    title="API connection established",
+                    message=f"{_clean_company_name(getattr(current_user, 'company_name', '') or '') or 'Platform'} connected to CCC API.",
+                    notification_type="success",
+                    link=url_for("data_sources_ccc_api"),
+                    feed_event="api_connection",
+                    feed_company=_clean_company_name(getattr(current_user, "company_name", "") or "") or "Platform",
+                    feed_api_name="CCC API",
+                    feed_timestamp=datetime.utcnow(),
+                )
             else:
                 endpoint_name = str(form_state["endpoint_name"] or "").strip()
                 if endpoint_name == "purchase_order":
@@ -7147,6 +8193,181 @@ def data_sources_ccc_api():
             context["run_history"] = _read_run_history("ccc_api_source")
         context["form_state"] = form_state
     return render_template("analytics_output.html", user=current_user, **context)
+
+
+@app.route("/data-sources/averages", methods=["GET"])
+@login_required
+def data_sources_averages():
+    _ensure_db_tables()
+    company_name, company_error = _resolve_averages_company(request.args.get("company"))
+    if company_error:
+        flash(company_error)
+        return redirect(url_for("dashboard"))
+    row = AveragesData.query.filter_by(company_name=company_name).first() if company_name else None
+    return render_template(
+        "averages.html",
+        user=current_user,
+        template_mode=_current_template_mode(),
+        company_name=company_name,
+        averages_company_options=_allowed_companies_for_averages(),
+        averages_owner_can_select_company=_is_owner_user(current_user),
+        averages_data=_averages_payload(row),
+        country_options=ISO_COUNTRIES,
+        waste_type_options=AVERAGES_WASTE_TYPES,
+        waste_unit_options=AVERAGES_WASTE_UNITS,
+    )
+
+
+@app.route("/data-sources/scenarios", methods=["GET"])
+@login_required
+def data_sources_scenarios():
+    _ensure_db_tables()
+    bundle = _template_bundle_for_company(_resolve_template_company_name(getattr(current_user, "company_name", "") or "") or "")
+    rows = ScenariosData.query.filter(ScenariosData.company_name.in_(SCENARIO_COMPANY_OPTIONS)).all()
+    initial_company = _clean_company_name(getattr(current_user, "company_name", "") or "")
+    if initial_company not in SCENARIO_COMPANY_OPTIONS:
+        initial_company = SCENARIO_COMPANY_OPTIONS[0]
+    return render_template(
+        "scenarios.html",
+        user=current_user,
+        template_mode=bundle.get("template_mode"),
+        enabled_categories=bundle.get("enabled_categories", []),
+        disabled_categories=bundle.get("disabled_categories", []),
+        scenario_company_options=SCENARIO_COMPANY_OPTIONS,
+        scenario_category_config=SCENARIO_CATEGORY_CONFIG,
+        scenario_saved_data=_scenario_rows_payload(rows),
+        scenario_initial_company=initial_company,
+    )
+
+
+@app.route("/api/averages/save", methods=["GET", "POST"])
+@login_required
+def api_averages_save():
+    _ensure_db_tables()
+    company_name, company_error = _resolve_averages_company((request.args.get("company") if request.method == "GET" else (request.get_json(silent=True) or {}).get("company")))
+    if company_error or not company_name:
+        return jsonify({"error": company_error or "Company is required."}), 400
+    if request.method == "GET":
+        row = AveragesData.query.filter_by(company_name=company_name).first()
+        return jsonify({"ok": True, "data": _averages_payload(row)})
+
+    payload = request.get_json(silent=True) or {}
+
+    waste_type = str(payload.get("waste_type") or "").strip()
+    waste_unit = str(payload.get("waste_unit") or "").strip()
+    electricity_country = str(payload.get("electricity_country") or "").strip()
+
+    if waste_type and waste_type not in AVERAGES_WASTE_TYPES:
+        return jsonify({"error": "Invalid waste type."}), 400
+    if waste_unit and waste_unit not in AVERAGES_WASTE_UNITS:
+        return jsonify({"error": "Invalid waste unit."}), 400
+
+    row = AveragesData.query.filter_by(company_name=company_name).first()
+    if row is None:
+        row = AveragesData(company_name=company_name)
+        db.session.add(row)
+
+    row.saved_by_user_id = int(current_user.id)
+    row.electricity_kwh = _safe_float(payload.get("electricity_kwh"))
+    row.electricity_country = electricity_country or None
+    row.electricity_emission_factor = _safe_float(payload.get("electricity_emission_factor"))
+    row.district_heating_kwh = _safe_float(payload.get("district_heating_kwh"))
+    row.district_heating_supplier = str(payload.get("district_heating_supplier") or "").strip() or None
+    row.waste_type = waste_type or None
+    row.waste_weight = _safe_float(payload.get("waste_weight"))
+    row.waste_unit = waste_unit or None
+    row.water_total_m3 = _safe_float(payload.get("water_total_m3"))
+    row.building_size_m2 = _safe_float(payload.get("building_size_m2"))
+    row.water_per_m2 = _positive_ratio(row.water_total_m3, row.building_size_m2)
+    db.session.commit()
+
+    mapping_frames = _averages_mapping_frames(company_name, payload)
+    mapping_results: list[dict[str, object]] = []
+    mapping_errors: list[str] = []
+    for sheet_name, frame in mapping_frames:
+        result = _run_mapping_for_virtual_sheet(int(current_user.id), company_name, sheet_name, frame)
+        if result.get("ok"):
+            mapping_results.append(result)
+        else:
+            mapping_errors.append(str(result.get("error") or f"{sheet_name} mapping failed."))
+
+    if mapping_results:
+        _create_user_notification(
+            current_user.id,
+            title="Averages mapping completed",
+            message=f"Calculated emissions based on averages for {company_name}.",
+            notification_type="success",
+            link=url_for("data_sources_averages", company=company_name),
+            feed_event="mapping_completed",
+            feed_company=company_name,
+            feed_timestamp=datetime.utcnow(),
+        )
+
+    return jsonify(
+        {
+            "ok": True,
+            "message": "Saved successfully",
+            "mapping_message": (
+                "Calculated emissions based on averages"
+                if mapping_results and not mapping_errors
+                else ("Averages saved, but some mapping steps failed." if mapping_errors else "Saved successfully")
+            ),
+            "mapping_results": mapping_results,
+            "mapping_errors": mapping_errors,
+            "water_per_m2": row.water_per_m2,
+            "data": _averages_payload(row),
+        }
+    )
+
+
+@app.route("/api/scenarios/save", methods=["GET", "POST"])
+@login_required
+def api_scenarios_save():
+    _ensure_db_tables()
+    if request.method == "GET":
+        company_name = _clean_company_name(request.args.get("company"))
+        categories = SCENARIO_CATEGORY_CONFIG.get(company_name)
+        if not categories:
+            return jsonify({"error": "Select a valid company."}), 400
+        row = ScenariosData.query.filter_by(company_name=company_name).first()
+        payload = _scenario_rows_payload([row] if row else [])
+        return jsonify({"ok": True, "data": payload.get(company_name)})
+
+    payload = request.get_json(silent=True) or {}
+    company_name = _clean_company_name(payload.get("company"))
+    categories = SCENARIO_CATEGORY_CONFIG.get(company_name)
+    if not categories:
+        return jsonify({"error": "Select a valid company."}), 400
+
+    raw_inputs = payload.get("inputs")
+    if not isinstance(raw_inputs, dict):
+        raw_inputs = {}
+
+    clean_inputs = _default_scenario_inputs(categories)
+    for category in categories:
+        incoming = raw_inputs.get(category)
+        if not isinstance(incoming, dict):
+            continue
+        for field_name in clean_inputs[category].keys():
+            clean_inputs[category][field_name] = str(incoming.get(field_name) or "").strip()
+
+    row = ScenariosData.query.filter_by(company_name=company_name).first()
+    if row is None:
+        row = ScenariosData(company_name=company_name)
+        db.session.add(row)
+
+    row.saved_by_user_id = int(current_user.id)
+    row.categories_json = json.dumps(clean_inputs)
+    db.session.commit()
+
+    return jsonify(
+        {
+            "ok": True,
+            "message": "Saved successfully",
+            "company": company_name,
+            "data": _scenario_rows_payload([row]).get(company_name),
+        }
+    )
 
 
 @app.route("/analytics/forecasting", methods=["GET", "POST"])
@@ -7508,7 +8729,7 @@ def admin():
     selected_month = request.args.get('month') or available_months[0]
 
     # Calculate progress per company based on mapped categories vs available schema sheets
-    companies = list(TEMPLATES.keys())
+    companies = list(COMPANIES)
     submission_stats = []
     chart_data = []
     for company in companies:
@@ -7607,6 +8828,87 @@ def admin_update_user_profile(user_id):
     return redirect(url_for("admin"))
 
 
+def _admin_user_company_options() -> list[str]:
+    return list(COMPANIES)
+
+
+def _render_admin_users_page(
+    *,
+    create_errors: dict[str, str] | None = None,
+    create_form: dict[str, str] | None = None,
+):
+    users = User.query.order_by(User.email.asc()).all()
+    return render_template(
+        "admin_users.html",
+        users=users,
+        user_roles=USER_ROLES,
+        companies=_admin_user_company_options(),
+        create_errors=create_errors or {},
+        create_form=create_form or {},
+    )
+
+
+@app.route("/admin/create-user", methods=["POST"])
+@login_required
+def admin_create_user():
+    _ensure_db_tables()
+    if normalize_user_role(getattr(current_user, "role", None)) != "owner":
+        flash("Access denied")
+        return redirect(url_for("dashboard"))
+
+    email = (request.form.get("email") or "").strip().lower()
+    password = request.form.get("password") or ""
+    full_name = (request.form.get("full_name") or "").strip()
+    title = (request.form.get("title") or "").strip()
+    company = (_resolve_template_company_name(request.form.get("company") or "") or (request.form.get("company") or "").strip())
+    role = normalize_user_role(request.form.get("role"))
+
+    form_state = {
+        "email": email,
+        "full_name": full_name,
+        "title": title,
+        "company": company,
+        "role": role,
+    }
+    errors: dict[str, str] = {}
+
+    if not email:
+        errors["email"] = "Email is required."
+    elif "@" not in email:
+        errors["email"] = "Enter a valid email address."
+    elif User.query.filter(db.func.lower(User.email) == email).first():
+        errors["email"] = "A user with this email already exists."
+
+    if not password:
+        errors["password"] = "Password is required."
+
+    if company not in _admin_user_company_options():
+        errors["company"] = "Select a valid company."
+
+    if role not in USER_ROLES_SET:
+        errors["role"] = "Select a valid role."
+
+    if errors:
+        return _render_admin_users_page(create_errors=errors, create_form=form_state)
+
+    first_name, last_name = _split_full_name(full_name)
+    user = User(
+        email=email,
+        password_hash=generate_password_hash(password),
+        company_name=company,
+        first_name=first_name or None,
+        last_name=last_name or None,
+        job_title=title or None,
+        role=role,
+    )
+    sync_user_admin_flag(user)
+    db.session.add(user)
+    db.session.commit()
+
+    flash("User created successfully")
+    return redirect(url_for("admin_users"))
+
+
 @app.route("/admin/users", methods=["GET", "POST"])
 @login_required
 def admin_users():
@@ -7640,8 +8942,7 @@ def admin_users():
         flash(f"Role updated for {target.email}.")
         return redirect(url_for("admin_users"))
 
-    users = User.query.order_by(User.email.asc()).all()
-    return render_template("admin_users.html", users=users, user_roles=USER_ROLES)
+    return _render_admin_users_page()
 
 
 @app.route("/owner-analytics", methods=["GET"])
@@ -8237,13 +9538,15 @@ def run_mapping(company_name: str, sheet_name: str, df: pd.DataFrame) -> tuple[p
     _cleanup_mapping_runs()
 
     df_pre = preprocess_for_mapping(company_name, sheet_name, df)
+    template_mode = _current_template_mode()
+    internal_sheet_name = _stage2_sheet_name_for_run(sheet_name, template_mode)
 
     run_dir = INSTANCE_DIR / "mapping_runs" / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:10]}"
     run_dir.mkdir(parents=True, exist_ok=True)
     input_xlsx = run_dir / f"{secure_filename(company_name)}__{secure_filename(sheet_name)}.xlsx"
 
     with pd.ExcelWriter(input_xlsx, engine="openpyxl") as writer:
-        df_pre.to_excel(writer, sheet_name=str(sheet_name)[:31], index=False)
+        df_pre.to_excel(writer, sheet_name=str(internal_sheet_name)[:31], index=False)
 
     mm = _import_stage2_main_mapping()
     append_src = _import_stage2_append_sources()
@@ -8254,8 +9557,16 @@ def run_mapping(company_name: str, sheet_name: str, df: pd.DataFrame) -> tuple[p
     start_ts = _time.time()
     with _STAGE2_MAP_LOCK:
         orig = getattr(mm, "INPUT_WORKBOOK_NAME", None)
+        orig_env = {
+            "CTS_TEMPLATE_MODE": os.environ.get("CTS_TEMPLATE_MODE"),
+            "CTS_STAGE2_SOURCE_SHEET": os.environ.get("CTS_STAGE2_SOURCE_SHEET"),
+            "CTS_STAGE2_INTERNAL_SHEET": os.environ.get("CTS_STAGE2_INTERNAL_SHEET"),
+        }
         try:
             setattr(mm, "INPUT_WORKBOOK_NAME", str(input_xlsx))
+            os.environ["CTS_TEMPLATE_MODE"] = normalize_template_mode(template_mode)
+            os.environ["CTS_STAGE2_SOURCE_SHEET"] = str(sheet_name or "").strip()
+            os.environ["CTS_STAGE2_INTERNAL_SHEET"] = str(internal_sheet_name or "").strip()
             mm.process_all_sheets()
             append_src.main(company_name=company_name)
         finally:
@@ -8263,6 +9574,8 @@ def run_mapping(company_name: str, sheet_name: str, df: pd.DataFrame) -> tuple[p
                 setattr(mm, "INPUT_WORKBOOK_NAME", orig)
             except Exception:
                 pass
+            for env_name, env_value in orig_env.items():
+                _restore_env_var(env_name, env_value)
 
     # Pick newest mapped_results output created after we started
     candidates = sorted(
@@ -8298,6 +9611,11 @@ def run_mapping(company_name: str, sheet_name: str, df: pd.DataFrame) -> tuple[p
         if str(k).strip().lower() == str(sheet_name).strip().lower():
             mapped_df = v
             break
+    if mapped_df is None:
+        for k, v in sheets.items():
+            if str(k).strip().lower() == str(internal_sheet_name).strip().lower():
+                mapped_df = v
+                break
     if mapped_df is None:
         # fallback: return first sheet if only one
         if len(sheets) == 1:
@@ -8968,6 +10286,142 @@ def home():
     return render_template("home.html", **ctx)
 
 
+@app.route("/feed")
+@login_required
+def feed():
+    _ensure_db_tables()
+    selected_filter = _normalize_feed_filter(request.args.get("type"))
+    query = FeedPost.query.order_by(FeedPost.created_at.desc(), FeedPost.id.desc())
+    if selected_filter != "all":
+        query = query.filter(FeedPost.post_type == selected_filter)
+    rows = query.all()
+    post_ids = [int(row.id) for row in rows]
+    reaction_summary_map, current_reaction_map = _feed_reaction_maps(post_ids, int(getattr(current_user, "id", 0) or 0))
+    posts = [
+        _feed_post_payload(
+            row,
+            reaction_summary=reaction_summary_map.get(int(row.id), []),
+            current_reaction=current_reaction_map.get(int(row.id), ""),
+        )
+        for row in rows
+    ]
+    reports_href = url_for("admin_mapping_runs") if current_user.is_admin else url_for("mapping_runs")
+    quick_reports_href = url_for("admin_report") if current_user.is_admin else url_for("analytics_emissions_totals")
+    return render_template(
+        "feed.html",
+        posts=posts,
+        selected_filter=selected_filter,
+        feed_filters=FEED_FILTER_OPTIONS,
+        feed_post_types=FEED_POST_TYPES,
+        feed_reaction_options=FEED_REACTION_OPTIONS,
+        feed_profile={
+            "name": _user_display_name(current_user),
+            "title": (getattr(current_user, "job_title", None) or "").strip() or "Team Member",
+            "company_name": (getattr(current_user, "company_name", None) or "").strip() or "CTS Carbon Platform",
+            "avatar_url": _user_avatar_url(current_user),
+            "company_logo_url": _company_logo_url(getattr(current_user, "company_name", None)),
+            "profile_url": url_for("profile_page"),
+            "reports_url": reports_href,
+            "updates_url": url_for("feed"),
+            "analytics_url": url_for("analytics_emissions_totals"),
+            "quick_reports_url": quick_reports_href,
+        },
+    )
+
+
+@app.route("/feed/posts", methods=["POST"])
+@login_required
+def create_feed_post():
+    _ensure_db_tables()
+    post_type = _normalize_feed_post_type(request.form.get("post_type"))
+    content = (request.form.get("content") or "").strip()
+    image_file = request.files.get("image_file")
+    video_file = request.files.get("video_file")
+    report_file = request.files.get("report_file")
+    selected_files = [
+        item for item in (image_file, video_file, report_file)
+        if item and getattr(item, "filename", None)
+    ]
+
+    if not content and not selected_files:
+        flash("Add some text or attach a file before posting.", "warning")
+        return redirect(url_for("feed", type=_normalize_feed_filter(request.form.get("current_filter"))))
+
+    if len(selected_files) > 1:
+        flash("Please upload only one image, video, or file per post.", "warning")
+        return redirect(url_for("feed", type=_normalize_feed_filter(request.form.get("current_filter"))))
+
+    media_path = None
+    media_type = None
+    if selected_files:
+        media_path, media_type, media_error = _save_feed_media_file(selected_files[0], user_id=int(current_user.id))
+        if media_error:
+            flash(media_error, "warning")
+            return redirect(url_for("feed", type=_normalize_feed_filter(request.form.get("current_filter"))))
+
+    row = FeedPost(
+        author_user_id=int(current_user.id),
+        content=content,
+        post_type=post_type,
+        media_type=media_type,
+        media_path=media_path,
+    )
+    db.session.add(row)
+    db.session.commit()
+    flash("Post shared successfully.", "success")
+    return redirect(url_for("feed", type=_normalize_feed_filter(request.form.get("current_filter"))))
+
+
+@app.route("/api/feed/posts/<int:post_id>/reaction", methods=["POST"])
+@login_required
+def api_feed_post_reaction(post_id: int):
+    _ensure_db_tables()
+    payload = request.get_json(silent=True) or {}
+    reaction_type = _normalize_feed_reaction_type(payload.get("reaction_type"))
+    if not reaction_type:
+        return jsonify({"error": "Select a valid reaction."}), 400
+
+    post = FeedPost.query.get(post_id)
+    if post is None:
+        return jsonify({"error": "Post not found."}), 404
+
+    row = PostReaction.query.filter_by(post_id=int(post.id), user_id=int(current_user.id)).first()
+    now = datetime.utcnow()
+    if row is None:
+        row = PostReaction(
+            post_id=int(post.id),
+            user_id=int(current_user.id),
+            reaction_type=reaction_type,
+            created_at=now,
+            updated_at=now,
+        )
+        db.session.add(row)
+    else:
+        row.reaction_type = reaction_type
+        row.updated_at = now
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return jsonify({"error": "Could not save reaction."}), 500
+
+    summary_map, current_map = _feed_reaction_maps([int(post.id)], int(current_user.id))
+    button_state = _feed_reaction_button_state(current_map.get(int(post.id)))
+    summary = summary_map.get(int(post.id), [])
+    return jsonify(
+        {
+            "ok": True,
+            "post_id": int(post.id),
+            "reaction_summary": summary,
+            "reaction_total": sum(int(item.get("count") or 0) for item in summary),
+            "current_reaction": str(button_state.get("type") or ""),
+            "current_reaction_label": str(button_state.get("label") or "Like"),
+            "current_reaction_icon": str(button_state.get("icon") or "👍"),
+        }
+    )
+
+
 @app.route("/scope1")
 @login_required
 def scope1_detail():
@@ -9156,6 +10610,7 @@ def api_message_conversations():
 def api_message_thread():
     _ensure_db_tables()
     other_user_id = _parse_int_arg("user_id", None, minimum=1)
+    after_id = _parse_int_arg("after_id", 0, minimum=0)
     if not other_user_id:
         return jsonify({"error": "user_id is required"}), 400
     try:
@@ -9168,6 +10623,8 @@ def api_message_thread():
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 403
+    if after_id:
+        rows = [row for row in rows if int(getattr(row, "id", 0) or 0) > int(after_id)]
     return jsonify(
         {
             "contact": _contact_payload(other_user),
@@ -9193,6 +10650,7 @@ def api_message_send():
             receiver_id=int(receiver_id),
             body=str(payload.get("message", "") or ""),
         )
+        _set_message_typing_state(int(current_user.id), int(receiver_id), is_typing=False)
         db.session.commit()
         _create_user_notification(
             row.receiver_id,
@@ -9237,6 +10695,47 @@ def api_message_mark_read():
             "ok": True,
             "updated": int(updated),
             "unread_count": messaging_service.unread_count(Message, current_user),
+        }
+    )
+
+
+@app.route("/api/messages/typing", methods=["POST"])
+@login_required
+def api_message_typing():
+    _ensure_db_tables()
+    payload = request.get_json(silent=True) or {}
+    receiver_id = payload.get("receiver_id")
+    if receiver_id in (None, ""):
+        return jsonify({"error": "receiver_id is required"}), 400
+    if int(receiver_id) == int(current_user.id):
+        return jsonify({"error": "Cannot target the current user."}), 400
+    receiver = User.query.get(int(receiver_id))
+    if receiver is None:
+        return jsonify({"error": "User not found."}), 404
+    _set_message_typing_state(
+        int(current_user.id),
+        int(receiver_id),
+        is_typing=bool(payload.get("is_typing")),
+    )
+    return jsonify({"ok": True})
+
+
+@app.route("/api/messages/typing_status", methods=["GET"])
+@login_required
+def api_message_typing_status():
+    _ensure_db_tables()
+    other_user_id = _parse_int_arg("user_id", None, minimum=1)
+    if not other_user_id:
+        return jsonify({"error": "user_id is required"}), 400
+    other_user = User.query.get(int(other_user_id))
+    if other_user is None:
+        return jsonify({"error": "User not found."}), 404
+    is_typing = _message_typing_status(int(other_user_id), int(current_user.id))
+    return jsonify(
+        {
+            "ok": True,
+            "is_typing": bool(is_typing),
+            "user_name": _user_display_name(other_user),
         }
     )
 

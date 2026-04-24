@@ -46,12 +46,19 @@
 <div class="page-who-we-are">
   <section class="page-who-we-are__hero" aria-labelledby="wwa-hero-title">
     <div class="container">
-      <h1 class="page-who-we-are__hero-title" id="wwa-hero-title">Who We Are</h1>
-      {# EDIT: hero subtitle #}
-      <p class="page-who-we-are__hero-lead">At CTS Group, sustainability and ESG is about leadership and progress, not just compliance.
-        We are committed to embedding environmental, social, and governance (ESG) principles across our operations, projects, and decision-making to create lasting value for our clients, our people, and our communities.
-        We are one of the biggest desing and build contractors in Europe and the largest in the Nordics.
-      With a globally diverse team, group companies and experienced partners, we use standardised solutions to build Data Centers. </p>
+      <div class="page-who-we-are__media-layout">
+        <div class="page-who-we-are__media-copy">
+          <h1 class="page-who-we-are__hero-title" id="wwa-hero-title">Who We Are</h1>
+          {# EDIT: hero subtitle #}
+          <p class="page-who-we-are__hero-lead">At CTS Group, sustainability and ESG is about leadership and progress, not just compliance.
+            We are committed to embedding environmental, social, and governance (ESG) principles across our operations, projects, and decision-making to create lasting value for our clients, our people, and our communities.
+            We are one of the biggest desing and build contractors in Europe and the largest in the Nordics.
+          With a globally diverse team, group companies and experienced partners, we use standardised solutions to build Data Centers. </p>
+        </div>
+        <div class="page-who-we-are__media-visual">
+          <img class="page-who-we-are__office-image" src="{{ url_for('static', filename='images/Offices/Dublin.jpg') }}" alt="CTS Dublin office">
+        </div>
+      </div>
     </div>
   </section>
 
@@ -165,14 +172,21 @@
   </section>
 
 <div class="page-who-we-are">
-  <section class="page-who-we-are__hero" aria-labelledby="wwa-hero-title">
+  <section class="page-who-we-are__hero page-who-we-are__hero--secondary" aria-labelledby="wwa-dublin-title">
     <div class="container">
-      <h1 class="page-who-we-are__hero-title" id="wwa-hero-title"></h1>
-      {# EDIT: hero subtitle #}
-      <ul>
-        <li class="page-who-we-are__hero-lead">Our Dublin office serves as a key strategic hub for the group, acting as the Center of Excellence for both operational and corporate sustainability. From this location, we are driving forward our Sustainability ambitions, embedding sustainability into every face of the business. The office plays a central role in shaping our sustainability strategy, regulatory reporting, and driving innovation in environmental best practice. </li>
-        <li class="page-who-we-are__hero-lead"> Alongside sustainability, the Dublin office also houses other vital business functions including Health & Safety, Planning, Estimation, and Bids, making it a multidisciplinary base that supports project delivery, operational excellence, and strategic growth. </li>
-      </ul>
+      <div class="page-who-we-are__media-layout page-who-we-are__media-layout--reverse">
+        <div class="page-who-we-are__media-visual">
+          <img class="page-who-we-are__office-image" src="{{ url_for('static', filename='images/Offices/Dublin.jpg') }}" alt="CTS Dublin office">
+        </div>
+        <div class="page-who-we-are__media-copy">
+          <h2 class="page-who-we-are__hero-title" id="wwa-dublin-title"></h2>
+          {# EDIT: hero subtitle #}
+          <ul class="page-who-we-are__hero-list">
+            <li class="page-who-we-are__hero-lead">Our Dublin office serves as a key strategic hub for the group, acting as the Center of Excellence for both operational and corporate sustainability. From this location, we are driving forward our Sustainability ambitions, embedding sustainability into every face of the business. The office plays a central role in shaping our sustainability strategy, regulatory reporting, and driving innovation in environmental best practice. </li>
+            <li class="page-who-we-are__hero-lead"> Alongside sustainability, the Dublin office also houses other vital business functions including Health & Safety, Planning, Estimation, and Bids, making it a multidisciplinary base that supports project delivery, operational excellence, and strategic growth. </li>
+          </ul>
+        </div>
+      </div>
     </div>
   </section>
 

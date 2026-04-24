@@ -14,6 +14,19 @@ import pandas as pd
 from pandas.core.accessor import CachedAccessor
 from pandas.core.methods.describe import describe_categorical_1d
 
+TEMPLATE_MODE_2026 = "2026"
+_CAT1_SHEETS_2026_COMPAT = {
+    "scope 3 cat 1 goods spend",
+    "scope 3 cat 1 goods activity",
+    "scope 3 cat 1 common purchases",
+    "scope 3 cat 1 services spend",
+    "scope 3 cat 1 services activity",
+    "scope 3 cat 1 supplier summary",
+    "scope 3 cat 1 goods services",
+    "scope 3 services spend",
+    "scope 3 category 1 purchased goods & services",
+}
+
 
 # -----------------------------
 # Feature flags (runtime)
@@ -33,6 +46,14 @@ def _env_flag(name: str, default: bool = False) -> bool:
     if v in {"0", "false", "no", "n", "off", ""}:
         return False
     return default
+
+
+def _is_2026_mode() -> bool:
+    return str(os.getenv("CTS_TEMPLATE_MODE") or "").strip() == TEMPLATE_MODE_2026
+
+
+def _is_2026_cat1_sheet(sheet_name: str) -> bool:
+    return str(sheet_name or "").strip().lower() in _CAT1_SHEETS_2026_COMPAT
 
 
 # This dictionary will be provided by the Sustainability Data Analyst.
@@ -1098,6 +1119,14 @@ def map_emission_factor(
             return re.sub(r"[^a-z0-9]", "", s)
 
         def _pick_input_key(sheet_name_low: str) -> Optional[str]:
+            if _is_2026_mode() and _is_2026_cat1_sheet(sheet_name_low):
+                return _get_first_present(
+                    row,
+                    [
+                        "Description",
+                        "description",
+                    ],
+                )
             # Special-case: Mecwide Nordics rows need Product description as key
             # because Product type is often too generic in their source workbook.
             src_val_any = _get_first_present(
@@ -1729,7 +1758,7 @@ def map_emission_factor(
             "scope 3 purchased service spend".lower(),
         }
 
-        if special_sheet:
+        if special_sheet and not (_is_2026_mode() and _is_2026_cat1_sheet(spend_sheet_low)):
             # 1) Try Product Code / TFM Code exact match
             row_code = _get_first_present(
                 row,

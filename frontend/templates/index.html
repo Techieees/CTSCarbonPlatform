@@ -3,6 +3,10 @@
 
 {% block title %}GHG Data Collection System - Home{% endblock %}
 
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}">
+{% endblock %}
+
 {% block content %}
 <section class="lp-hero" data-parallax-scope>
     <div class="lp-grid" aria-hidden="true"></div>
@@ -97,75 +101,51 @@
         <div class="lp-split">
             <div class="lp-copy" data-reveal>
                 <div class="eyebrow"></div>
-                <h3>A clear overview of progress across data collection and reporting</h3>
+                <h3>Feed style internal updates</h3>
                 <p>
-                    Readable cards provide a simple overview of data completeness, progress, and overall system readiness.
+                    
                 </p>
             </div>
 
             <div class="lp-right" aria-label="Product preview" data-reveal>
-                <div class="lp-float">
-                    <article class="glass-card gc-1" role="group" aria-label="Collection status">
-                        <div class="gc-top">
-                            <span class="gc-pill"><span class="gc-dot" aria-hidden="true"></span>Collection</span>
-                            <span class="gc-badge good">Healthy</span>
+                <div class="lp-feed-preview">
+                    <article class="lp-feed-card" role="group" aria-label="ESG update">
+                        <div class="lp-feed-card__meta">
+                            <div>
+                                <h4>Sean Higgins</h4>
+                                <p>Today, 09:30</p>
+                            </div>
+                            <span class="lp-feed-tag">ESG</span>
                         </div>
-                        <div class="gc-body">
-                            <div class="gc-row">
-                                <div class="gc-label">Subsidiaries</div>
-                                <div class="gc-value">24</div>
-                            </div>
-                            <div class="gc-row">
-                                <div class="gc-label">Latest cycle</div>
-                                <div class="gc-value">On track</div>
-                            </div>
-                            <div class="gc-row">
-                                <div class="gc-label">Validation</div>
-                                <div class="gc-badge good">Passing</div>
-                            </div>
-                        </div>
+                        <p class="lp-feed-card__content">
+                            CSRD policy documentation has been consolidated for the next reporting review cycle.
+                        </p>
                     </article>
 
-                    <article class="glass-card gc-2" role="group" aria-label="Reporting snapshot">
-                        <div class="gc-top">
-                            <span class="gc-pill"><span class="gc-dot" aria-hidden="true"></span>Reporting</span>
-                            <span class="gc-badge warn">Review</span>
+                    <article class="lp-feed-card" role="group" aria-label="Platform update">
+                        <div class="lp-feed-card__meta">
+                            <div>
+                                <h4>Florian Demir</h4>
+                                <p>Yesterday, 16:10</p>
+                            </div>
+                            <span class="lp-feed-tag">Platform</span>
                         </div>
-                        <div class="gc-body">
-                            <div class="gc-row">
-                                <div class="gc-label">Scope mix</div>
-                                <div class="gc-value">1 / 2 / 3</div>
-                            </div>
-                            <div class="gc-row">
-                                <div class="gc-label">Exports</div>
-                                <div class="gc-value">Categories</div>
-                            </div>
-                            <div class="gc-row">
-                                <div class="gc-label">Traceability</div>
-                                <div class="gc-badge good">Strong</div>
-                            </div>
-                        </div>
+                        <p class="lp-feed-card__content">
+                            Dashboard card spacing and content surfaces now follow a simpler rectangular layout.
+                        </p>
                     </article>
 
-                    <article class="glass-card gc-3" role="group" aria-label="Pipeline automation">
-                        <div class="gc-top">
-                            <span class="gc-pill"><span class="gc-dot" aria-hidden="true"></span>Automation</span>
-                            <span class="gc-badge good">Ready</span>
+                    <article class="lp-feed-card" role="group" aria-label="KPI update">
+                        <div class="lp-feed-card__meta">
+                            <div>
+                                <h4>Marta Gulman</h4>
+                                <p>Mon, 11:45</p>
+                            </div>
+                            <span class="lp-feed-tag">KPI</span>
                         </div>
-                        <div class="gc-body">
-                            <div class="gc-row">
-                                <div class="gc-label">Stage 1</div>
-                                <div class="gc-badge good">Normalized</div>
-                            </div>
-                            <div class="gc-row">
-                                <div class="gc-label">Stage 2</div>
-                                <div class="gc-badge good">Mapped</div>
-                            </div>
-                            <div class="gc-row">
-                                <div class="gc-label">Downloads</div>
-                                <div class="gc-value">One click</div>
-                            </div>
-                        </div>
+                        <p class="lp-feed-card__content">
+                            Updated emissions totals are ready for internal review before the next consolidation step.
+                        </p>
                     </article>
                 </div>
             </div>
@@ -197,7 +177,7 @@
                 <div class="icon" aria-hidden="true">{{ illu.illu_lp_chart() }}</div>
                 <h3>Compatible with various API integrations.</h3>
                 <ul>
-                    <li>API (Application Programming Interface) integration allows ESG software to directly connect and pull data from source systems.</li>
+                    <li>API integration allows ESG software to directly connect and pull data from source systems.</li>
                     <li>Ultimately, robust connectivity is essential for scaling sustainable practices across complex networks.</li>
                 </ul>
             </div>

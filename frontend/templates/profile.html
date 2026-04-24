@@ -67,6 +67,23 @@
   body.dark-mode .iti__country:hover {
     background: rgba(255, 255, 255, 0.08);
   }
+  .profile-page-note {
+    border: 1px dashed var(--border);
+    border-radius: 0.9rem;
+    padding: 0.9rem 1rem;
+    background: var(--surface);
+    color: var(--muted);
+  }
+  .profile-page-locations {
+    display: grid;
+    gap: 0.9rem;
+  }
+  .profile-page-location {
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    padding: 1rem;
+    background: var(--surface);
+  }
 </style>
 {% endblock %}
 
@@ -91,7 +108,7 @@
                         <p class="profile-page__meta">Company is set during onboarding and cannot be changed here.</p>
                     </div>
 
-                    <form method="POST" enctype="multipart/form-data">
+                    <form method="POST" enctype="multipart/form-data" data-profile-form>
                         <div class="mb-3">
                             <label class="form-label">Company</label>
                             <input type="text" class="form-control" value="{{ company_display }}" disabled readonly>
@@ -131,6 +148,85 @@
                                 <label class="form-label" for="phone">Phone number</label>
                                 <input type="tel" class="form-control" id="phone" name="phone" value="{{ current_user.phone or '' }}" data-phone-input autocomplete="tel">
                             </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="template_mode">Template mode</label>
+                                <select class="form-select" id="template_mode" name="template_mode">
+                                    {% for mode in template_mode_options %}
+                                    <option value="{{ mode }}" {% if mode == current_template_mode %}selected{% endif %}>{{ mode|upper if mode == '2026' else 'Legacy' }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="business_type">Business Type</label>
+                                <select class="form-select" id="business_type" name="business_type" data-business-type-select>
+                                    <option value="">Select business type</option>
+                                    {% for option in business_type_options %}
+                                    <option value="{{ option }}" {% if option == (current_user.business_type or '') %}selected{% endif %}>{{ option }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-6" data-product-type-wrapper hidden>
+                                <label class="form-label" for="product_type">Product Type</label>
+                                <select class="form-select" id="product_type" name="product_type" data-product-type-select>
+                                    <option value="">Select product type</option>
+                                    <option value="NordicEPOD" {% if (current_user.product_type or '') == 'NordicEPOD' %}selected{% endif %}>NordicEPOD</option>
+                                    <option value="Piping" {% if (current_user.product_type or '') in ('Piping', 'DC Piping', 'Pipe', 'Pipes') %}selected{% endif %}>Piping</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="quantity">Quantity</label>
+                                <input type="text" class="form-control" id="quantity" name="quantity" value="{{ current_user.quantity or '' }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="quantity_unit">Quantity Unit</label>
+                                <input type="text" class="form-control" id="quantity_unit" name="quantity_unit" value="{{ current_user.quantity_unit or '' }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="number_of_products_in_use">Number of products in use</label>
+                                <input type="text" class="form-control" id="number_of_products_in_use" name="number_of_products_in_use" value="{{ current_user.number_of_products_in_use or '' }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="end_use_location">End Use Location</label>
+                                <input type="text" class="form-control" id="end_use_location" name="end_use_location" value="{{ current_user.end_use_location or '' }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="heating_source">Heating Source</label>
+                                <select class="form-select" id="heating_source" name="heating_source" data-heating-source-select>
+                                    <option value="">Select heating source</option>
+                                    {% for option in heating_source_options %}
+                                    <option value="{{ option }}" {% if option == (current_user.heating_source or '') %}selected{% endif %}>{{ option }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="travel_provider">Travel provider</label>
+                                <select class="form-select" id="travel_provider" name="travel_provider" data-travel-provider-select>
+                                    {% for value, label in travel_provider_options %}
+                                    <option value="{{ value }}" {% if value == (current_user.travel_provider or '') %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-12" data-heating-note hidden>
+                                <div class="profile-page-note">
+                                    Template visibility for heating-related entries is controlled by the backend profile rules in the selected mode.
+                                </div>
+                            </div>
+                            <div class="col-12" data-travel-provider-note hidden>
+                                <div class="profile-page-note">
+                                    Travel provider specific templates will be enabled from backend profile rules when this flag is used.
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <div class="d-flex align-items-center justify-content-between gap-3">
+                                    <div>
+                                        <label class="form-label mb-1">Operating Locations</label>
+                                        <p class="text-muted mb-0 small">Add each country and site type combination used in operations.</p>
+                                    </div>
+                                    <button type="button" class="btn btn-secondary btn-sm" data-add-operating-location>Add location</button>
+                                </div>
+                                <input type="hidden" name="operating_locations_json" id="operating_locations_json" value='{{ operating_locations_initial | tojson }}'>
+                                <div class="profile-page-locations mt-3" data-operating-locations></div>
+                            </div>
                             <div class="col-12">
                                 <label class="form-label" for="profile_photo">Profile photo</label>
                                 <input type="file" class="form-control" id="profile_photo" name="profile_photo" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp">
@@ -150,10 +246,13 @@
 {% block scripts %}
 <script>
   window.__countryFlagsUrl = "{{ url_for('static', filename='data/country_flags.json') }}";
+  window.__profileSetupInitialLocations = {{ operating_locations_initial | tojson }};
+  window.__operatingLocationCountryOptions = {{ iso_countries | tojson }};
 </script>
 <script src="https://cdn.jsdelivr.net/npm/intl-tel-input/build/js/intlTelInput.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/intl-tel-input/build/js/utils.js"></script>
 <script src="{{ url_for('static', filename='js/country-flags.js') }}"></script>
+<script src="{{ url_for('static', filename='js/profile_setup.js') }}"></script>
 <script>
   (function () {
     const phoneInput = document.querySelector("[data-phone-input]");

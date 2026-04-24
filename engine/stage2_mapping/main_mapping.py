@@ -123,6 +123,39 @@ def _canon_sheet_name(name: str) -> str:
 
 DROP_SHEETS_NORMALIZED = {_canon_sheet_name(n) for n in DROP_SHEETS}
 
+TEMPLATE_MODE_2026 = "2026"
+_CANONICAL_2026_SHEET_ALIASES: Dict[str, str] = {
+    "Scope 3 Category 1 Purchased Goods & Services": "Scope 3 Cat 1 Goods Spend",
+    "Scope 3 Category 6 Business Travel": "Scope 3 Cat 6 Business Travel",
+    "Scope 3 Category 9 Downstream Transportation": "Scope 3 Cat 4+9 Transport Spend",
+    "Scope 3 Category 12 End of Life": "Scope 3 Cat 12 End of Life",
+}
+_DEPRECATED_2026_SHEETS = {"Scope 1 Fugitive Gases", "Scope 1 Gas Usage"}
+_CAT1_SHEETS_2026_COMPAT = {
+    "Scope 3 Cat 1 Goods Spend",
+    "Scope 3 Cat 1 Goods Activity",
+    "Scope 3 Cat 1 Common Purchases",
+    "Scope 3 Cat 1 Services Spend",
+    "Scope 3 Cat 1 Services Activity",
+    "Scope 3 Cat 1 Supplier Summary",
+    "Scope 3 Cat 1 Goods Services",
+    "Scope 3 Services Spend",
+}
+
+
+def _is_2026_mode() -> bool:
+    return str(os.getenv("CTS_TEMPLATE_MODE") or "").strip() == TEMPLATE_MODE_2026
+
+
+def _normalize_2026_sheet_name(sheet_name: str) -> str:
+    if not _is_2026_mode():
+        return str(sheet_name or "").strip()
+    return _CANONICAL_2026_SHEET_ALIASES.get(str(sheet_name or "").strip(), str(sheet_name or "").strip())
+
+
+def _is_2026_cat1_sheet(sheet_name: str) -> bool:
+    return _is_2026_mode() and _normalize_2026_sheet_name(sheet_name) in _CAT1_SHEETS_2026_COMPAT
+
 
 def _build_external_manual_lookups(base_dir: Path) -> Tuple[
     Dict[str, Dict[str, Optional[object]]],
@@ -1033,7 +1066,10 @@ def process_all_sheets() -> None:
 
     done = 0
 
-    for sheet_name, df in in_sheets.items():
+    for source_sheet_name, df in in_sheets.items():
+        sheet_name = _normalize_2026_sheet_name(source_sheet_name)
+        if _is_2026_mode() and source_sheet_name in _DEPRECATED_2026_SHEETS:
+            continue
         # Drop unwanted sheets entirely (robust to case/spacing)
         if _canon_sheet_name(sheet_name) in DROP_SHEETS_NORMALIZED:
             continue
@@ -1050,6 +1086,8 @@ def process_all_sheets() -> None:
 
         df_proc = df.copy()
         df_proc["Sheet"] = sheet_name
+        if source_sheet_name != sheet_name:
+            df_proc["Source_Sheet_2026"] = source_sheet_name
 
         # Clean Cat 7: drop rows with empty Mode of Transport
         if sheet_name == "Scope 3 Cat 7 Employee Commute":
@@ -1104,6 +1142,8 @@ def process_all_sheets() -> None:
         ]
 
         use_override = (sheet_name in OVERRIDE_SHEET_NAMES) and (sheet_name in override_sheets)
+        if _is_2026_cat1_sheet(sheet_name):
+            use_override = False
 
         if use_override:
             # Attempt to build results from override sheet columns
@@ -1128,7 +1168,7 @@ def process_all_sheets() -> None:
             # 1) Try BoQ-based matching using Correct mapping example for selected sheets
             results_df = pd.DataFrame()
             manual_applied = False
-            if sheet_name in BOQ_INPUT_HEADERS_PER_SHEET:
+            if sheet_name in BOQ_INPUT_HEADERS_PER_SHEET and not _is_2026_cat1_sheet(sheet_name):
                 # Always use the single sheet from Correct mapping example.xlsx
                 override_df = _get_single_override_df(override_sheets)
                 boq_lookup = _build_boq_lookup(override_df)
@@ -1209,7 +1249,7 @@ def process_all_sheets() -> None:
                 "Scope 3 Cat 1 Services Activity",
                 "Scope 3 Cat 1 Supplier Summary",
             }
-            if override_sheets and sheet_name in MANUAL_OVERRIDE_SHEETS:
+            if override_sheets and sheet_name in MANUAL_OVERRIDE_SHEETS and not _is_2026_cat1_sheet(sheet_name):
                 bimms_df = override_sheets.get("BIMMS")
                 cts_df = override_sheets.get("CTS Denmark") if "CTS Denmark" in override_sheets else override_sheets.get("CTS Denmark ")
                 bimms_lookup = _build_service_provided_lookup(bimms_df) if bimms_df is not None else {}

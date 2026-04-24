@@ -15,6 +15,24 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from config import STAGE2_OUTPUT_DIR
 
+TEMPLATE_MODE_2026 = "2026"
+
+
+def _is_2026_mode() -> bool:
+    return str(os.getenv("CTS_TEMPLATE_MODE") or "").strip() == TEMPLATE_MODE_2026
+
+
+def _normalize_2026_category_label(value: object) -> str:
+    text = str(value or "").strip()
+    low = text.lower()
+    if "category 9" in low or "cat 9" in low:
+        return "Scope 3 Category 9 Downstream Transportation"
+    if "category 11" in low or "cat 11" in low:
+        return "Scope 3 Category 11 Use of Sold Product"
+    if "category 12" in low or "cat 12" in low:
+        return "Scope 3 Category 12 End of Life"
+    return text
+
 
 # This script prepares final outputs and groupwide summaries for the latest mapped results workbook.
 
@@ -170,6 +188,14 @@ def _detect_month_series(df: pd.DataFrame) -> Optional[pd.Series]:
                 continue
     return None
 
+
+def _create_trigger_compute_transportation_ten_percent():
+    trigger=["On","Off"]
+    if trigger == "On":
+        print("Transportation 10 percent has been calculated")
+    else:
+        print("We are in 2026, no need for '10%' calculation amigo")
+    return
 
 def compute_transportation_ten_percent(all_sheets: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     """Compute Transportation %10 per company per month from Cat 1 sheets.
@@ -475,7 +501,7 @@ def clean_sheets_for_final_output(all_sheets: Dict[str, pd.DataFrame]) -> Dict[s
                     new_df[cons_col] = _to_numeric_mixed(new_df[cons_col])
             except Exception:
                 pass
-        elif n == "Scope 3 Cat 4+9 Transport Spend":
+        elif n == "Scope 3 Cat 4+9 Transport Spend" and not _is_2026_mode():
             new_df = _drop_rows_where_blank(new_df, ["Purchase Date (Purchase order date or invoice date)", "Purchase Date"])
         elif n == "Scope 3 Cat 5 Waste":
             new_df = _drop_rows_where_blank(new_df, ["Waste Stream", "Waste stream"])
@@ -585,6 +611,11 @@ def clean_sheets_for_final_output(all_sheets: Dict[str, pd.DataFrame]) -> Dict[s
                 new_df["GHGP Category"] = mapped_val
         except Exception:
             pass
+        if _is_2026_mode():
+            try:
+                new_df["GHGP Category"] = new_df["GHGP Category"].map(_normalize_2026_category_label)
+            except Exception:
+                pass
 
         # Add Company column from Source_file (strip trailing .xlsx/.xls)
         try:

@@ -1,0 +1,475 @@
+{% extends "base.html" %}
+
+{% block title %}Averages{% endblock %}
+
+{% block extra_head %}
+<style>
+  .averages-page .averages-hero,
+  .averages-page .averages-card,
+  .averages-page .averages-summary,
+  .averages-page .averages-state-card {
+    border: 1px solid var(--bs-border-color);
+    border-radius: 1rem;
+    box-shadow: 0 0.75rem 1.5rem rgba(15, 23, 42, 0.05);
+  }
+  .averages-page .averages-card {
+    height: 100%;
+  }
+  .averages-page .averages-card__icon {
+    width: 2.75rem;
+    height: 2.75rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.85rem;
+    background: var(--bs-secondary-bg);
+    font-size: 1.15rem;
+  }
+  .averages-page .averages-card__title {
+    font-size: 1.1rem;
+    font-weight: 700;
+  }
+  .averages-page .averages-card__meta {
+    font-size: 0.92rem;
+    color: var(--bs-secondary-color);
+  }
+  .averages-page .averages-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1rem;
+  }
+  .averages-page .averages-summary-item {
+    padding: 1rem;
+    border-radius: 0.9rem;
+    background: var(--bs-secondary-bg);
+  }
+  .averages-page .averages-summary-item__label {
+    font-size: 0.82rem;
+    color: var(--bs-secondary-color);
+    margin-bottom: 0.35rem;
+  }
+  .averages-page .averages-summary-item__value {
+    font-size: 1.2rem;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .averages-page .averages-summary__value {
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .averages-page .averages-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    justify-content: flex-end;
+  }
+  .averages-page .averages-feedback {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+    padding: 0.75rem 1rem;
+    border-radius: 0.9rem;
+    background: var(--bs-secondary-bg);
+  }
+  .averages-page .averages-feedback.is-success {
+    color: var(--bs-success-text-emphasis);
+    background: var(--bs-success-bg-subtle);
+  }
+  .averages-page .averages-feedback.is-error {
+    color: var(--bs-danger-text-emphasis);
+    background: var(--bs-danger-bg-subtle);
+  }
+  .averages-page .averages-last-updated {
+    color: var(--bs-secondary-color);
+    font-size: 0.92rem;
+  }
+  @media (max-width: 991.98px) {
+    .averages-page .averages-summary-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 575.98px) {
+    .averages-page .averages-summary-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="averages-page section">
+  <div class="container-fluid px-3 px-md-4 mt-4">
+    <div class="card averages-hero mb-4">
+      <div class="card-body p-4">
+        <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
+          <div>
+            <h1 class="h3 mb-2">Averages Input</h1>
+            <p class="text-muted mb-1">Capture electricity, heating, waste, and water averages in one clean workspace.</p>
+            {% if averages_owner_can_select_company %}
+            <div class="mt-3" style="max-width: 320px;">
+              <label class="form-label small text-muted mb-1" for="averagesCompanySelect">Select company</label>
+              <select id="averagesCompanySelect" class="form-select">
+                {% for option in averages_company_options %}
+                <option value="{{ option }}" {% if company_name == option %}selected{% endif %}>{{ option }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            {% else %}
+            <div class="small text-muted">Company: <span class="fw-semibold" id="averagesCompanyLabel">{{ company_name or current_user.company_name or 'Not assigned' }}</span></div>
+            {% endif %}
+          </div>
+          <div class="card averages-summary">
+            <div class="card-body py-3 px-4 text-center">
+              <div class="small text-muted mb-1">Water per m²</div>
+              <div class="averages-summary__value" id="waterPerM2Value">
+                {% if averages_data.water_per_m2 not in ('', none) %}
+                {{ '%.4f'|format(averages_data.water_per_m2) }}
+                {% else %}
+                --
+                {% endif %}
+              </div>
+              <div class="small text-muted mt-1">m³ / m²</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card averages-state-card mb-4" id="averagesSummaryCard">
+      <div class="card-body p-4">
+        <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3 mb-3">
+          <div>
+            <h2 class="h5 mb-1">Saved Data Summary</h2>
+            <p class="text-muted mb-0">Latest saved averages for this company.</p>
+          </div>
+          <div class="averages-last-updated" id="averagesLastUpdated">{{ averages_data.updated_at_label or 'No data saved yet' }}</div>
+        </div>
+        <div class="averages-summary-grid" id="averagesSummaryGrid">
+          <div class="averages-summary-item">
+            <div class="averages-summary-item__label">Electricity kWh</div>
+            <div class="averages-summary-item__value" id="summaryElectricity">{{ averages_data.summary.electricity_kwh or '--' }}</div>
+          </div>
+          <div class="averages-summary-item">
+            <div class="averages-summary-item__label">District heating kWh</div>
+            <div class="averages-summary-item__value" id="summaryDistrictHeating">{{ averages_data.summary.district_heating_kwh or '--' }}</div>
+          </div>
+          <div class="averages-summary-item">
+            <div class="averages-summary-item__label">Waste total</div>
+            <div class="averages-summary-item__value" id="summaryWaste">{{ averages_data.summary.waste_total or '--' }}</div>
+          </div>
+          <div class="averages-summary-item">
+            <div class="averages-summary-item__label">Water per m²</div>
+            <div class="averages-summary-item__value" id="summaryWaterPerM2">{{ averages_data.summary.water_per_m2 or '--' }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <form id="averagesForm" novalidate>
+      <div class="row g-4">
+        <div class="col-xl-6">
+          <div class="card averages-card">
+            <div class="card-body p-4">
+              <div class="d-flex align-items-center gap-3 mb-3">
+                <div class="averages-card__icon" aria-hidden="true">&#9889;</div>
+                <div>
+                  <h2 class="averages-card__title mb-1">Electricity</h2>
+                  <p class="averages-card__meta mb-0">Track kWh, country, and optional emission factor override.</p>
+                </div>
+              </div>
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label class="form-label" for="electricityKwh">kWh</label>
+                  <input id="electricityKwh" name="electricity_kwh" type="number" step="any" class="form-control" value="{{ averages_data.electricity_kwh }}">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" for="electricityCountry">Country</label>
+                  <select id="electricityCountry" name="electricity_country" class="form-select">
+                    <option value="">Select country</option>
+                    {% for code, name in country_options %}
+                    <option value="{{ name }}" {% if averages_data.electricity_country == name %}selected{% endif %}>{{ name }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="col-12">
+                  <label class="form-label" for="electricityEmissionFactor">Emission factor (optional)</label>
+                  <input id="electricityEmissionFactor" name="electricity_emission_factor" type="number" step="any" class="form-control" value="{{ averages_data.electricity_emission_factor }}">
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-xl-6">
+          <div class="card averages-card">
+            <div class="card-body p-4">
+              <div class="d-flex align-items-center gap-3 mb-3">
+                <div class="averages-card__icon" aria-hidden="true">&#9832;</div>
+                <div>
+                  <h2 class="averages-card__title mb-1">District Heating</h2>
+                  <p class="averages-card__meta mb-0">Capture heating volume and optional supplier reference.</p>
+                </div>
+              </div>
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label class="form-label" for="districtHeatingKwh">kWh</label>
+                  <input id="districtHeatingKwh" name="district_heating_kwh" type="number" step="any" class="form-control" value="{{ averages_data.district_heating_kwh }}">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" for="districtHeatingSupplier">Supplier (optional)</label>
+                  <input id="districtHeatingSupplier" name="district_heating_supplier" type="text" class="form-control" value="{{ averages_data.district_heating_supplier }}">
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-xl-6">
+          <div class="card averages-card">
+            <div class="card-body p-4">
+              <div class="d-flex align-items-center gap-3 mb-3">
+                <div class="averages-card__icon" aria-hidden="true">&#9851;</div>
+                <div>
+                  <h2 class="averages-card__title mb-1">Waste</h2>
+                  <p class="averages-card__meta mb-0">Record waste type, weight, and the reporting unit.</p>
+                </div>
+              </div>
+              <div class="row g-3">
+                <div class="col-md-4">
+                  <label class="form-label" for="wasteType">Waste type</label>
+                  <select id="wasteType" name="waste_type" class="form-select">
+                    <option value="">Select waste type</option>
+                    {% for option in waste_type_options %}
+                    <option value="{{ option }}" {% if averages_data.waste_type == option %}selected{% endif %}>{{ option }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label" for="wasteWeight">Weight</label>
+                  <input id="wasteWeight" name="waste_weight" type="number" step="any" class="form-control" value="{{ averages_data.waste_weight }}">
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label" for="wasteUnit">Unit</label>
+                  <select id="wasteUnit" name="waste_unit" class="form-select">
+                    <option value="">Select unit</option>
+                    {% for option in waste_unit_options %}
+                    <option value="{{ option }}" {% if averages_data.waste_unit == option %}selected{% endif %}>{{ option }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-xl-6">
+          <div class="card averages-card">
+            <div class="card-body p-4">
+              <div class="d-flex align-items-center gap-3 mb-3">
+                <div class="averages-card__icon" aria-hidden="true">&#8776;</div>
+                <div>
+                  <h2 class="averages-card__title mb-1">Water</h2>
+                  <p class="averages-card__meta mb-0">Calculate water intensity with total water and building size.</p>
+                </div>
+              </div>
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label class="form-label" for="waterTotalM3">Total water (m3)</label>
+                  <input id="waterTotalM3" name="water_total_m3" type="number" step="any" class="form-control" value="{{ averages_data.water_total_m3 }}">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" for="buildingSizeM2">Building size (m2)</label>
+                  <input id="buildingSizeM2" name="building_size_m2" type="number" step="any" class="form-control" value="{{ averages_data.building_size_m2 }}">
+                </div>
+                <div class="col-12">
+                  <label class="form-label" for="waterPerM2Display">Water per m2</label>
+                  <input id="waterPerM2Display" type="text" class="form-control" value="{% if averages_data.water_per_m2 not in ('', none) %}{{ '%.4f'|format(averages_data.water_per_m2) }}{% endif %}" readonly>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card averages-hero mt-4">
+        <div class="card-body p-4">
+          <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
+            <div>
+              <div class="fw-semibold">Actions</div>
+              <div class="averages-feedback" id="averagesStatus">No data saved yet</div>
+            </div>
+            <div class="averages-actions">
+              <button type="button" class="btn btn-ghost" id="calculateAveragesBtn">Calculate</button>
+              <button type="button" class="btn btn-primary" id="saveAveragesBtn">
+                <span class="save-btn__idle">Save</span>
+                <span class="save-btn__busy d-none"><span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Saving...</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </form>
+  </div>
+</section>
+
+<script type="application/json" id="averagesInitialData">{{ averages_data | tojson }}</script>
+<script type="application/json" id="averagesCompanyConfigJson">{{ {"selectedCompany": company_name, "ownerCanSelect": averages_owner_can_select_company} | tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const form = document.getElementById('averagesForm');
+  const calculateBtn = document.getElementById('calculateAveragesBtn');
+  const saveBtn = document.getElementById('saveAveragesBtn');
+  const status = document.getElementById('averagesStatus');
+  const waterTotal = document.getElementById('waterTotalM3');
+  const buildingSize = document.getElementById('buildingSizeM2');
+  const waterPerM2Display = document.getElementById('waterPerM2Display');
+  const waterPerM2Value = document.getElementById('waterPerM2Value');
+  const summaryElectricity = document.getElementById('summaryElectricity');
+  const summaryDistrictHeating = document.getElementById('summaryDistrictHeating');
+  const summaryWaste = document.getElementById('summaryWaste');
+  const summaryWaterPerM2 = document.getElementById('summaryWaterPerM2');
+  const lastUpdated = document.getElementById('averagesLastUpdated');
+  const companySelect = document.getElementById('averagesCompanySelect');
+  const companyConfig = JSON.parse(document.getElementById('averagesCompanyConfigJson')?.textContent || '{}');
+  const initialData = JSON.parse(document.getElementById('averagesInitialData')?.textContent || '{}');
+
+  if (!form || !calculateBtn || !saveBtn) return;
+
+  let selectedCompany = companyConfig.selectedCompany || '';
+
+  function asNumber(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function collectPayload() {
+    const formData = new FormData(form);
+    const payload = {};
+    formData.forEach((value, key) => {
+      payload[key] = String(value || '').trim();
+    });
+    payload.company = selectedCompany;
+    return payload;
+  }
+
+  function updateWaterMetric(value) {
+    const text = value === null || value === undefined || value === '' ? '--' : Number(value).toFixed(4);
+    waterPerM2Display.value = text === '--' ? '' : text;
+    waterPerM2Value.textContent = text;
+    summaryWaterPerM2.textContent = text;
+  }
+
+  function setStatus(message, type) {
+    status.textContent = message;
+    status.classList.remove('is-success', 'is-error');
+    if (type === 'success') status.classList.add('is-success');
+    if (type === 'error') status.classList.add('is-error');
+  }
+
+  function setSaving(isSaving) {
+    saveBtn.disabled = isSaving;
+    saveBtn.querySelector('.save-btn__idle')?.classList.toggle('d-none', isSaving);
+    saveBtn.querySelector('.save-btn__busy')?.classList.toggle('d-none', !isSaving);
+  }
+
+  function applyPayload(data) {
+    if (!data) return;
+    Object.keys(data).forEach(function (key) {
+      const input = form.querySelector('[name="' + key + '"]');
+      if (input && typeof data[key] !== 'object' && key !== 'water_per_m2') {
+        input.value = data[key] === null ? '' : data[key];
+      }
+    });
+    updateWaterMetric(data.water_per_m2);
+    if (data.summary) {
+      summaryElectricity.textContent = data.summary.electricity_kwh || '--';
+      summaryDistrictHeating.textContent = data.summary.district_heating_kwh || '--';
+      summaryWaste.textContent = data.summary.waste_total || '--';
+      summaryWaterPerM2.textContent = data.summary.water_per_m2 || '--';
+    }
+    lastUpdated.textContent = data.updated_at_label || 'No data saved yet';
+    setStatus(data.has_data ? 'Saved successfully' : 'No data saved yet', data.has_data ? 'success' : '');
+  }
+
+  function calculateWaterPerM2(showFeedback) {
+    const total = asNumber(waterTotal.value);
+    const size = asNumber(buildingSize.value);
+    if (total === null || size === null || size <= 0) {
+      updateWaterMetric('');
+      if (showFeedback) setStatus('Enter both water total and building size to calculate water per m².', 'error');
+      return null;
+    }
+    const result = total / size;
+    updateWaterMetric(result);
+    if (showFeedback) setStatus('Water intensity calculated successfully.', 'success');
+    return result;
+  }
+
+  async function loadExisting() {
+    try {
+      const response = await fetch('{{ url_for("api_averages_save") }}?company=' + encodeURIComponent(selectedCompany), {
+        headers: { 'Accept': 'application/json' }
+      });
+      const data = await response.json().catch(function () { return {}; });
+      if (!response.ok) throw new Error(data.error || 'Load failed.');
+      applyPayload(data.data || {});
+    } catch (error) {
+      setStatus(error.message || 'Unable to load saved data.', 'error');
+    }
+  }
+
+  async function save() {
+    setSaving(true);
+    setStatus('Saving averages...', '');
+    const payload = collectPayload();
+    payload.water_per_m2 = calculateWaterPerM2(false);
+    try {
+      const response = await fetch('{{ url_for("api_averages_save") }}', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json().catch(function () { return {}; });
+      if (!response.ok) {
+        throw new Error(data.error || 'Save failed.');
+      }
+      applyPayload(data.data || {});
+      if (data.mapping_message) {
+        setStatus((data.message || 'Saved successfully') + ' - ' + data.mapping_message, data.mapping_errors && data.mapping_errors.length ? 'error' : 'success');
+      } else {
+        setStatus(data.message || 'Saved successfully', 'success');
+      }
+    } catch (error) {
+      setStatus(error.message || 'Unable to save averages.', 'error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (initialData) {
+    applyPayload(initialData);
+  }
+
+  calculateBtn.addEventListener('click', function () {
+    calculateWaterPerM2(true);
+  });
+  saveBtn.addEventListener('click', save);
+  if (companySelect) {
+    companySelect.addEventListener('change', function () {
+      selectedCompany = companySelect.value || '';
+      loadExisting();
+    });
+  }
+  loadExisting();
+})();
+</script>
+{% endblock %}

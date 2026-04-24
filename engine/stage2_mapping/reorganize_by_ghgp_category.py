@@ -8,6 +8,24 @@ import sys
 
 import pandas as pd
 
+TEMPLATE_MODE_2026 = "2026"
+
+
+def _is_2026_mode() -> bool:
+    return str(os.getenv("CTS_TEMPLATE_MODE") or "").strip() == TEMPLATE_MODE_2026
+
+
+def _normalize_2026_category_label(value: object) -> str:
+    text = str(value or "").strip()
+    low = text.lower()
+    if "category 9" in low or "cat 9" in low:
+        return "Scope 3 Category 9 Downstream Transportation"
+    if "category 11" in low or "cat 11" in low:
+        return "Scope 3 Category 11 Use of Sold Product"
+    if "category 12" in low or "cat 12" in low:
+        return "Scope 3 Category 12 End of Life"
+    return text
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -581,12 +599,16 @@ def regroup_by_ghgp() -> Optional[Path]:
             # Ensure GHGP Category column present as canonical name
             if ghgp_col != "GHGP Category":
                 part["GHGP Category"] = part[ghgp_col]
+            if _is_2026_mode():
+                part["GHGP Category"] = part["GHGP Category"].map(_normalize_2026_category_label)
             # KATEGORİYE GÖRE GRUPLA: remap kuralını uygula (ör. Cat 15 Pensions → Cat 1 PGS)
             bucket_key = _remap_category_for_grouping(cat_value)
             # Görünen GHGP Category metnini de yeni bucket ile hizala
             try:
                 if str(bucket_key) != str(cat_value):
                     part["GHGP Category"] = str(bucket_key)
+                    if _is_2026_mode():
+                        part["GHGP Category"] = part["GHGP Category"].map(_normalize_2026_category_label)
             except Exception:
                 pass
             # Water sheet: exclude rows whose provenance is 'Water Tracker 2'
@@ -921,8 +943,6 @@ def regroup_by_ghgp() -> Optional[Path]:
                         "S3 Cat 3 FERA": ["Reporting period (month, year)"],
                         "S3 Cat 1 Purchased G&S": [
                             "Reporting period (month, year)",
-                            "Purchase Date (Purchase order date or invoice date)",
-                            "release date",
                         ],
                         "S3 Cat 7 Employee Commute": ["Reporting period (month, year)"],
                         "S3 Cat 5 Waste": ["Reporting period (month, year)"],
@@ -934,6 +954,11 @@ def regroup_by_ghgp() -> Optional[Path]:
                         "S3 Cat 15 Pensions": ["Reporting period (month, year)"],
                         "S3 Cat 4 Upstream Transport": ["release date", "Reporting_Month"],
                     }
+                    if not _is_2026_mode():
+                        priorities["S3 Cat 1 Purchased G&S"].extend([
+                            "Purchase Date (Purchase order date or invoice date)",
+                            "release date",
+                        ])
                     cols = priorities.get(sheet_name, [])
                     present = [c for c in cols if c in frame.columns]
                     if not present:
@@ -1020,6 +1045,8 @@ def regroup_by_ghgp() -> Optional[Path]:
 
                     # DC Piping özel kuralı: Date, 'Purchase Date (Purchase order date or invoice date)' sütunundan
                     try:
+                        if _is_2026_mode():
+                            raise StopIteration
                         if "Company" in dfc.columns:
                             mask_dc = dfc["Company"].astype(str).str.strip().str.lower() == "dc piping"
                             if bool(getattr(mask_dc, "any", lambda: False)()):
@@ -1054,6 +1081,8 @@ def regroup_by_ghgp() -> Optional[Path]:
 
                     # MC Prefab özel kuralı: Date, 'Purchase Date (Purchase order date or invoice date)' sütunundan
                     try:
+                        if _is_2026_mode():
+                            raise StopIteration
                         if "Company" in dfc.columns:
                             mask_mcp = dfc["Company"].astype(str).str.strip().str.lower() == "mc prefab"
                             if bool(getattr(mask_mcp, "any", lambda: False)()):
@@ -1086,6 +1115,8 @@ def regroup_by_ghgp() -> Optional[Path]:
 
                     # Velox özel kuralı: Date, 'Purchase Date (Purchase order date or invoice date)' sütunundan
                     try:
+                        if _is_2026_mode():
+                            raise StopIteration
                         if "Company" in dfc.columns:
                             mask_velox_c = dfc["Company"].astype(str).str.strip().str.lower() == "velox"
                             if bool(getattr(mask_velox_c, "any", lambda: False)()):
@@ -1118,6 +1149,8 @@ def regroup_by_ghgp() -> Optional[Path]:
 
                     # CTS EU özel kuralı: Date, 'Purchase Date (Purchase order date or invoice date)' sütunundan
                     try:
+                        if _is_2026_mode():
+                            raise StopIteration
                         if "Company" in dfc.columns:
                             comp_lower = dfc["Company"].astype(str).str.strip().str.lower()
                             mask_cts_eu = comp_lower.isin({"cts eu", "cts-eu"})

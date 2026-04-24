@@ -777,7 +777,7 @@ body.dark-mode .prod-pill--warn{
   font-size: .72rem;
   font-weight: 800;
   background: linear-gradient(135deg, var(--primary), var(--primary-2));
-  color: #fff;
+  color: var(--chart-tooltip-text);
 }
 .prod-flow-step:hover{
   transform: scale(1.04);
@@ -950,5 +950,82 @@ body.dark-mode .logo-marquee::after{
   .prod-chart-panel:hover,
   .prod-week-strip:hover{
     transform: none !important;
+  }
+}
+
+/* Feed preview kept from recent landing iteration */
+.lp-feed-preview{
+  --lp-feed-card-bg: var(--card-bg);
+  --lp-feed-card-soft: var(--card-bg-soft);
+  --lp-feed-text-primary: var(--text-primary);
+  --lp-feed-text-secondary: var(--muted);
+  --lp-feed-border-color: var(--border);
+  display: grid;
+  gap: 16px;
+}
+
+body.dark-mode .lp-feed-preview{
+  --lp-feed-card-bg: #1f2937;
+  --lp-feed-card-soft: #111827;
+  --lp-feed-text-primary: #f9fafb;
+  --lp-feed-text-secondary: #9ca3af;
+  --lp-feed-border-color: #374151;
+}
+
+.lp-feed-card{
+  border: 1px solid var(--lp-feed-border-color);
+  border-radius: 8px;
+  background: var(--lp-feed-card-bg);
+  color: var(--lp-feed-text-primary);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  padding: 18px;
+  transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.lp-feed-card__meta{
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.lp-feed-card__meta h4{
+  margin: 0 0 2px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--lp-feed-text-primary);
+}
+
+.lp-feed-card__meta p{
+  margin: 0;
+  color: var(--lp-feed-text-secondary);
+  font-size: 0.88rem;
+}
+
+.lp-feed-tag{
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid var(--lp-feed-border-color);
+  border-radius: 6px;
+  background: var(--lp-feed-card-soft);
+  color: var(--lp-feed-text-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease;
+}
+
+.lp-feed-card__content{
+  margin: 0;
+  color: var(--lp-feed-text-primary);
+  line-height: 1.65;
+}
+
+@media (max-width: 767px){
+  .lp-feed-card__meta{
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

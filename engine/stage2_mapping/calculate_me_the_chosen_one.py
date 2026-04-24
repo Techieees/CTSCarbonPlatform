@@ -24,6 +24,32 @@ from excel_writer_utils import preferred_excel_writer_engine
 
 Rule = Tuple[str, Tuple[str, ...]]  # (rule_kind, (colA, colB?, ...))
 
+TEMPLATE_MODE_2026 = "2026"
+_CAT1_SHEETS = {
+    "Scope 3 Cat 1 Goods Spend",
+    "Scope 3 Cat 1 Goods Activity",
+    "Scope 3 Cat 1 Common Purchases",
+    "Scope 3 Cat 1 Services Spend",
+    "Scope 3 Cat 1 Services Activity",
+    "Scope 3 Cat 1 Supplier Summary",
+    "Scope 3 Cat 1 Goods Services",
+    "Scope 3 Services Spend",
+}
+
+
+def _is_2026_mode() -> bool:
+    return str(os.getenv("CTS_TEMPLATE_MODE") or "").strip() == TEMPLATE_MODE_2026
+
+
+def _write_unique_sheets(writer: pd.ExcelWriter, sheets: Dict[str, pd.DataFrame]) -> None:
+    written_names: set[str] = set()
+    for name, df in sheets.items():
+        safe_name = name[:31] if len(name) > 31 else name
+        if safe_name in written_names:
+            continue
+        df.to_excel(writer, sheet_name=safe_name, index=False)
+        written_names.add(safe_name)
+
 
 SHEET_RULES: Dict[str, Rule] = {
     # Scope 1
@@ -385,6 +411,10 @@ def main() -> None:
         print(f"Failed to read workbook: {target}")
         return
 
+    if _is_2026_mode():
+        for deprecated_sheet in ("Scope 1 Fugitive Gases", "Scope 1 Gas Usage"):
+            all_sheets.pop(deprecated_sheet, None)
+
     # Initialize co2e=0.0 for all sheets
     for name, df in all_sheets.items():
         zeros = pd.Series([0.0] * len(df), index=df.index, dtype="float64")
@@ -399,6 +429,19 @@ def main() -> None:
             continue
         df = all_sheets[sheet].copy()
         kind, cols = rule
+        if _is_2026_mode() and sheet in _CAT1_SHEETS:
+            spend_col = _find_first_present_column(df, ["Spend_Euro", "Spend EUR", "Spend Euro", "Spend"])
+            ef_val_col = _find_first_present_column(df, ["ef_value", "EF Value", "Value"])
+            if spend_col is not None and ef_val_col is not None:
+                series = to_numeric(df[spend_col]).fillna(0.0) * to_numeric(df[ef_val_col]).fillna(0.0)
+            else:
+                series = pd.Series([0.0] * len(df), index=df.index, dtype="float64")
+            df["co2e"] = series
+            all_sheets[sheet] = df
+            total = float(series.sum(skipna=True)) if len(series) else 0.0
+            grand_total += total
+            per_sheet_totals.append((sheet, total))
+            continue
         # Special handling: Scope 1 Fuel Usage Spend → branch by Currency
         if sheet == "Scope 1 Fuel Usage Spend":
             cur_col = _find_first_present_column(df, ["currency", "Currency"])
@@ -449,6 +492,33 @@ def main() -> None:
                 continue
         # Special handling: Scope 1 Fuel Usage Activity can be distance- or fuel-based
         if sheet == "Scope 1 Fuel Usage Activity":
+            if _is_2026_mode():
+                ef_val_col = _find_first_present_column(df, [
+                    "ef_value", "EF Value", "Value"
+                ])
+                dist_col = _find_first_present_column(df, [
+                    "Distance travelled", "Distance Travelled", "Distance", "km travelled", "km"
+                ])
+                fuel_col = _find_first_present_column(df, [
+                    "Fuel consumption", "Fuel Consumption"
+                ])
+                if ef_val_col and (dist_col or fuel_col):
+                    ef_vals = to_numeric(df[ef_val_col]).fillna(0.0)
+                    dist_vals = to_numeric(df[dist_col]).fillna(0.0) if dist_col in df.columns else pd.Series([0.0] * len(df), index=df.index, dtype="float64")
+                    fuel_vals = to_numeric(df[fuel_col]).fillna(0.0) if fuel_col in df.columns else pd.Series([0.0] * len(df), index=df.index, dtype="float64")
+                    if dist_col and dist_col in df.columns:
+                        use_distance_mask = df[dist_col].notna() & df[dist_col].astype(str).str.strip().ne("")
+                    else:
+                        use_distance_mask = pd.Series([False] * len(df), index=df.index, dtype="bool")
+                    series = pd.Series([0.0] * len(df), index=df.index, dtype="float64")
+                    series[use_distance_mask] = (dist_vals * ef_vals)[use_distance_mask].fillna(0.0)
+                    series[~use_distance_mask] = (fuel_vals * ef_vals)[~use_distance_mask].fillna(0.0)
+                    df["co2e"] = series
+                    all_sheets[sheet] = df
+                    total = float(series.sum(skipna=True)) if len(series) else 0.0
+                    grand_total += total
+                    per_sheet_totals.append((sheet, total))
+                    continue
             # Prefer Distance travelled when EF Unit indicates per-km
             ef_unit_col = _find_first_present_column(df, [
                 "ef_unit", "EF Unit", "Unit", "Units"
@@ -482,6 +552,35 @@ def main() -> None:
                 grand_total += total
                 per_sheet_totals.append((sheet, total))
                 continue
+
+        if _is_2026_mode() and sheet == "Scope 3 Cat 6 Business Travel":
+            base_series = compute_series_for_sheet(df, rule)
+            if base_series is None or len(base_series) != len(df):
+                base_series = pd.Series([0.0] * len(df), index=df.index, dtype="float64")
+            override_col = _find_first_present_column(df, ["CO2e (kg)", "co2e (kg)"])
+            if override_col and override_col in df.columns:
+                override_vals_kg = to_numeric(df[override_col])
+                override_vals_t = override_vals_kg / 1000.0
+                use_override_mask = override_vals_kg.notna()
+            else:
+                override_vals_t = pd.Series([0.0] * len(df), index=df.index, dtype="float64")
+                use_override_mask = pd.Series([False] * len(df), index=df.index, dtype="bool")
+            series = base_series.astype("float64").copy()
+            series[use_override_mask] = override_vals_t[use_override_mask].fillna(0.0)
+            df["co2e"] = series
+            if "CO2e Source" not in df.columns:
+                df["CO2e Source"] = pd.Series([None] * len(df), dtype="object")
+            if "CO2e_Source" not in df.columns:
+                df["CO2e_Source"] = pd.Series([None] * len(df), dtype="object")
+            df.loc[use_override_mask, "CO2e Source"] = "client_provided"
+            df.loc[~use_override_mask, "CO2e Source"] = "calculated"
+            df.loc[use_override_mask, "CO2e_Source"] = "client_provided"
+            df.loc[~use_override_mask, "CO2e_Source"] = "calculated"
+            all_sheets[sheet] = df
+            total = float(series.sum(skipna=True)) if len(series) else 0.0
+            grand_total += total
+            per_sheet_totals.append((sheet, total))
+            continue
 
         
 
@@ -621,16 +720,12 @@ def main() -> None:
     writer_engine = preferred_excel_writer_engine()
     try:
         with pd.ExcelWriter(target, engine=writer_engine) as writer:
-            for name, df in all_sheets.items():
-                safe_name = name[:31] if len(name) > 31 else name
-                df.to_excel(writer, sheet_name=safe_name, index=False)
+            _write_unique_sheets(writer, all_sheets)
         written_path = target
     except PermissionError:
         ts_name = target.with_name(f"{target.stem}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}{target.suffix}")
         with pd.ExcelWriter(ts_name, engine=writer_engine) as writer:
-            for name, df in all_sheets.items():
-                safe_name = name[:31] if len(name) > 31 else name
-                df.to_excel(writer, sheet_name=safe_name, index=False)
+            _write_unique_sheets(writer, all_sheets)
         written_path = ts_name
 
     # Print concise summary

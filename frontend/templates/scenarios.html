@@ -1,0 +1,407 @@
+{% extends "base.html" %}
+
+{% block title %}Scenarios{% endblock %}
+
+{% block extra_head %}
+<style>
+  .scenarios-page .scenarios-hero,
+  .scenarios-page .scenario-card,
+  .scenarios-page .scenario-step-card,
+  .scenarios-page .scenario-summary-card {
+    border: 1px solid var(--bs-border-color);
+    border-radius: 1rem;
+    box-shadow: 0 0.75rem 1.5rem rgba(15, 23, 42, 0.05);
+  }
+  .scenarios-page .scenario-card__icon {
+    width: 2.75rem;
+    height: 2.75rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.85rem;
+    background: var(--bs-secondary-bg);
+    font-size: 1.15rem;
+  }
+  .scenarios-page .scenario-card__title {
+    font-size: 1.1rem;
+    font-weight: 700;
+  }
+  .scenarios-page .scenario-card__meta {
+    font-size: 0.92rem;
+    color: var(--bs-secondary-color);
+  }
+  .scenarios-page .scenario-insight {
+    padding: 0.9rem 1rem;
+    border-radius: 0.9rem;
+    background: var(--bs-secondary-bg);
+  }
+  .scenarios-page .scenario-insight__label {
+    font-size: 0.82rem;
+    color: var(--bs-secondary-color);
+    margin-bottom: 0.35rem;
+  }
+  .scenarios-page .scenario-insight__value {
+    font-size: 1rem;
+    font-weight: 700;
+  }
+  .scenarios-page .scenario-feedback {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+    padding: 0.75rem 1rem;
+    border-radius: 0.9rem;
+    background: var(--bs-secondary-bg);
+  }
+  .scenarios-page .scenario-feedback.is-success {
+    color: var(--bs-success-text-emphasis);
+    background: var(--bs-success-bg-subtle);
+  }
+  .scenarios-page .scenario-feedback.is-error {
+    color: var(--bs-danger-text-emphasis);
+    background: var(--bs-danger-bg-subtle);
+  }
+  .scenarios-page .scenario-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+  }
+  .scenarios-page .scenario-summary-item {
+    padding: 1rem;
+    border-radius: 0.9rem;
+    background: var(--bs-secondary-bg);
+  }
+  .scenarios-page .scenario-summary-item__label {
+    font-size: 0.82rem;
+    color: var(--bs-secondary-color);
+    margin-bottom: 0.35rem;
+  }
+  .scenarios-page .scenario-summary-item__value {
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.35;
+  }
+  @media (max-width: 991.98px) {
+    .scenarios-page .scenario-summary-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="scenarios-page section">
+  <div class="container-fluid px-3 px-md-4 mt-4">
+    <div class="card scenarios-hero mb-4">
+      <div class="card-body p-4">
+        <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
+          <div>
+            <h1 class="h3 mb-2">Scenarios</h1>
+            <p class="text-muted mb-2">Build company-specific scenario inputs for enabled categories and save them in one clean workflow.</p>
+            <div class="small text-muted">Template mode: <span class="fw-semibold">{{ template_mode or 'legacy' }}</span></div>
+          </div>
+          <div class="d-flex flex-wrap gap-2 align-self-start">
+            <span class="badge text-bg-light border">Enabled categories: {{ (enabled_categories or []) | join(', ') if enabled_categories else 'None' }}</span>
+            <span class="badge text-bg-light border">Disabled categories: {{ (disabled_categories or []) | join(', ') if disabled_categories else 'None' }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-4">
+      <div class="col-xl-4">
+        <div class="card scenario-step-card h-100">
+          <div class="card-body p-4">
+            <h2 class="h5 mb-3">Step 1: Select company</h2>
+            <label class="form-label" for="scenarioCompany">Company</label>
+            <select id="scenarioCompany" class="form-select mb-3">
+              {% for company in scenario_company_options %}
+              <option value="{{ company }}" {% if scenario_initial_company == company %}selected{% endif %}>{{ company }}</option>
+              {% endfor %}
+            </select>
+            <div class="small text-muted" id="scenarioCompanyHelp">Select a company to reveal the category input cards that apply to it.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-xl-8">
+        <div class="card scenario-step-card h-100">
+          <div class="card-body p-4">
+            <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-center">
+              <div>
+                <h2 class="h5 mb-1">Step 2: Category inputs</h2>
+                <p class="text-muted mb-0">Fill the active category cards and save the scenario set for the selected company.</p>
+              </div>
+              <button type="button" class="btn btn-primary" id="saveScenarioBtn">
+                <span class="save-btn__idle">Save Scenario</span>
+                <span class="save-btn__busy d-none"><span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Saving...</span>
+              </button>
+            </div>
+            <div class="scenario-feedback mt-3" id="scenarioStatus">No data saved yet</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card scenario-summary-card mt-4 mb-4" id="scenarioSummaryCard">
+      <div class="card-body p-4">
+        <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-3">
+          <div>
+            <h2 class="h5 mb-1">Saved Scenario Summary</h2>
+            <p class="text-muted mb-0">Latest saved values and active categories for the selected company.</p>
+          </div>
+          <div class="small text-muted" id="scenarioLastUpdated">No data saved yet</div>
+        </div>
+        <div class="scenario-summary-grid">
+          <div class="scenario-summary-item">
+            <div class="scenario-summary-item__label">Selected company</div>
+            <div class="scenario-summary-item__value" id="scenarioSummaryCompany">{{ scenario_initial_company }}</div>
+          </div>
+          <div class="scenario-summary-item">
+            <div class="scenario-summary-item__label">Active categories</div>
+            <div class="scenario-summary-item__value" id="scenarioSummaryCategories">--</div>
+          </div>
+          <div class="scenario-summary-item">
+            <div class="scenario-summary-item__label">Key values</div>
+            <div class="scenario-summary-item__value" id="scenarioSummaryValues">No data saved yet</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-4 mt-1" id="scenarioCards"></div>
+  </div>
+</section>
+
+<script type="application/json" id="scenarioCategoryConfigJson">{{ scenario_category_config | tojson }}</script>
+<script type="application/json" id="scenarioSavedDataJson">{{ scenario_saved_data | tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const companySelect = document.getElementById('scenarioCompany');
+  const cardsContainer = document.getElementById('scenarioCards');
+  const saveBtn = document.getElementById('saveScenarioBtn');
+  const status = document.getElementById('scenarioStatus');
+  const scenarioLastUpdated = document.getElementById('scenarioLastUpdated');
+  const scenarioSummaryCompany = document.getElementById('scenarioSummaryCompany');
+  const scenarioSummaryCategories = document.getElementById('scenarioSummaryCategories');
+  const scenarioSummaryValues = document.getElementById('scenarioSummaryValues');
+  const categoryConfig = JSON.parse(document.getElementById('scenarioCategoryConfigJson')?.textContent || '{}');
+  const savedData = JSON.parse(document.getElementById('scenarioSavedDataJson')?.textContent || '{}');
+
+  if (!companySelect || !cardsContainer || !saveBtn) return;
+
+  const fieldConfig = {
+    '9': [
+      { key: 'annual_production', label: 'Annual production', type: 'number' },
+      { key: 'transport_distance', label: 'Transport distance', type: 'number' },
+      { key: 'transport_type', label: 'Transport type', type: 'text' }
+    ],
+    '11': [
+      { key: 'number_of_products_in_use', label: 'Number of products in use', type: 'number' },
+      { key: 'usage_factor', label: 'Usage factor', type: 'number' }
+    ],
+    '12': [
+      { key: 'product_weight', label: 'Product weight', type: 'number' },
+      { key: 'waste_type', label: 'Waste type', type: 'text' },
+      { key: 'disposal_method', label: 'Disposal method', type: 'text' }
+    ]
+  };
+
+  const categoryMeta = {
+    '9': {
+      title: 'Category 9',
+      description: 'Capture production and downstream transport assumptions.'
+    },
+    '11': {
+      title: 'Category 11',
+      description: 'Model products in use and the applied usage factor.'
+    },
+    '12': {
+      title: 'Category 12',
+      description: 'Define end-of-life weight, waste type, and disposal route.'
+    }
+  };
+
+  function scenarioStateFor(company) {
+    return savedData[company] || {};
+  }
+
+  function setStatus(message, type) {
+    status.textContent = message;
+    status.classList.remove('is-success', 'is-error');
+    if (type === 'success') status.classList.add('is-success');
+    if (type === 'error') status.classList.add('is-error');
+  }
+
+  function setSaving(isSaving) {
+    saveBtn.disabled = isSaving;
+    saveBtn.querySelector('.save-btn__idle')?.classList.toggle('d-none', isSaving);
+    saveBtn.querySelector('.save-btn__busy')?.classList.toggle('d-none', !isSaving);
+  }
+
+  function insightFor(category, values) {
+    if (category === '9') {
+      const production = Number(values.annual_production || 0);
+      const distance = Number(values.transport_distance || 0);
+      const estimate = production && distance ? (production * distance).toFixed(0) : '--';
+      return 'Estimated transport impact: ' + estimate;
+    }
+    if (category === '11') {
+      const count = Number(values.number_of_products_in_use || 0);
+      const factor = Number(values.usage_factor || 0);
+      const preview = count && factor ? (count * factor).toFixed(2) : '--';
+      return 'Usage preview: ' + preview;
+    }
+    if (category === '12') {
+      const weight = Number(values.product_weight || 0);
+      const intensity = weight ? weight.toFixed(2) : '--';
+      return 'Waste intensity: ' + intensity;
+    }
+    return 'Structured output preview pending.';
+  }
+
+  function applySummary(company) {
+    const current = scenarioStateFor(company);
+    scenarioSummaryCompany.textContent = company || '--';
+    scenarioSummaryCategories.textContent = (current.active_categories || []).length ? current.active_categories.join(', ') : '--';
+    scenarioSummaryValues.textContent = (current.summary_values || []).length ? current.summary_values.join(' | ') : 'No data saved yet';
+    scenarioLastUpdated.textContent = current.updated_at_label || 'No data saved yet';
+  }
+
+  function renderCards() {
+    const company = companySelect.value;
+    const categories = categoryConfig[company] || [];
+    const currentState = scenarioStateFor(company);
+    const currentInputs = currentState.inputs || {};
+
+    cardsContainer.innerHTML = '';
+    applySummary(company);
+    if (!categories.length) {
+      setStatus('No categories available for the selected company.', 'error');
+      return;
+    }
+
+    setStatus(savedData[company] && savedData[company].has_data
+      ? 'Existing scenario data loaded. Update the cards and save when ready.'
+      : 'No data saved yet. Fill the category cards and save the scenario set.', '');
+
+    categories.forEach(function (category) {
+      const meta = categoryMeta[category] || { title: 'Category ' + category, description: '' };
+      const fields = fieldConfig[category] || [];
+      const values = currentInputs[category] || {};
+      const icon = category === '9' ? '&#128666;' : (category === '11' ? '&#9881;' : '&#9851;');
+
+      const col = document.createElement('div');
+      col.className = 'col-xl-4 col-md-6';
+      col.innerHTML = [
+        '<div class="card scenario-card h-100">',
+        '  <div class="card-body p-4">',
+        '    <div class="d-flex align-items-center justify-content-between gap-3 mb-3">',
+        '      <div class="d-flex align-items-center gap-3">',
+        '        <div class="scenario-card__icon" aria-hidden="true">' + icon + '</div>',
+        '        <div>',
+        '          <h3 class="scenario-card__title mb-0">' + meta.title + '</h3>',
+        '          <p class="scenario-card__meta mb-0">' + meta.description + '</p>',
+        '        </div>',
+        '      </div>',
+        '      <span class="badge text-bg-light border">Active</span>',
+        '    </div>',
+        fields.map(function (field) {
+          const value = values[field.key] || '';
+          const inputAttrs = field.type === 'number' ? 'type="number" step="any"' : 'type="text"';
+          return [
+            '<div class="mb-3">',
+            '  <label class="form-label" for="scenario-' + category + '-' + field.key + '">' + field.label + '</label>',
+            '  <input id="scenario-' + category + '-' + field.key + '" data-category="' + category + '" data-field="' + field.key + '" ' + inputAttrs + ' class="form-control" value="' + String(value).replace(/"/g, '&quot;') + '">',
+            '</div>'
+          ].join('');
+        }).join(''),
+        '    <div class="scenario-insight mt-2">',
+        '      <div class="scenario-insight__label">Output preview</div>',
+        '      <div class="scenario-insight__value" data-insight-for="' + category + '">' + insightFor(category, values) + '</div>',
+        '    </div>',
+        '  </div>',
+        '</div>'
+      ].join('');
+
+      cardsContainer.appendChild(col);
+    });
+
+    cardsContainer.querySelectorAll('[data-category][data-field]').forEach(function (input) {
+      input.addEventListener('input', function () {
+        const category = input.getAttribute('data-category');
+        const currentValues = collectInputs()[category] || {};
+        const insight = cardsContainer.querySelector('[data-insight-for="' + category + '"]');
+        if (insight) insight.textContent = insightFor(category, currentValues);
+      });
+    });
+  }
+
+  function collectInputs() {
+    const payload = {};
+    cardsContainer.querySelectorAll('[data-category][data-field]').forEach(function (input) {
+      const category = input.getAttribute('data-category');
+      const field = input.getAttribute('data-field');
+      if (!payload[category]) payload[category] = {};
+      payload[category][field] = String(input.value || '').trim();
+    });
+    return payload;
+  }
+
+  async function saveScenario() {
+    const company = companySelect.value;
+    setSaving(true);
+    setStatus('Saving scenario data...', '');
+    try {
+      const response = await fetch('{{ url_for("api_scenarios_save") }}', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+          company: company,
+          inputs: collectInputs()
+        })
+      });
+      const data = await response.json().catch(function () { return {}; });
+      if (!response.ok) {
+        throw new Error(data.error || 'Save failed.');
+      }
+      savedData[company] = data.data || {};
+      applySummary(company);
+      setStatus(data.message || 'Saved successfully', 'success');
+    } catch (error) {
+      setStatus(error.message || 'Unable to save scenario data.', 'error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function loadScenario(company) {
+    try {
+      const response = await fetch('{{ url_for("api_scenarios_save") }}?company=' + encodeURIComponent(company), {
+        headers: { 'Accept': 'application/json' }
+      });
+      const data = await response.json().catch(function () { return {}; });
+      if (!response.ok) throw new Error(data.error || 'Load failed.');
+      savedData[company] = data.data || savedData[company] || {};
+      renderCards();
+    } catch (error) {
+      setStatus(error.message || 'Unable to load scenario data.', 'error');
+    }
+  }
+
+  companySelect.addEventListener('change', renderCards);
+  saveBtn.addEventListener('click', saveScenario);
+  companySelect.addEventListener('change', function () {
+    loadScenario(companySelect.value);
+  });
+  renderCards();
+  loadScenario(companySelect.value);
+})();
+</script>
+{% endblock %}

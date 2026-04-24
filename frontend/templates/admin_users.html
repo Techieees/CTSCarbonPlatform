@@ -5,6 +5,8 @@
 
 {% block content %}
 <div class="container mt-4">
+  {% set create_form_values = create_form or {} %}
+  {% set create_form_errors = create_errors or {} %}
   <div class="row mb-3">
     <div class="col-12">
       <nav aria-label="breadcrumb">
@@ -13,6 +15,103 @@
           <li class="breadcrumb-item active" aria-current="page">User roles</li>
         </ol>
       </nav>
+      {% if (current_user.role or 'user') == 'owner' %}
+      <div class="card mb-3">
+        <div class="card-header">
+          <h4 class="mb-0 d-flex align-items-center">
+            {{ illu.illu_header_cog() }}<span class="ms-2">Create user</span>
+          </h4>
+        </div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">Only owner accounts can create new users. New accounts use the existing authentication system and can sign in immediately.</p>
+          <form method="post" action="{{ url_for('admin_create_user') }}" novalidate>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label for="createUserEmail" class="form-label">Email</label>
+                <input
+                  id="createUserEmail"
+                  name="email"
+                  type="email"
+                  class="form-control{% if create_form_errors.get('email') %} is-invalid{% endif %}"
+                  value="{{ create_form_values.get('email', '') }}"
+                  required
+                >
+                {% if create_form_errors.get('email') %}
+                <div class="invalid-feedback d-block">{{ create_form_errors.get('email') }}</div>
+                {% endif %}
+              </div>
+              <div class="col-md-6">
+                <label for="createUserPassword" class="form-label">Password</label>
+                <input
+                  id="createUserPassword"
+                  name="password"
+                  type="password"
+                  class="form-control{% if create_form_errors.get('password') %} is-invalid{% endif %}"
+                  required
+                >
+                {% if create_form_errors.get('password') %}
+                <div class="invalid-feedback d-block">{{ create_form_errors.get('password') }}</div>
+                {% endif %}
+              </div>
+              <div class="col-md-6">
+                <label for="createUserFullName" class="form-label">Full Name</label>
+                <input
+                  id="createUserFullName"
+                  name="full_name"
+                  type="text"
+                  class="form-control"
+                  value="{{ create_form_values.get('full_name', '') }}"
+                >
+              </div>
+              <div class="col-md-6">
+                <label for="createUserTitle" class="form-label">Title</label>
+                <input
+                  id="createUserTitle"
+                  name="title"
+                  type="text"
+                  class="form-control"
+                  value="{{ create_form_values.get('title', '') }}"
+                >
+              </div>
+              <div class="col-md-6">
+                <label for="createUserCompany" class="form-label">Company</label>
+                <select
+                  id="createUserCompany"
+                  name="company"
+                  class="form-select{% if create_form_errors.get('company') %} is-invalid{% endif %}"
+                >
+                  <option value="">Select company</option>
+                  {% for company in companies %}
+                  <option value="{{ company }}" {% if create_form_values.get('company') == company %}selected{% endif %}>{{ company }}</option>
+                  {% endfor %}
+                </select>
+                {% if create_form_errors.get('company') %}
+                <div class="invalid-feedback d-block">{{ create_form_errors.get('company') }}</div>
+                {% endif %}
+              </div>
+              <div class="col-md-6">
+                <label for="createUserRole" class="form-label">Role</label>
+                <select
+                  id="createUserRole"
+                  name="role"
+                  class="form-select{% if create_form_errors.get('role') %} is-invalid{% endif %}"
+                >
+                  {% for r in user_roles %}
+                  <option value="{{ r }}" {% if create_form_values.get('role', 'user') == r %}selected{% endif %}>{{ r }}</option>
+                  {% endfor %}
+                </select>
+                {% if create_form_errors.get('role') %}
+                <div class="invalid-feedback d-block">{{ create_form_errors.get('role') }}</div>
+                {% endif %}
+              </div>
+            </div>
+            <div class="mt-3 d-flex justify-content-end">
+              <button type="submit" class="btn btn-primary">Create User</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      {% endif %}
       <div class="card">
         <div class="card-header">
           <h4 class="mb-0 d-flex align-items-center">
@@ -29,14 +128,25 @@
             <table class="table table-sm table-hover align-middle mb-0" id="adminUsersTable">
               <thead>
                 <tr>
+                  <th scope="col">Name</th>
                   <th scope="col">Email</th>
+                  <th scope="col">Title</th>
+                  <th scope="col">Company</th>
                   <th scope="col" style="min-width: 280px;">Role</th>
                 </tr>
               </thead>
               <tbody>
                 {% for u in users %}
-                <tr data-user-email="{{ (u.email or '')|lower }}" data-user-role="{{ ((u.role or 'user')|lower) }}">
+                <tr
+                  data-user-email="{{ (u.email or '')|lower }}"
+                  data-user-role="{{ ((u.role or 'user')|lower) }}"
+                  data-user-name="{{ (((u.first_name or '') ~ ' ' ~ (u.last_name or ''))|trim)|lower }}"
+                  data-user-company="{{ (u.company_name or '')|lower }}"
+                >
+                  <td>{{ ((u.first_name or '') ~ ' ' ~ (u.last_name or ''))|trim or '—' }}</td>
                   <td class="font-monospace small">{{ u.email }}</td>
+                  <td>{{ u.job_title or '—' }}</td>
+                  <td>{{ u.company_name or '—' }}</td>
                   <td>
                     <form method="post" action="{{ url_for('admin_users') }}" class="d-flex flex-wrap gap-2 align-items-center">
                       <input type="hidden" name="user_id" value="{{ u.id }}">
@@ -77,7 +187,9 @@
       var tr = rows[i];
       var em = (tr.getAttribute('data-user-email') || '');
       var role = (tr.getAttribute('data-user-role') || '');
-      var show = !q || em.indexOf(q) !== -1 || role.indexOf(q) !== -1;
+      var name = (tr.getAttribute('data-user-name') || '');
+      var company = (tr.getAttribute('data-user-company') || '');
+      var show = !q || em.indexOf(q) !== -1 || role.indexOf(q) !== -1 || name.indexOf(q) !== -1 || company.indexOf(q) !== -1;
       tr.style.display = show ? '' : 'none';
     }
   }

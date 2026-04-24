@@ -1,76 +1,191 @@
 (function () {
-  const STORAGE_KEY = "cts-sidebar-collapsed";
-  const mq = window.matchMedia("(max-width: 991.98px)");
-
-  function getLayout() {
-    return document.getElementById("appLayout");
-  }
-
-  function syncSidebarState() {
-    const layout = getLayout();
-    if (!layout) return;
-    let labelsHidden;
-    if (mq.matches) {
-      layout.classList.add("app-layout--mobile-narrow");
-      labelsHidden = !layout.classList.contains("app-layout--mobile-expanded");
-    } else {
-      layout.classList.remove("app-layout--mobile-narrow", "app-layout--mobile-expanded");
-      labelsHidden = layout.classList.contains("app-layout--collapsed");
-    }
-    layout.classList.toggle("app-sidebar-labels-hidden", labelsHidden);
-
-    const btn = document.getElementById("appSidebarToggle");
-    if (btn) {
-      btn.setAttribute("aria-expanded", labelsHidden ? "false" : "true");
-    }
-  }
-
-  function onToggle() {
-    const layout = getLayout();
-    if (!layout) return;
-    if (mq.matches) {
-      layout.classList.toggle("app-layout--mobile-expanded");
-    } else {
-      layout.classList.toggle("app-layout--collapsed");
-      try {
-        window.localStorage.setItem(STORAGE_KEY, layout.classList.contains("app-layout--collapsed") ? "1" : "0");
-      } catch (e) {}
-    }
-    syncSidebarState();
-  }
-
-  function initSidebarCollapsibleGroups() {
-    document.querySelectorAll("[data-sidebar-group-toggle]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const group = btn.closest("[data-sidebar-group]");
-        if (!group) return;
-        const willOpen = !group.classList.contains("is-open");
-        group.classList.toggle("is-open", willOpen);
-        btn.setAttribute("aria-expanded", willOpen ? "true" : "false");
-        const panelId = btn.getAttribute("aria-controls");
-        const panel = panelId ? document.getElementById(panelId) : null;
-        if (panel) {
-          panel.setAttribute("aria-hidden", willOpen ? "false" : "true");
-        }
-      });
-    });
-  }
+  const STORAGE_KEY = "sidebarCollapsed";
+  const desktopMq = window.matchMedia("(min-width: 992px)");
 
   function init() {
-    const layout = getLayout();
-    if (!layout) return;
-    syncSidebarState();
-    initSidebarCollapsibleGroups();
+    const layout = document.getElementById("appLayout");
+    const sidebar = document.querySelector("[data-sidebar-root]");
+    if (!layout || !sidebar) return;
 
-    const btn = document.getElementById("appSidebarToggle");
-    if (btn) {
-      btn.addEventListener("click", onToggle);
+    const railButtons = Array.from(sidebar.querySelectorAll("[data-sidebar-section-trigger]"));
+    const sectionPanels = Array.from(sidebar.querySelectorAll("[data-sidebar-section-panel]"));
+    const secondaryShell = sidebar.querySelector("[data-sidebar-secondary-shell]");
+    const secondaryPanels = Array.from(sidebar.querySelectorAll("[data-sidebar-secondary-panel]"));
+    const secondaryTitle = sidebar.querySelector("[data-sidebar-secondary-title]");
+    const secondaryClose = sidebar.querySelector("[data-sidebar-secondary-close]");
+    const branchButtons = Array.from(sidebar.querySelectorAll("[data-sidebar-secondary-trigger]"));
+    const toggleButton = sidebar.querySelector("[data-sidebar-toggle]");
+    let pinnedExpanded = false;
+
+    function readStoredCollapsed() {
+      try {
+        return window.localStorage.getItem(STORAGE_KEY);
+      } catch (e) {
+        return null;
+      }
     }
 
-    if (mq.addEventListener) {
-      mq.addEventListener("change", syncSidebarState);
-    } else if (mq.addListener) {
-      mq.addListener(syncSidebarState);
+    function storeCollapsed(isCollapsed) {
+      try {
+        window.localStorage.setItem(STORAGE_KEY, isCollapsed ? "true" : "false");
+      } catch (e) {}
+    }
+
+    function isExpanded() {
+      return sidebar.classList.contains("is-expanded") || sidebar.classList.contains("is-hover-expanded");
+    }
+
+    function syncExpandedState() {
+      const expanded = isExpanded();
+      sidebar.classList.toggle("is-collapsed", !expanded);
+      if (!expanded) {
+        closeSecondary();
+      }
+      if (toggleButton) {
+        toggleButton.setAttribute("aria-expanded", expanded ? "true" : "false");
+      }
+    }
+
+    function setSection(sectionId) {
+      const normalized = String(sectionId || "").trim();
+      railButtons.forEach((button) => {
+        button.classList.toggle("is-active", button.getAttribute("data-section-id") === normalized);
+      });
+      sectionPanels.forEach((panel) => {
+        panel.classList.toggle("is-active", panel.getAttribute("data-sidebar-section-panel") === normalized);
+      });
+      sidebar.setAttribute("data-current-section", normalized);
+    }
+
+    function closeSecondary() {
+      sidebar.classList.remove("is-secondary-open");
+      if (secondaryShell) {
+        secondaryShell.classList.remove("is-active");
+      }
+      secondaryPanels.forEach((panel) => {
+        panel.classList.remove("is-active");
+      });
+      branchButtons.forEach((button) => {
+        button.classList.remove("is-open");
+        button.setAttribute("aria-expanded", "false");
+      });
+      sidebar.setAttribute("data-current-secondary", "");
+    }
+
+    function openSecondary(panelId, titleText) {
+      if (!isExpanded()) {
+        return;
+      }
+      const normalized = String(panelId || "").trim();
+      if (!normalized) {
+        closeSecondary();
+        return;
+      }
+      sidebar.classList.add("is-secondary-open");
+      if (secondaryShell) {
+        secondaryShell.classList.add("is-active");
+      }
+      secondaryPanels.forEach((panel) => {
+        panel.classList.toggle("is-active", panel.getAttribute("data-sidebar-secondary-panel") === normalized);
+      });
+      branchButtons.forEach((button) => {
+        const isMatch = button.getAttribute("data-secondary-id") === normalized;
+        button.classList.toggle("is-open", isMatch);
+        button.setAttribute("aria-expanded", isMatch ? "true" : "false");
+      });
+      if (secondaryTitle) {
+        secondaryTitle.textContent = titleText || "Details";
+      }
+      sidebar.setAttribute("data-current-secondary", normalized);
+    }
+
+    railButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        setSection(button.getAttribute("data-section-id"));
+        if (desktopMq.matches && !pinnedExpanded) {
+          sidebar.classList.add("is-hover-expanded");
+        }
+        syncExpandedState();
+      });
+    });
+
+    branchButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        if (!isExpanded()) {
+          if (desktopMq.matches && !pinnedExpanded) {
+            sidebar.classList.add("is-hover-expanded");
+            syncExpandedState();
+          } else {
+            return;
+          }
+        }
+        const targetId = button.getAttribute("data-secondary-id");
+        const isAlreadyOpen = sidebar.getAttribute("data-current-secondary") === targetId && sidebar.classList.contains("is-secondary-open");
+        if (isAlreadyOpen) {
+          closeSecondary();
+          return;
+        }
+        openSecondary(targetId, button.getAttribute("data-secondary-title"));
+      });
+    });
+
+    if (secondaryClose) {
+      secondaryClose.addEventListener("click", closeSecondary);
+    }
+
+    if (toggleButton) {
+      toggleButton.addEventListener("click", () => {
+        pinnedExpanded = !pinnedExpanded;
+        sidebar.classList.toggle("is-expanded", pinnedExpanded);
+        if (!pinnedExpanded) {
+          sidebar.classList.remove("is-hover-expanded");
+        }
+        storeCollapsed(!pinnedExpanded);
+        syncExpandedState();
+      });
+    }
+
+    sidebar.addEventListener("mouseenter", () => {
+      if (!desktopMq.matches || pinnedExpanded) return;
+      sidebar.classList.add("is-hover-expanded");
+      syncExpandedState();
+    });
+
+    sidebar.addEventListener("mouseleave", () => {
+      if (!desktopMq.matches || pinnedExpanded) return;
+      sidebar.classList.remove("is-hover-expanded");
+      syncExpandedState();
+    });
+
+    function applyResponsiveState() {
+      if (desktopMq.matches) {
+        const stored = readStoredCollapsed();
+        pinnedExpanded = stored === "false" ? true : false;
+        sidebar.classList.toggle("is-expanded", pinnedExpanded);
+        sidebar.classList.remove("is-hover-expanded");
+      } else {
+        pinnedExpanded = true;
+        sidebar.classList.add("is-expanded");
+        sidebar.classList.remove("is-hover-expanded");
+      }
+      syncExpandedState();
+    }
+
+    if (desktopMq.addEventListener) {
+      desktopMq.addEventListener("change", applyResponsiveState);
+    } else if (desktopMq.addListener) {
+      desktopMq.addListener(applyResponsiveState);
+    }
+
+    const initialSection = sidebar.getAttribute("data-initial-section") || "dashboard";
+    const initialSecondary = sidebar.getAttribute("data-initial-secondary") || "";
+    setSection(initialSection);
+    applyResponsiveState();
+    if (initialSecondary && isExpanded()) {
+      const matchingTrigger = branchButtons.find((button) => button.getAttribute("data-secondary-id") === initialSecondary);
+      openSecondary(initialSecondary, matchingTrigger ? matchingTrigger.getAttribute("data-secondary-title") : "Details");
+    } else {
+      closeSecondary();
     }
   }
 

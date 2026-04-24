@@ -25,6 +25,47 @@
   line-height: 1.6;
 }
 
+.page-who-we-are__media-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 40px;
+  align-items: center;
+}
+
+.page-who-we-are__media-layout--reverse {
+  direction: rtl;
+}
+
+.page-who-we-are__media-layout--reverse > * {
+  direction: ltr;
+}
+
+.page-who-we-are__media-copy {
+  min-width: 0;
+}
+
+.page-who-we-are__media-visual {
+  min-width: 0;
+}
+
+.page-who-we-are__office-image {
+  width: 100%;
+  height: 320px;
+  object-fit: cover;
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+  display: block;
+}
+
+.page-who-we-are__hero-list {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.page-who-we-are__hero-list .page-who-we-are__hero-lead + .page-who-we-are__hero-lead {
+  margin-top: var(--s-3);
+}
+
 .page-who-we-are__section {
   padding-top: var(--s-12);
 }
@@ -167,5 +208,18 @@ body.dark-mode .wwa-profile-card:hover {
 @media (max-width: 767.98px) {
   .page-who-we-are__hero {
     padding: var(--s-12) 0 var(--s-10);
+  }
+
+  .page-who-we-are__media-layout {
+    grid-template-columns: 1fr;
+    gap: var(--s-6);
+  }
+
+  .page-who-we-are__media-copy {
+    order: 2;
+  }
+
+  .page-who-we-are__media-visual {
+    order: 1;
   }
 }
