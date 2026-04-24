@@ -1,0 +1,216 @@
+{
+    "Scope 1 Fuel Usage Spend": {
+      "columns": [
+        "Reporting period (month, year)",
+        "Vehicle Type",
+        "Spend",
+        "Currency",
+        "Country",
+        "Site Tag",
+        "Data Source"
+      ],
+      "mapping_keys": ["Vehicle Type"],
+      "calculation_type": "spend_based",
+      "calculation_fields": ["Spend"]
+    },
+  
+    "Scope 1 Fuel Usage Activity": {
+      "columns": [
+        "Vehicle Type",
+        "Fuel consumption",
+        "Unit",
+        "Distance travelled",
+        "Distance Unit",
+        "Country",
+        "Site Tag",
+        "Data Source"
+      ],
+      "mapping_keys": ["Vehicle Type"],
+      "calculation_type": "conditional",
+      "calculation_rules": {
+        "priority": [
+          {
+            "condition": "Distance travelled",
+            "type": "distance_based",
+            "fields": ["Distance travelled"]
+          },
+          {
+            "condition": "Fuel consumption",
+            "type": "fuel_based",
+            "fields": ["Fuel consumption"]
+          }
+        ]
+      }
+    },
+  
+    "Scope 2 Electricity": {
+      "columns": [
+        "Reporting period (month, year)",
+        "Consumption",
+        "Unit",
+        "Spend",
+        "Currency",
+        "Supplier",
+        "Country",
+        "Site Tag",
+        "Data Source"
+      ],
+      "mapping_keys": ["Country"],
+      "calculation_type": "consumption_based",
+      "calculation_fields": ["Consumption"]
+    },
+  
+    "Scope 2 District Heating": {
+      "columns": [
+        "Reporting period (month, year)",
+        "Country",
+        "Consumption",
+        "Unit",
+        "Spend",
+        "Currency",
+        "Site Tag",
+        "Data Source"
+      ],
+      "mapping_keys": ["Country"],
+      "calculation_type": "consumption_based",
+      "calculation_fields": ["Consumption"]
+    },
+  
+    "Scope 3 Category 1 Purchased Goods & Services": {
+      "columns": [
+        "Reporting period (month, year)",
+        "Supplier",
+        "Description",
+        "Category",
+        "Spend",
+        "Currency",
+        "Country",
+        "Site Tag",
+        "Data Source"
+      ],
+      "mapping_keys": ["Description", "Category"],
+      "calculation_type": "spend_based",
+      "calculation_fields": ["Spend"]
+    },
+  
+    "Scope 3 Category 4 Upstream Transportation": {
+      "columns": [
+        "Reporting period (month, year)",
+        "Description",
+        "Supplier",
+        "Transport Type",
+        "Distance",
+        "Distance Unit",
+        "Weight",
+        "Weight Unit",
+        "Spend",
+        "Currency",
+        "Site Tag",
+        "Data Source"
+      ],
+      "mapping_keys": ["Transport Type"],
+      "calculation_type": "hybrid",
+      "calculation_fields": ["Distance", "Weight", "Spend"]
+    },
+  
+    "Scope 3 Category 5 Waste": {
+      "columns": [
+        "Reporting period (month, year)",
+        "Site",
+        "Waste Stream",
+        "Weight",
+        "Weight Unit",
+        "Treatment Method",
+        "Country",
+        "Data Source"
+      ],
+      "mapping_keys": ["Waste Stream"],
+      "calculation_type": "weight_based",
+      "calculation_fields": ["Weight"]
+    },
+  
+    "Scope 3 Category 6 Business Travel": {
+      "columns": [
+        "Reporting period (month, year)",
+        "Mode of Transport",
+        "Distance",
+        "Distance Unit",
+        "Spend",
+        "Currency",
+        "CO2e (kg)",
+        "CO2e Source",
+        "Data Source"
+      ],
+      "mapping_keys": ["Mode of Transport"],
+      "calculation_type": "hybrid",
+      "calculation_fields": ["Distance", "Spend"],
+      "override_fields": ["CO2e (kg)"],
+      "override_logic": "prefer_override"
+    },
+  
+    "Scope 3 Category 9 Downstream Transportation": {
+      "columns": [
+        "Reporting period (month, year)",
+        "Description",
+        "Customer",
+        "Transport Type",
+        "Distance",
+        "Distance Unit",
+        "Weight",
+        "Weight Unit",
+        "Spend",
+        "Currency",
+        "Site Tag",
+        "Data Source"
+      ],
+      "mapping_keys": ["Transport Type"],
+      "calculation_type": "hybrid",
+      "calculation_fields": ["Distance", "Weight", "Spend"]
+    },
+  
+    "Scope 3 Category 12 End of Life": {
+      "columns": [
+        "Reporting period (month, year)",
+        "Product",
+        "Quantity",
+        "Weight",
+        "Weight Unit",
+        "Waste Stream",
+        "Treatment Method",
+        "Country",
+        "Data Source"
+      ],
+      "mapping_keys": ["Waste Stream"],
+      "calculation_type": "weight_based",
+      "calculation_fields": ["Weight"]
+    },
+  
+    "Scope 3 Category 15 Pensions": {
+      "columns": [
+        "Reporting period (month, year)",
+        "Employee Headcount",
+        "Pension Provider",
+        "Employer Contribution",
+        "Currency",
+        "Country",
+        "Data Source"
+      ],
+      "mapping_keys": [],
+      "calculation_type": "spend_based",
+      "calculation_fields": ["Employer Contribution"]
+    },
+  
+    "Water Tracker": {
+      "columns": [
+        "Reporting period (month, year)",
+        "Site",
+        "Water Consumption",
+        "Unit",
+        "Country",
+        "Data Source"
+      ],
+      "mapping_keys": [],
+      "calculation_type": "consumption_based",
+      "calculation_fields": ["Water Consumption"]
+    }
+  }
