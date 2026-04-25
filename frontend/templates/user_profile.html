@@ -9,62 +9,218 @@
 {% block content %}
 <section class="feed-page feed-profile-page">
   <div class="feed-shell">
-    <div class="feed-profile-layout">
-      <aside class="feed-card feed-profile-summary">
-        <div class="feed-profile-summary__hero">
-        </div>
-        <div class="feed-profile-summary__body">
-          <img class="feed-profile-card__avatar" src="{{ url_for('static', filename=profile_user.profile_photo_path) if profile_user.profile_photo_path else url_for('mouse_symbol_image') }}" alt="{{ ((profile_user.first_name or '') ~ ' ' ~ (profile_user.last_name or ''))|trim or profile_user.email }}">
-          <h1 class="feed-profile-card__name mt-3">{{ ((profile_user.first_name or '') ~ ' ' ~ (profile_user.last_name or ''))|trim or profile_user.email }}</h1>
-          <p class="feed-profile-card__title">{{ profile_user.job_title or 'Team Member' }}</p>
-          <p class="feed-profile-card__title">{{ profile_user.company_name }}</p>
-        </div>
-      </aside>
-
-      <main class="feed-column feed-column--center">
-        <section class="feed-card feed-sidebar-card" id="reports">
-          <h2 class="feed-sidebar-card__title">Uploaded reports</h2>
-          {% if profile_reports %}
-          <div class="feed-profile-reports">
-            {% for report in profile_reports %}
-            <article class="feed-report-card">
-              <div class="feed-report-stack" aria-label="Report preview">
-                {% for preview_url in report.preview_urls %}
-                <div class="feed-report-stack__page">
-                  <img src="{{ preview_url }}" alt="{{ report.title }} preview page {{ loop.index }}">
-                </div>
-                {% endfor %}
-              </div>
-              <div class="feed-report-card__meta">
-                <div>
-                  <div class="feed-report-card__label">Report</div>
-                  <strong>{{ report.title }}</strong>
-                </div>
-                <a class="btn btn-primary btn-sm" href="{{ report.file_url }}" target="_blank" rel="noopener noreferrer">Open Report</a>
-              </div>
-            </article>
-            {% endfor %}
+    <section class="feed-card profile-hero-card">
+      <div
+        class="profile-hero-banner{% if profile_cover_url %} has-custom-cover{% endif %}"
+        data-profile-cover-banner
+        {% if profile_cover_url %}style="background-image: url('{{ profile_cover_url }}');"{% endif %}
+      >
+        {% if is_own_profile and can_profile_interact %}
+        <button
+          class="profile-hero-banner__edit"
+          type="button"
+          data-profile-cover-trigger
+          data-upload-url="{{ url_for('api_profile_cover') }}"
+          aria-label="Edit cover image"
+        >
+          Edit cover
+        </button>
+        <input type="file" accept="image/png,image/jpeg,image/webp" hidden data-profile-cover-input>
+        {% endif %}
+        {% if profile_company_logo_url %}
+        <img class="profile-hero-banner__logo" src="{{ profile_company_logo_url }}" alt="{{ profile_company }}">
+        {% endif %}
+      </div>
+      <div class="profile-hero-card__body">
+        <div class="profile-hero-card__identity">
+          <img class="profile-hero-card__avatar" src="{{ url_for('static', filename=profile_user.profile_photo_path) if profile_user.profile_photo_path else url_for('mouse_symbol_image') }}" alt="{{ profile_name }}">
+          <div class="profile-hero-card__copy">
+            <div class="profile-hero-card__name-row">
+              <h1 class="profile-hero-card__name">{{ profile_name }}</h1>
+              <span class="feed-role-badge feed-role-badge--profile">{{ profile_role_label }}</span>
+            </div>
+            <p class="profile-hero-card__title">{{ profile_title }}</p>
+            <p class="profile-hero-card__meta">
+              <span>{{ profile_company }}</span>
+              {% if profile_location %}
+              <span>&middot; {{ profile_location }}</span>
+              {% endif %}
+            </p>
+            <div class="profile-hero-card__social">
+              <span><strong data-profile-follower-count>{{ profile_stats.followers }}</strong> followers</span>
+              <span><strong>{{ profile_stats.following }}</strong> following</span>
+            </div>
           </div>
-          {% else %}
-          <p class="mb-0 text-muted">No uploaded reports yet.</p>
+        </div>
+        <div class="profile-hero-card__actions">
+          {% if is_own_profile %}
+          <a class="btn btn-ghost" href="{{ url_for('settings_profile_page') }}">Edit Profile</a>
+          {% elif can_profile_interact %}
+          <button
+            class="btn {% if is_following %}btn-ghost{% else %}btn-primary{% endif %}"
+            type="button"
+            data-profile-follow-toggle
+            data-user-id="{{ profile_user.id }}"
+            data-following="{% if is_following %}true{% else %}false{% endif %}"
+            data-follow-url="{{ url_for('api_follow_user', user_id=profile_user.id) }}"
+            data-unfollow-url="{{ url_for('api_unfollow_user', user_id=profile_user.id) }}"
+          >{% if is_following %}Following{% else %}Follow{% endif %}</button>
           {% endif %}
+          {% if not is_own_profile and can_profile_interact %}
+          <button class="btn btn-ghost" type="button" data-open-chat-user="{{ profile_user.id }}">Message</button>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+
+    <div class="profile-main-grid">
+      <main class="profile-main-column">
+        <section class="feed-card profile-section-card">
+          <div class="profile-section-card__header">
+            <h2>About</h2>
+          </div>
+          <div class="profile-section-card__body">
+            <p class="profile-about-copy">{{ profile_about }}</p>
+            <dl class="profile-about-list">
+              <div>
+                <dt>Role</dt>
+                <dd>{{ profile_role_label }}</dd>
+              </div>
+              <div>
+                <dt>Company</dt>
+                <dd>{{ profile_company }}</dd>
+              </div>
+              {% if profile_location %}
+              <div>
+                <dt>Location</dt>
+                <dd>{{ profile_location }}</dd>
+              </div>
+              {% endif %}
+            </dl>
+          </div>
         </section>
 
-        <section class="feed-stream" aria-label="Profile posts">
-          {% if profile_posts %}
-          <div class="feed-stream__list">
-            {% for post in profile_posts %}
-            {% include 'partials/feed_post_card.html' %}
-            {% endfor %}
+        <section class="feed-card profile-section-card">
+          <div class="profile-section-card__header">
+            <div>
+              <h2>Activity</h2>
+              <p class="profile-section-card__eyebrow mb-0">{{ profile_stats.recent_activity_label }}</p>
+            </div>
+            <span>{{ profile_stats.posts }} post{{ '' if profile_stats.posts == 1 else 's' }}</span>
           </div>
-          {% else %}
-          <div class="feed-card feed-empty-state">
-            <h3>No feed activity yet</h3>
-            <p>This user has not published any feed posts yet.</p>
+          <div class="profile-section-card__body profile-section-card__body--feed">
+            <div class="profile-activity-summary">
+              <strong>{{ profile_stats.posts }}</strong>
+              <span>Total feed posts</span>
+            </div>
+            {% if profile_posts %}
+            <div class="feed-stream__list">
+              {% for post in profile_posts %}
+              {% include 'partials/feed_post_card.html' %}
+              {% endfor %}
+            </div>
+            {% else %}
+            <div class="feed-empty-state">
+              <h3>No feed activity yet</h3>
+              <p>This user has not published any feed posts yet.</p>
+            </div>
+            {% endif %}
           </div>
-          {% endif %}
+        </section>
+
+        <section class="feed-card profile-section-card" id="reports">
+          <div class="profile-section-card__header">
+            <h2>Reports</h2>
+            <span>{{ profile_stats.reports }} report{{ '' if profile_stats.reports == 1 else 's' }}</span>
+          </div>
+          <div class="profile-section-card__body">
+            {% if profile_reports %}
+            <div class="feed-profile-reports">
+              {% for report in profile_reports %}
+              <article class="feed-report-card feed-report-card--profile">
+                <a class="feed-report-card__link" href="{{ report.file_url }}" target="_blank" rel="noopener noreferrer" aria-label="Open {{ report.title }}">
+                <div class="feed-report-stack" aria-label="Report preview">
+                  {% for preview_url in report.preview_urls %}
+                  <div class="feed-report-stack__page">
+                    <img src="{{ preview_url }}" alt="{{ report.title }} preview page {{ loop.index }}">
+                  </div>
+                  {% endfor %}
+                </div>
+                <div class="feed-report-card__meta">
+                  <div class="feed-report-card__meta-copy">
+                    <div class="feed-report-card__label">{{ report.file_type_label }} report</div>
+                    <div class="feed-report-card__filetype">
+                      <span class="feed-report-card__filetype-icon">{{ report.file_type_icon }}</span>
+                      <span>{{ report.created_at_display or report.created_at_label }}</span>
+                    </div>
+                    <strong>{{ report.title }}</strong>
+                  </div>
+                  <span class="btn btn-primary btn-sm">Open Report</span>
+                </div>
+                </a>
+              </article>
+              {% endfor %}
+            </div>
+            {% else %}
+            <p class="mb-0 text-muted">No uploaded reports yet.</p>
+            {% endif %}
+          </div>
         </section>
       </main>
+
+      <aside class="profile-side-column">
+        <section class="feed-card profile-section-card">
+          <div class="profile-section-card__header">
+            <h2>Info</h2>
+          </div>
+          <div class="profile-section-card__body">
+            <div class="profile-info-stack">
+              <div class="profile-info-card">
+                <span>Joined</span>
+                <strong>{{ profile_stats.joined or 'Recently' }}</strong>
+              </div>
+              <div class="profile-info-card">
+                <span>Template mode</span>
+                <strong>{{ profile_stats.template_mode|upper }}</strong>
+              </div>
+              <div class="profile-info-card">
+                <span>Posts</span>
+                <strong>{{ profile_stats.posts }}</strong>
+              </div>
+              <div class="profile-info-card">
+                <span>Reports</span>
+                <strong>{{ profile_stats.reports }}</strong>
+              </div>
+              <div class="profile-info-card">
+                <span>Followers</span>
+                <strong data-profile-follower-count>{{ profile_stats.followers }}</strong>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {% if suggested_users %}
+        <section class="feed-card profile-section-card">
+          <div class="profile-section-card__header">
+            <h2>Suggested users</h2>
+          </div>
+          <div class="profile-section-card__body">
+            <div class="profile-suggestion-list">
+              {% for suggested in suggested_users %}
+              <a href="{{ suggested.profile_url }}" class="profile-suggestion-item">
+                <img src="{{ suggested.avatar_url }}" alt="{{ suggested.name }}">
+                <div>
+                  <strong>{{ suggested.name }}</strong>
+                  <span>{{ suggested.title }}</span>
+                  <small>{{ suggested.company }}</small>
+                </div>
+              </a>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+        {% endif %}
+      </aside>
     </div>
   </div>
 </section>

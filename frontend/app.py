@@ -36,6 +36,7 @@ from urllib import request as urllib_request
 from urllib.parse import quote
 from email.message import EmailMessage
 from dotenv import load_dotenv
+from markupsafe import Markup, escape
 from PIL import Image, ImageDraw, ImageFont
 
 try:
@@ -635,6 +636,11 @@ def _enforce_readonly_auditor_access():
         "api_feed_post_reaction",
         "create_challenge",
         "submit_challenge_response",
+        "api_follow_user",
+        "api_unfollow_user",
+        "api_profile_cover",
+        "api_feed_post_comment",
+        "api_feed_comment_like",
         "profile_page",
         "api_excel_schema_save",
         "api_averages_save",
@@ -709,6 +715,7 @@ class User(UserMixin, db.Model):
     phone = db.Column(db.String(40), nullable=True)
     company_country = db.Column(db.String(100), nullable=True)
     profile_photo_path = db.Column(db.String(500), nullable=True)
+    cover_image = db.Column(db.String(500), nullable=True)
     is_profile_complete = db.Column(db.Boolean, default=False)
     template_mode = db.Column(db.String(20), nullable=True, default=TEMPLATE_MODE_LEGACY)
     business_type = db.Column(db.String(100), nullable=True)
@@ -787,6 +794,36 @@ def _user_display_name(u: User | None) -> str:
     last = (getattr(u, "last_name", None) or "").strip()
     full = " ".join(part for part in (first, last) if part).strip()
     return full or (getattr(u, "email", None) or "").strip() or f"User {getattr(u, 'id', '')}"
+
+
+def _role_badge_label(raw_role: object) -> str:
+    role = normalize_user_role(str(raw_role or ""))
+    return {
+        "owner": "Owner",
+        "super_admin": "Super Admin",
+        "admin": "Admin",
+        "manager": "Manager",
+        "auditor": "Auditor",
+        "user": "User",
+    }.get(role, "User")
+
+
+def _user_role_label(u: User | None) -> str:
+    if u is None:
+        return "User"
+    raw_role = str(getattr(u, "role", None) or "").strip()
+    if raw_role:
+        return _role_badge_label(raw_role)
+    return "Admin" if bool(getattr(u, "is_admin", False)) else "User"
+
+
+def _user_professional_title(u: User | None) -> str:
+    if u is None:
+        return "User"
+    title = (getattr(u, "job_title", None) or "").strip()
+    if title:
+        return title
+    return _user_role_label(u) or "User"
 
 
 def _profile_photo_url_for_user(u: User | None) -> str | None:
@@ -957,6 +994,16 @@ class ChallengeResponse(db.Model):
     user = db.relationship("User", lazy="joined")
 
 
+class UserFollow(db.Model):
+    __tablename__ = "user_follows"
+    __table_args__ = (db.UniqueConstraint("follower_id", "following_id", name="uq_user_follows_pair"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    follower_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    following_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+
 class FeedPost(db.Model):
     __tablename__ = "feed_post"
     id = db.Column(db.Integer, primary_key=True)
@@ -981,6 +1028,29 @@ class PostReaction(db.Model):
     reaction_type = db.Column(db.String(20), nullable=False, default="like", index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class Comment(db.Model):
+    __tablename__ = "comments"
+
+    id = db.Column(db.Integer, primary_key=True)
+    post_id = db.Column(db.Integer, db.ForeignKey("feed_post.id"), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    content = db.Column(db.Text, nullable=False, default="")
+    mentioned_user_ids_json = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    post = db.relationship("FeedPost", lazy="joined")
+    user = db.relationship("User", lazy="joined")
+
+
+class CommentLike(db.Model):
+    __tablename__ = "comment_likes"
+    __table_args__ = (db.UniqueConstraint("comment_id", "user_id", name="uq_comment_likes_comment_user"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    comment_id = db.Column(db.Integer, db.ForeignKey("comments.id"), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
 class PasswordResetToken(db.Model):
@@ -1990,6 +2060,19 @@ def _save_profile_photo_file(storage, user_id: int) -> str | None:
     return dest.relative_to(APP_DIR / "static").as_posix()
 
 
+def _save_profile_cover_file(storage, user_id: int) -> str | None:
+    if not storage or not getattr(storage, "filename", None):
+        return None
+    fn = secure_filename(storage.filename or "")
+    ext = Path(fn).suffix.lower()
+    if ext not in PROFILE_PHOTO_ALLOWED_EXT:
+        return None
+    dest_dir = _static_subdir("uploads", "covers")
+    dest = dest_dir / f"user_{user_id}_{uuid.uuid4().hex[:10]}{ext}"
+    storage.save(str(dest))
+    return dest.relative_to(APP_DIR / "static").as_posix()
+
+
 _AVATAR_COLOR_PAIRS: tuple[tuple[str, str], ...] = (
     ("#dbeafe", "#1d4ed8"),
     ("#dcfce7", "#166534"),
@@ -2664,6 +2747,18 @@ def _json_list(value: object) -> list[str]:
     return [str(item).strip() for item in data if str(item).strip()]
 
 
+def _json_int_list(value: object) -> list[int]:
+    values: list[int] = []
+    for item in _json_list(value):
+        try:
+            parsed = int(item)
+        except Exception:
+            continue
+        if parsed > 0 and parsed not in values:
+            values.append(parsed)
+    return values
+
+
 def _company_row_for_name(company_name: str, *, created_by_user_id: int | None = None) -> Company | None:
     resolved_name = _clean_company_name(company_name)
     if not resolved_name:
@@ -2752,12 +2847,19 @@ def _report_payload(row: Report | None) -> dict[str, object] | None:
         return None
     preview_paths = _json_list(getattr(row, "preview_paths", None))
     company_name = getattr(getattr(row, "company", None), "company_name", None) or ""
+    file_path = str(getattr(row, "file_path", "") or "")
+    ext = Path(file_path).suffix.lower().lstrip(".")
+    file_type_label = "PDF" if ext == "pdf" else ("Word" if ext in {"doc", "docx"} else (ext.upper() if ext else "File"))
+    file_type_icon = "PDF" if ext == "pdf" else ("DOC" if ext in {"doc", "docx"} else "FILE")
     return {
         "id": int(row.id),
         "title": str(getattr(row, "title", "") or "").strip() or "Untitled report",
         "file_url": url_for("open_report", report_id=int(row.id)),
         "preview_urls": [_feed_media_url(path) for path in preview_paths if _feed_media_url(path)],
         "created_at_label": _format_feed_timestamp(getattr(row, "created_at", None)),
+        "created_at_display": getattr(row, "created_at", None).strftime("%d %b %Y") if getattr(row, "created_at", None) else "",
+        "file_type_label": file_type_label,
+        "file_type_icon": file_type_icon,
         "company_name": company_name,
     }
 
@@ -2791,11 +2893,143 @@ def _challenge_response_payload(row: ChallengeResponse | None) -> dict[str, obje
     }
 
 
+def _normalize_comment_mention_ids(raw_ids: object, content: str) -> list[int]:
+    content_value = str(content or "")
+    parsed_ids: list[int] = []
+    if isinstance(raw_ids, str):
+        try:
+            raw_ids = json.loads(raw_ids)
+        except Exception:
+            raw_ids = [part for part in raw_ids.split(",") if str(part).strip()]
+    if isinstance(raw_ids, (list, tuple, set)):
+        for item in raw_ids:
+            try:
+                value = int(item)
+            except Exception:
+                continue
+            if value > 0 and value not in parsed_ids:
+                parsed_ids.append(value)
+    if not parsed_ids:
+        return []
+    users = User.query.filter(User.id.in_(parsed_ids)).all()
+    valid_ids: list[int] = []
+    for user in users:
+        mention_token = f"@{_user_display_name(user)}".strip()
+        if mention_token and mention_token in content_value and int(user.id) not in valid_ids:
+            valid_ids.append(int(user.id))
+    return valid_ids
+
+
+def _render_text_with_mentions(content: str, *, mention_users: list[User] | None = None) -> Markup:
+    raw_content = str(content or "")
+    users = [user for user in (mention_users or []) if user is not None]
+    if not users:
+        return Markup("<br>".join(escape(part) for part in raw_content.splitlines())) if raw_content else Markup("")
+    tokens = []
+    token_map: dict[str, User] = {}
+    for user in users:
+        token = f"@{_user_display_name(user)}".strip()
+        if not token:
+            continue
+        tokens.append(token)
+        token_map[token] = user
+    if not tokens:
+        return Markup("<br>".join(escape(part) for part in raw_content.splitlines())) if raw_content else Markup("")
+    tokens.sort(key=len, reverse=True)
+    pattern = re.compile("|".join(re.escape(token) for token in tokens))
+    cursor = 0
+    pieces: list[str] = []
+    for match in pattern.finditer(raw_content):
+        if match.start() > cursor:
+            pieces.append(str(escape(raw_content[cursor:match.start()])))
+        token = match.group(0)
+        pieces.append(
+            '<span class="feed-mention" data-mentioned-user-id="{user_id}">{label}</span>'.format(
+                user_id=int(getattr(token_map.get(token), "id", 0) or 0),
+                label=escape(token),
+            )
+        )
+        cursor = match.end()
+    if cursor < len(raw_content):
+        pieces.append(str(escape(raw_content[cursor:])))
+    return Markup("".join(pieces).replace("\n", "<br>"))
+
+
+def _comment_payload(
+    row: Comment,
+    *,
+    like_count: int = 0,
+    liked_by_viewer: bool = False,
+) -> dict[str, object]:
+    author = getattr(row, "user", None)
+    mention_ids = _json_int_list(getattr(row, "mentioned_user_ids_json", None))
+    mention_users = User.query.filter(User.id.in_(mention_ids)).all() if mention_ids else []
+    return {
+        "id": int(row.id),
+        "post_id": int(getattr(row, "post_id", 0) or 0),
+        "user_id": int(getattr(row, "user_id", 0) or 0),
+        "author_name": _user_display_name(author) or "User",
+        "author_avatar_url": _user_avatar_url(author),
+        "author_profile_url": url_for("public_profile", user_id=int(author.id)) if getattr(author, "id", None) else url_for("feed"),
+        "author_role_label": _user_role_label(author),
+        "content": str(getattr(row, "content", "") or "").strip(),
+        "content_html": _render_text_with_mentions(str(getattr(row, "content", "") or ""), mention_users=mention_users),
+        "created_at_label": _format_feed_timestamp(getattr(row, "created_at", None)),
+        "created_at_iso": getattr(row, "created_at", None).isoformat() if getattr(row, "created_at", None) else "",
+        "like_count": int(like_count or 0),
+        "liked_by_viewer": bool(liked_by_viewer),
+        "like_endpoint": url_for("api_feed_comment_like", comment_id=int(row.id)),
+        "mentioned_user_ids": mention_ids,
+    }
+
+
+def _comment_payload_maps(post_ids: list[int], viewer_user_id: int) -> tuple[dict[int, list[dict[str, object]]], dict[int, int]]:
+    if not post_ids:
+        return {}, {}
+    rows = (
+        Comment.query.filter(Comment.post_id.in_(post_ids))
+        .order_by(Comment.created_at.asc(), Comment.id.asc())
+        .all()
+    )
+    if not rows:
+        return {post_id: [] for post_id in post_ids}, {post_id: 0 for post_id in post_ids}
+    comment_ids = [int(row.id) for row in rows]
+    like_counts: dict[int, int] = {
+        int(comment_id): int(total or 0)
+        for comment_id, total in (
+            db.session.query(CommentLike.comment_id, db.func.count(CommentLike.id))
+            .filter(CommentLike.comment_id.in_(comment_ids))
+            .group_by(CommentLike.comment_id)
+            .all()
+        )
+    }
+    liked_ids = {
+        int(row.comment_id)
+        for row in CommentLike.query.filter(
+            CommentLike.comment_id.in_(comment_ids),
+            CommentLike.user_id == int(viewer_user_id or 0),
+        ).all()
+    } if viewer_user_id else set()
+    payload_map: dict[int, list[dict[str, object]]] = {post_id: [] for post_id in post_ids}
+    count_map: dict[int, int] = {post_id: 0 for post_id in post_ids}
+    for row in rows:
+        post_id = int(getattr(row, "post_id", 0) or 0)
+        payload = _comment_payload(
+            row,
+            like_count=like_counts.get(int(row.id), 0),
+            liked_by_viewer=int(row.id) in liked_ids,
+        )
+        payload_map.setdefault(post_id, []).append(payload)
+        count_map[post_id] = count_map.get(post_id, 0) + 1
+    return payload_map, count_map
+
+
 def _feed_post_payload(
     row: FeedPost,
     *,
     reaction_summary: list[dict[str, object]] | None = None,
     current_reaction: str | None = None,
+    comments: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     author = getattr(row, "author", None)
     normalized_reference_type = _normalize_feed_reference_type(getattr(row, "reference_type", None))
@@ -2804,10 +3038,11 @@ def _feed_post_payload(
     challenge_payload = _challenge_payload(Challenge.query.get(reference_id)) if normalized_reference_type == "challenge" and reference_id else None
     response_payload = _challenge_response_payload(ChallengeResponse.query.get(reference_id)) if normalized_reference_type == "challenge_response" and reference_id else None
     company_name = (getattr(author, "company_name", None) or "").strip() or "CTS Carbon Platform"
-    author_title = (getattr(author, "job_title", None) or "").strip() or "Team Member"
+    author_title = _user_professional_title(author)
     author_name = _user_display_name(author) or "CTS User"
     summary = list(reaction_summary or [])
     reaction_state = _feed_reaction_button_state(current_reaction)
+    comment_rows = list(comments or [])
     return {
         "id": int(row.id),
         "content": str(getattr(row, "content", "") or "").strip(),
@@ -2819,6 +3054,7 @@ def _feed_post_payload(
         "created_at_label": _format_feed_timestamp(getattr(row, "created_at", None)),
         "created_at_iso": getattr(row, "created_at", None).isoformat() if getattr(row, "created_at", None) else "",
         "author_name": author_name,
+        "author_role_label": _user_role_label(author),
         "author_title": author_title,
         "author_company": company_name,
         "author_avatar_url": _user_avatar_url(author),
@@ -2830,6 +3066,8 @@ def _feed_post_payload(
         "challenge": challenge_payload,
         "challenge_response": response_payload,
         "can_respond_to_challenge": bool(challenge_payload and not _is_readonly_user(current_user) and challenge_payload.get("is_open")),
+        "comments": comment_rows,
+        "comment_count": len(comment_rows),
         "reaction_summary": summary,
         "reaction_total": sum(int(item.get("count") or 0) for item in summary),
         "current_reaction": str(reaction_state.get("type") or ""),
@@ -2860,6 +3098,8 @@ def _ensure_user_profile_columns() -> None:
             alters.append("ALTER TABLE user ADD COLUMN company_country VARCHAR(100)")
         if "profile_photo_path" not in existing:
             alters.append("ALTER TABLE user ADD COLUMN profile_photo_path VARCHAR(500)")
+        if "cover_image" not in existing:
+            alters.append("ALTER TABLE user ADD COLUMN cover_image VARCHAR(500)")
         if "is_profile_complete" not in existing:
             alters.append("ALTER TABLE user ADD COLUMN is_profile_complete BOOLEAN")
             backfill_profile_complete = True
@@ -6332,6 +6572,7 @@ def profile_setup():
     return render_template("profile_setup.html", **template_ctx)
 
 
+@app.route("/settings/profile", methods=["GET", "POST"], endpoint="settings_profile_page")
 @app.route("/profile", methods=["GET", "POST"])
 @login_required
 def profile_page():
@@ -6349,7 +6590,7 @@ def profile_page():
         profile_error = _apply_profile_form_fields(current_user, request.form)
         if profile_error:
             flash(profile_error)
-            return redirect(url_for("profile_page"))
+            return redirect(url_for("settings_profile_page"))
 
         if current_user.is_admin:
             country_code = (request.form.get("company_country") or "").strip().upper()
@@ -6364,7 +6605,7 @@ def profile_page():
 
         db.session.commit()
         flash("Profile updated.")
-        return redirect(url_for("profile_page"))
+        return redirect(url_for("settings_profile_page"))
 
     cc = (current_user.company_country or "").strip().upper()
     country_readonly_label = cc
@@ -6384,14 +6625,82 @@ def profile_page():
 
 
 
+def _country_label_from_code(raw_code: object) -> str:
+    code = str(raw_code or "").strip().upper()
+    if not code:
+        return ""
+    for item_code, item_name in ISO_COUNTRIES:
+        if str(item_code).strip().upper() == code:
+            return f"{item_name} ({code})"
+    return code
+
+
+def _profile_location_label(u: User | None) -> str:
+    if u is None:
+        return ""
+    end_use_location = str(getattr(u, "end_use_location", None) or "").strip()
+    if end_use_location:
+        return end_use_location
+    return _country_label_from_code(getattr(u, "company_country", None))
+
+
+def _profile_about_text(u: User | None) -> str:
+    if u is None:
+        return ""
+    name = _user_display_name(u)
+    title = str(getattr(u, "job_title", None) or "").strip()
+    company = str(getattr(u, "company_name", None) or "").strip()
+    location = _profile_location_label(u)
+    fragments: list[str] = []
+    if title and company:
+        fragments.append(f"{name} works as {title} at {company}.")
+    elif title:
+        fragments.append(f"{name} works as {title}.")
+    elif company:
+        fragments.append(f"{name} is part of {company}.")
+    business_type = str(getattr(u, "business_type", None) or "").strip()
+    if business_type:
+        fragments.append(f"Business type: {business_type}.")
+    if location:
+        fragments.append(f"Location: {location}.")
+    return " ".join(fragment for fragment in fragments if fragment).strip() or f"{name} is part of the platform team."
+
+
+def _suggested_profile_users(user_id: int, *, company_name: str) -> list[dict[str, object]]:
+    rows = (
+        User.query.filter(User.id != int(user_id))
+        .order_by(
+            db.case((db.func.lower(User.company_name) == str(company_name or "").strip().lower(), 0), else_=1),
+            User.created_at.desc(),
+        )
+        .limit(4)
+        .all()
+    )
+    suggestions: list[dict[str, object]] = []
+    for row in rows:
+        suggestions.append(
+            {
+                "id": int(row.id),
+                "name": _user_display_name(row),
+                "title": _user_professional_title(row),
+                "company": str(getattr(row, "company_name", None) or "").strip(),
+                "avatar_url": _user_avatar_url(row),
+                "profile_url": url_for("public_profile", user_id=int(row.id)),
+            }
+        )
+    return suggestions
+
+
 def _feed_payloads_for_rows(rows: list[FeedPost]) -> list[dict[str, object]]:
     post_ids = [int(row.id) for row in rows]
     reaction_summary_map, current_reaction_map = _feed_reaction_maps(post_ids, int(getattr(current_user, "id", 0) or 0))
+    comment_payload_map, _comment_count_map = _comment_payload_maps(post_ids, int(getattr(current_user, "id", 0) or 0))
     return [
         _feed_post_payload(
             row,
             reaction_summary=reaction_summary_map.get(int(row.id), []),
             current_reaction=current_reaction_map.get(int(row.id), ""),
+            comments=comment_payload_map.get(int(row.id), []),
         )
         for row in rows
     ]
@@ -6404,13 +6713,67 @@ def public_profile(user_id: int):
     user_row = User.query.get_or_404(int(user_id))
     posts = FeedPost.query.filter_by(author_user_id=int(user_row.id)).order_by(FeedPost.created_at.desc(), FeedPost.id.desc()).all()
     reports = Report.query.filter_by(uploaded_by=int(user_row.id)).order_by(Report.created_at.desc(), Report.id.desc()).all()
+    company_name = str(getattr(user_row, "company_name", None) or "").strip()
+    is_own_profile = int(getattr(current_user, "id", 0) or 0) == int(user_row.id)
+    follower_count = (
+        db.session.query(db.func.count(UserFollow.id))
+        .filter(UserFollow.following_id == int(user_row.id))
+        .scalar()
+        or 0
+    )
+    following_count = (
+        db.session.query(db.func.count(UserFollow.id))
+        .filter(UserFollow.follower_id == int(user_row.id))
+        .scalar()
+        or 0
+    )
+    is_following = False
+    if not is_own_profile and getattr(current_user, "is_authenticated", False):
+        is_following = (
+            db.session.query(UserFollow.id)
+            .filter(
+                UserFollow.follower_id == int(current_user.id),
+                UserFollow.following_id == int(user_row.id),
+            )
+            .first()
+            is not None
+        )
+    activity_candidates = [
+        getattr(posts[0], "created_at", None) if posts else None,
+        getattr(reports[0], "created_at", None) if reports else None,
+    ]
+    last_activity_at = max((value for value in activity_candidates if value is not None), default=None)
+    active_recently = bool(last_activity_at and last_activity_at >= (datetime.utcnow() - timedelta(days=14)))
     return render_template(
         "user_profile.html",
         profile_user=user_row,
+        profile_name=_user_display_name(user_row),
+        profile_title=_user_professional_title(user_row),
+        profile_role_label=_user_role_label(user_row),
+        profile_company=company_name or "CTS Carbon Platform",
+        profile_cover_url=url_for("static", filename=user_row.cover_image) if getattr(user_row, "cover_image", None) else "",
+        profile_location=_profile_location_label(user_row),
+        profile_about=_profile_about_text(user_row),
+        profile_company_logo_url=_company_logo_url(company_name),
+        profile_stats={
+            "posts": len(posts),
+            "reports": len(reports),
+            "followers": int(follower_count),
+            "following": int(following_count),
+            "joined": getattr(user_row, "created_at", None).strftime("%b %Y") if getattr(user_row, "created_at", None) else "",
+            "template_mode": normalize_template_mode(getattr(user_row, "template_mode", None)),
+            "active_recently": active_recently,
+            "recent_activity_label": "Active recently" if active_recently else "Latest activity",
+        },
+        suggested_users=_suggested_profile_users(int(user_row.id), company_name=company_name),
         profile_posts=_feed_payloads_for_rows(posts),
         profile_reports=[payload for payload in (_report_payload(row) for row in reports) if payload],
         feed_reaction_options=FEED_REACTION_OPTIONS,
         can_create_posts=not _is_readonly_user(current_user),
+        comment_actor_avatar_url=_user_avatar_url(current_user),
+        is_own_profile=is_own_profile,
+        is_following=is_following,
+        can_profile_interact=not _is_readonly_user(current_user),
     )
 
 
@@ -6426,6 +6789,66 @@ def open_report(report_id: int):
     if not disk_path.is_file():
         abort(404)
     return send_file(str(disk_path), as_attachment=False, download_name=Path(disk_path).name)
+
+
+@app.route("/api/profile/cover", methods=["POST"])
+@login_required
+def api_profile_cover():
+    _ensure_db_tables()
+    upload = request.files.get("cover_image")
+    rel_cover = _save_profile_cover_file(upload, int(current_user.id))
+    if not rel_cover:
+        return jsonify({"ok": False, "error": "Please upload a PNG, JPG, JPEG, or WEBP image."}), 400
+    current_user.cover_image = rel_cover
+    db.session.commit()
+    return jsonify(
+        {
+            "ok": True,
+            "cover_url": url_for("static", filename=rel_cover, v=uuid.uuid4().hex[:8]),
+        }
+    )
+
+
+@app.route("/api/follow/<int:user_id>", methods=["POST"])
+@login_required
+def api_follow_user(user_id: int):
+    _ensure_db_tables()
+    target_user = User.query.get_or_404(int(user_id))
+    if int(target_user.id) == int(current_user.id):
+        return jsonify({"error": "You cannot follow yourself."}), 400
+    existing = UserFollow.query.filter_by(
+        follower_id=int(current_user.id),
+        following_id=int(target_user.id),
+    ).first()
+    if existing is None:
+        db.session.add(UserFollow(follower_id=int(current_user.id), following_id=int(target_user.id)))
+        db.session.commit()
+    follower_count = (
+        db.session.query(db.func.count(UserFollow.id))
+        .filter(UserFollow.following_id == int(target_user.id))
+        .scalar()
+        or 0
+    )
+    return jsonify({"ok": True, "following": True, "follower_count": int(follower_count)})
+
+
+@app.route("/api/unfollow/<int:user_id>", methods=["POST"])
+@login_required
+def api_unfollow_user(user_id: int):
+    _ensure_db_tables()
+    target_user = User.query.get_or_404(int(user_id))
+    UserFollow.query.filter_by(
+        follower_id=int(current_user.id),
+        following_id=int(target_user.id),
+    ).delete(synchronize_session=False)
+    db.session.commit()
+    follower_count = (
+        db.session.query(db.func.count(UserFollow.id))
+        .filter(UserFollow.following_id == int(target_user.id))
+        .scalar()
+        or 0
+    )
+    return jsonify({"ok": True, "following": False, "follower_count": int(follower_count)})
 
 
 def _render_dashboard_admin_analytics():
@@ -10654,10 +11077,11 @@ def feed():
         feed_post_types=FEED_POST_TYPES,
         feed_reaction_options=FEED_REACTION_OPTIONS,
         can_create_posts=can_create_posts,
+        comment_actor_avatar_url=_user_avatar_url(current_user),
         can_create_challenges=bool(current_user.is_admin and not _is_readonly_user(current_user)),
         feed_profile={
             "name": _user_display_name(current_user),
-            "title": (getattr(current_user, "job_title", None) or "").strip() or "Team Member",
+            "title": _user_professional_title(current_user),
             "company_name": (getattr(current_user, "company_name", None) or "").strip() or "CTS Carbon Platform",
             "avatar_url": _user_avatar_url(current_user),
             "company_logo_url": _company_logo_url(getattr(current_user, "company_name", None)),
@@ -10814,18 +11238,71 @@ def submit_challenge_response(challenge_id: int):
     )
     db.session.add(response_row)
     db.session.flush()
-    db.session.add(
-        FeedPost(
-            author_user_id=int(current_user.id),
-            content=answer,
-            post_type="update",
-            reference_id=int(response_row.id),
-            reference_type="challenge_response",
-        )
+    challenge_post = (
+        FeedPost.query.filter_by(reference_type="challenge", reference_id=int(challenge_row.id))
+        .order_by(FeedPost.created_at.desc(), FeedPost.id.desc())
+        .first()
     )
+    if challenge_post is not None:
+        mention_ids = _normalize_comment_mention_ids(request.form.getlist("mentioned_user_ids"), answer)
+        db.session.add(
+            Comment(
+                post_id=int(challenge_post.id),
+                user_id=int(current_user.id),
+                content=answer,
+                mentioned_user_ids_json=json.dumps(mention_ids),
+            )
+        )
     db.session.commit()
-    flash("Challenge response shared.", "success")
-    return redirect(url_for("feed", type="update"))
+    flash("Challenge response added as a comment.", "success")
+    return redirect(url_for("feed", type="alert"))
+
+
+@app.route("/api/feed/posts/<int:post_id>/comments", methods=["POST"])
+@login_required
+def api_feed_post_comment(post_id: int):
+    _ensure_db_tables()
+    post = FeedPost.query.get(post_id)
+    if post is None:
+        return jsonify({"error": "Post not found."}), 404
+    payload = request.get_json(silent=True) or {}
+    content = str(payload.get("content", "") or "").strip()
+    if not content:
+        return jsonify({"error": "Add a comment before posting."}), 400
+    mention_ids = _normalize_comment_mention_ids(payload.get("mentioned_user_ids"), content)
+    row = Comment(
+        post_id=int(post.id),
+        user_id=int(current_user.id),
+        content=content,
+        mentioned_user_ids_json=json.dumps(mention_ids),
+    )
+    db.session.add(row)
+    db.session.commit()
+    return jsonify({"ok": True, "comment": _comment_payload(row, like_count=0, liked_by_viewer=False)})
+
+
+@app.route("/api/feed/comments/<int:comment_id>/like", methods=["POST"])
+@login_required
+def api_feed_comment_like(comment_id: int):
+    _ensure_db_tables()
+    comment = Comment.query.get(comment_id)
+    if comment is None:
+        return jsonify({"error": "Comment not found."}), 404
+    row = CommentLike.query.filter_by(comment_id=int(comment.id), user_id=int(current_user.id)).first()
+    if row is None:
+        db.session.add(CommentLike(comment_id=int(comment.id), user_id=int(current_user.id)))
+        liked = True
+    else:
+        db.session.delete(row)
+        liked = False
+    db.session.commit()
+    like_count = (
+        db.session.query(db.func.count(CommentLike.id))
+        .filter(CommentLike.comment_id == int(comment.id))
+        .scalar()
+        or 0
+    )
+    return jsonify({"ok": True, "liked": liked, "like_count": int(like_count)})
 
 
 @app.route("/api/feed/posts/<int:post_id>/reaction", methods=["POST"])

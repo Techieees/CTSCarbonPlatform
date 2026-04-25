@@ -17,6 +17,7 @@
     insightful: { label: "Insightful", icon: "💡" },
     funny: { label: "Funny", icon: "😂" }
   };
+  let mentionContactsPromise = null;
 
   function clearPreview() {
     if (!preview || !fileName) {
@@ -207,6 +208,258 @@
     document.body.removeChild(temp);
   }
 
+  function escapeHtml(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function nl2br(value) {
+    return String(value || "").replace(/\n/g, "<br>");
+  }
+
+  function commentHtml(comment) {
+    const likeCount = Number(comment && comment.like_count || 0);
+    const liked = Boolean(comment && comment.liked_by_viewer);
+    return '' +
+      '<article class="feed-comment" data-feed-comment-id="' + Number(comment.id || 0) + '">' +
+        '<a href="' + escapeHtml(comment.author_profile_url || "#") + '" class="feed-comment__avatar-link" aria-label="' + escapeHtml(comment.author_name || "User") + ' profile">' +
+          '<img class="feed-avatar-image feed-avatar-image--sm" src="' + escapeHtml(comment.author_avatar_url || "") + '" alt="' + escapeHtml(comment.author_name || "User") + '">' +
+        '</a>' +
+        '<div class="feed-comment__body">' +
+          '<div class="feed-comment__bubble">' +
+            '<div class="feed-comment__meta">' +
+              '<a href="' + escapeHtml(comment.author_profile_url || "#") + '" class="feed-comment__author">' + escapeHtml(comment.author_name || "User") + '</a>' +
+              '<span class="feed-role-badge">' + escapeHtml(comment.author_role_label || "User") + '</span>' +
+              '<time class="feed-comment__time" datetime="' + escapeHtml(comment.created_at_iso || "") + '">' + escapeHtml(comment.created_at_label || "") + '</time>' +
+            '</div>' +
+            '<div class="feed-comment__content">' + nl2br(String(comment.content_html || "")) + '</div>' +
+          '</div>' +
+          '<button class="feed-comment__like' + (liked ? ' is-active' : '') + '" type="button" data-feed-comment-like data-like-endpoint="' + escapeHtml(comment.like_endpoint || "") + '" aria-pressed="' + (liked ? "true" : "false") + '">' +
+            'Like <span data-feed-comment-like-count>' + likeCount + '</span>' +
+          '</button>' +
+        '</div>' +
+      '</article>';
+  }
+
+  function loadMentionContacts(endpoint) {
+    const resolved = String(endpoint || "").trim();
+    if (!resolved) {
+      return Promise.resolve([]);
+    }
+    if (!mentionContactsPromise) {
+      mentionContactsPromise = fetch(resolved, {
+        headers: {
+          Accept: "application/json",
+          "X-Requested-With": "XMLHttpRequest"
+        }
+      })
+        .then(function (response) {
+          return response.json().catch(function () {
+            return {};
+          }).then(function (payload) {
+            if (!response.ok) {
+              throw new Error("Could not load mention contacts.");
+            }
+            return Array.isArray(payload.contacts) ? payload.contacts : [];
+          });
+        })
+        .catch(function () {
+          mentionContactsPromise = null;
+          return [];
+        });
+    }
+    return mentionContactsPromise;
+  }
+
+  function activeMentionQuery(input) {
+    const value = String(input && input.value || "");
+    const caret = Number(input && input.selectionStart || value.length);
+    const beforeCaret = value.slice(0, caret);
+    const match = beforeCaret.match(/(^|\s)@([a-zA-Z0-9._-]{1,30})$/);
+    if (!match) {
+      return null;
+    }
+    return {
+      query: String(match[2] || "").toLowerCase(),
+      replaceStart: caret - match[2].length - 1,
+      replaceEnd: caret
+    };
+  }
+
+  function ensureMentionMap(form) {
+    if (!form._mentionMap) {
+      form._mentionMap = {};
+    }
+    return form._mentionMap;
+  }
+
+  function mentionedIdsForForm(form, content) {
+    const map = ensureMentionMap(form);
+    return Object.keys(map).filter(function (token) {
+      return String(content || "").indexOf(token) !== -1;
+    }).map(function (token) {
+      return Number(map[token] || 0);
+    }).filter(function (id, index, arr) {
+      return id > 0 && arr.indexOf(id) === index;
+    });
+  }
+
+  function hideMentionList(list) {
+    if (!list) {
+      return;
+    }
+    list.innerHTML = "";
+    list.hidden = true;
+  }
+
+  function renderMentionList(form, input, list, contacts, queryState) {
+    if (!list || !queryState || !queryState.query) {
+      hideMentionList(list);
+      return;
+    }
+    const query = queryState.query;
+    const matches = contacts.filter(function (contact) {
+      const name = String(contact && contact.name || "").toLowerCase();
+      return name.indexOf(query) !== -1;
+    }).slice(0, 6);
+    if (!matches.length) {
+      hideMentionList(list);
+      return;
+    }
+    list.innerHTML = matches.map(function (contact) {
+      return '' +
+        '<button type="button" class="feed-comment-mentions__item" data-feed-mention-option data-user-id="' + Number(contact.id || 0) + '" data-user-name="' + escapeHtml(contact.name || "") + '">' +
+          '<img class="feed-avatar-image feed-avatar-image--xs" src="' + escapeHtml(contact.profile_photo_url || "") + '" alt="' + escapeHtml(contact.name || "User") + '">' +
+          '<span>' + escapeHtml(contact.name || "User") + '</span>' +
+        '</button>';
+    }).join("");
+    list.hidden = false;
+    Array.from(list.querySelectorAll("[data-feed-mention-option]")).forEach(function (button) {
+      button.addEventListener("click", function () {
+        const userName = String(button.dataset.userName || "").trim();
+        const userId = Number(button.dataset.userId || 0);
+        const value = String(input.value || "");
+        const replacement = "@" + userName + " ";
+        input.value = value.slice(0, queryState.replaceStart) + replacement + value.slice(queryState.replaceEnd);
+        input.focus();
+        input.selectionStart = input.selectionEnd = queryState.replaceStart + replacement.length;
+        ensureMentionMap(form)["@" + userName] = userId;
+        hideMentionList(list);
+      });
+    });
+  }
+
+  function updateCommentLikeButton(button, liked, count) {
+    if (!button) {
+      return;
+    }
+    button.classList.toggle("is-active", Boolean(liked));
+    button.setAttribute("aria-pressed", liked ? "true" : "false");
+    const countNode = button.querySelector("[data-feed-comment-like-count]");
+    if (countNode) {
+      countNode.textContent = String(count || 0);
+    }
+  }
+
+  function initCommentForm(form) {
+    if (!form || form.dataset.commentInit === "true") {
+      return;
+    }
+    form.dataset.commentInit = "true";
+    const input = form.querySelector("[data-feed-comment-input]");
+    const mentionList = form.querySelector("[data-feed-mention-list]");
+    const endpoint = String(form.dataset.commentEndpoint || "").trim();
+    const mentionEndpoint = String(form.dataset.mentionEndpoint || "").trim();
+    if (!input || !endpoint) {
+      return;
+    }
+    input.addEventListener("input", function () {
+      const queryState = activeMentionQuery(input);
+      if (!queryState) {
+        hideMentionList(mentionList);
+        return;
+      }
+      loadMentionContacts(mentionEndpoint).then(function (contacts) {
+        renderMentionList(form, input, mentionList, contacts, queryState);
+      });
+    });
+    input.addEventListener("keydown", function (event) {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        form.requestSubmit();
+      }
+      if (event.key === "Escape") {
+        hideMentionList(mentionList);
+      }
+    });
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      const content = String(input.value || "").trim();
+      if (!content) {
+        return;
+      }
+      const commentList = form.closest("[data-feed-comments]")?.querySelector("[data-feed-comment-list]");
+      const mentionedUserIds = mentionedIdsForForm(form, content);
+      input.disabled = true;
+      fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest"
+        },
+        body: JSON.stringify({ content: content, mentioned_user_ids: mentionedUserIds })
+      })
+        .then(function (response) {
+          return response.json().catch(function () {
+            return {};
+          }).then(function (payload) {
+            if (!response.ok || !payload.ok || !payload.comment) {
+              throw new Error(String(payload.error || "Could not add comment."));
+            }
+            return payload.comment;
+          });
+        })
+        .then(function (comment) {
+          comment.like_endpoint = "/api/feed/comments/" + encodeURIComponent(comment.id) + "/like";
+          if (commentList) {
+            commentList.insertAdjacentHTML("beforeend", commentHtml(comment));
+          }
+          input.value = "";
+          form._mentionMap = {};
+          hideMentionList(mentionList);
+        })
+        .catch(function () {})
+        .finally(function () {
+          input.disabled = false;
+          input.focus();
+        });
+    });
+  }
+
+  function applyFollowButtonState(button, following, busy) {
+    if (!button) {
+      return;
+    }
+    button.dataset.following = following ? "true" : "false";
+    button.disabled = Boolean(busy);
+    button.textContent = following ? "Following" : "Follow";
+    button.classList.toggle("btn-primary", !following);
+    button.classList.toggle("btn-ghost", following);
+  }
+
+  function setProfileCoverBusy(button, busy) {
+    if (!button) {
+      return;
+    }
+    button.disabled = Boolean(busy);
+    button.textContent = busy ? "Uploading..." : "Edit cover";
+  }
+
   if (imageInput) {
     imageInput.addEventListener("change", function () {
       handleFileSelection(imageInput, "image");
@@ -280,4 +533,150 @@
       challengeResponseForm.reset();
     });
   }
+
+  Array.from(document.querySelectorAll("[data-profile-follow-toggle]")).forEach(function (button) {
+    button.addEventListener("click", function () {
+      const following = String(button.dataset.following || "").trim() === "true";
+      const endpoint = String(following ? button.dataset.unfollowUrl : button.dataset.followUrl || "").trim();
+      if (!endpoint) {
+        return;
+      }
+      applyFollowButtonState(button, following, true);
+      fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "X-Requested-With": "XMLHttpRequest"
+        }
+      })
+        .then(function (response) {
+          return response.json().catch(function () {
+            return {};
+          }).then(function (payload) {
+            if (!response.ok || !payload.ok) {
+              throw new Error(String(payload.error || "Could not update follow status."));
+            }
+            return payload;
+          });
+        })
+        .then(function (payload) {
+          const nextFollowing = Boolean(payload.following);
+          applyFollowButtonState(button, nextFollowing, false);
+          Array.from(document.querySelectorAll("[data-profile-follower-count]")).forEach(function (node) {
+            node.textContent = String(payload.follower_count || 0);
+          });
+        })
+        .catch(function () {
+          applyFollowButtonState(button, following, false);
+        });
+    });
+  });
+
+  Array.from(document.querySelectorAll("[data-profile-cover-trigger]")).forEach(function (button) {
+    const banner = document.querySelector("[data-profile-cover-banner]");
+    const input = document.querySelector("[data-profile-cover-input]");
+    const endpoint = String(button.dataset.uploadUrl || "").trim();
+    if (!banner || !input || !endpoint) {
+      return;
+    }
+
+    button.addEventListener("click", function () {
+      input.click();
+    });
+
+    input.addEventListener("change", function () {
+      const file = input.files && input.files[0] ? input.files[0] : null;
+      if (!file) {
+        return;
+      }
+      const formData = new FormData();
+      formData.append("cover_image", file);
+      setProfileCoverBusy(button, true);
+      fetch(endpoint, {
+        method: "POST",
+        body: formData,
+        headers: {
+          Accept: "application/json",
+          "X-Requested-With": "XMLHttpRequest"
+        }
+      })
+        .then(function (response) {
+          return response.json().catch(function () {
+            return {};
+          }).then(function (payload) {
+            if (!response.ok || !payload.ok || !payload.cover_url) {
+              throw new Error(String(payload.error || "Could not upload cover image."));
+            }
+            return payload;
+          });
+        })
+        .then(function (payload) {
+          banner.style.backgroundImage = 'url("' + String(payload.cover_url) + '")';
+          banner.classList.add("has-custom-cover");
+        })
+        .catch(function () {})
+        .finally(function () {
+          input.value = "";
+          setProfileCoverBusy(button, false);
+        });
+    });
+  });
+
+  Array.from(document.querySelectorAll(".feed-comment-form")).forEach(initCommentForm);
+
+  document.addEventListener("click", function (event) {
+    const toggleButton = event.target.closest("[data-feed-comment-toggle]");
+    if (toggleButton) {
+      const postEl = toggleButton.closest("[data-feed-post-id]");
+      const composer = postEl ? postEl.querySelector("[data-feed-comment-composer]") : null;
+      const input = composer ? composer.querySelector("[data-feed-comment-input]") : null;
+      if (composer) {
+        const shouldOpen = composer.hidden;
+        composer.hidden = !shouldOpen ? true : false;
+        toggleButton.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+        if (shouldOpen && input) {
+          input.focus();
+        }
+      }
+      return;
+    }
+
+    const likeButton = event.target.closest("[data-feed-comment-like]");
+    if (likeButton) {
+      const endpoint = String(likeButton.dataset.likeEndpoint || "").trim();
+      if (!endpoint) {
+        return;
+      }
+      likeButton.disabled = true;
+      fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "X-Requested-With": "XMLHttpRequest"
+        }
+      })
+        .then(function (response) {
+          return response.json().catch(function () {
+            return {};
+          }).then(function (payload) {
+            if (!response.ok || !payload.ok) {
+              throw new Error(String(payload.error || "Could not update comment like."));
+            }
+            return payload;
+          });
+        })
+        .then(function (payload) {
+          updateCommentLikeButton(likeButton, Boolean(payload.liked), Number(payload.like_count || 0));
+        })
+        .catch(function () {})
+        .finally(function () {
+          likeButton.disabled = false;
+        });
+      return;
+    }
+
+    if (!event.target.closest("[data-feed-mention-list]")) {
+      Array.from(document.querySelectorAll("[data-feed-mention-list]")).forEach(hideMentionList);
+    }
+  });
 })();

@@ -1,31 +1,38 @@
 <article class="feed-card feed-post" data-feed-post-id="{{ post.id }}">
   <header class="feed-post__header">
-    <a href="{{ post.author_profile_url }}" class="feed-post__avatar-link" aria-label="{{ post.author_name }} profile">
-      <img class="feed-avatar-image" src="{{ post.author_avatar_url }}" alt="{{ post.author_name }}">
-    </a>
-    <div class="feed-post__identity">
-      <div class="feed-post__headline">
-        <div class="feed-post__headline-copy">
-          <h3 class="feed-post__name"><a href="{{ post.author_profile_url }}">{{ post.author_name }}</a></h3>
-          {% if post.report %}
-          <p class="feed-post__report-title">{{ post.report.title }}</p>
-          {% endif %}
+    <a href="{{ post.author_profile_url }}" class="feed-post__header-link" aria-label="{{ post.author_name }} profile">
+      <span class="feed-post__avatar-link">
+        <img class="feed-avatar-image" src="{{ post.author_avatar_url }}" alt="{{ post.author_name }}">
+      </span>
+      <div class="feed-post__identity">
+        <div class="feed-post__headline">
+          <div class="feed-post__headline-copy">
+            <div class="feed-post__name-row">
+              <h3 class="feed-post__name">{{ post.author_name }}</h3>
+              {% if post.author_role_label %}
+              <span class="feed-role-badge">{{ post.author_role_label }}</span>
+              {% endif %}
+            </div>
+            {% if post.report %}
+            <p class="feed-post__report-title">{{ post.report.title }}</p>
+            {% endif %}
+          </div>
+          <span class="feed-post__type-badge feed-post__type-badge--{{ post.post_type }}">{{ post.post_type_label }}</span>
         </div>
-        <span class="feed-post__type-badge feed-post__type-badge--{{ post.post_type }}">{{ post.post_type_label }}</span>
+        <p class="feed-post__subtitle">
+          {% if post.author_title and post.author_company %}
+          {{ post.author_title }} &middot; {{ post.author_company }}
+          {% elif post.author_title %}
+          {{ post.author_title }}
+          {% else %}
+          {{ post.author_company }}
+          {% endif %}
+        </p>
+        <p class="feed-post__time">
+          <time datetime="{{ post.created_at_iso }}">{{ post.created_at_label }}</time>
+        </p>
       </div>
-      <p class="feed-post__subtitle">
-        {% if post.author_title and post.author_company %}
-        {{ post.author_title }} &middot; {{ post.author_company }}
-        {% elif post.author_title %}
-        {{ post.author_title }}
-        {% else %}
-        {{ post.author_company }}
-        {% endif %}
-      </p>
-      <p class="feed-post__time">
-        <time datetime="{{ post.created_at_iso }}">{{ post.created_at_label }}</time>
-      </p>
-    </div>
+    </a>
   </header>
 
   {% if post.report %}
@@ -133,16 +140,15 @@
       </button>
     </div>
     {% endif %}
-    {% if post.can_respond_to_challenge %}
+    {% if can_create_posts %}
     <button
       class="feed-action"
       type="button"
-      data-feed-open-challenge-response
-      data-challenge-id="{{ post.challenge.id }}"
-      data-challenge-title="{{ post.challenge.title }}"
+      data-feed-comment-toggle
+      aria-expanded="false"
     >
       <span class="feed-action__icon" aria-hidden="true">&#9998;</span>
-      <span>Respond</span>
+      <span>{% if post.challenge %}Respond{% else %}Comment{% endif %}</span>
     </button>
     {% endif %}
     <button class="feed-action" type="button" data-feed-ui="share">
@@ -150,4 +156,56 @@
       <span>Share</span>
     </button>
   </footer>
+
+  <section class="feed-comments" data-feed-comments>
+    {% if can_create_posts %}
+    <div class="feed-comment-composer" data-feed-comment-composer hidden>
+      <img class="feed-avatar-image feed-avatar-image--sm" src="{{ comment_actor_avatar_url }}" alt="Your avatar">
+      <form
+        class="feed-comment-form"
+        data-comment-endpoint="{{ url_for('api_feed_post_comment', post_id=post.id) }}"
+        data-mention-endpoint="{{ url_for('api_message_contacts') }}"
+      >
+        <div class="feed-comment-form__shell">
+          <textarea
+            class="feed-comment-form__input"
+            rows="1"
+            placeholder="{% if post.challenge %}Share a response...{% else %}Write a comment...{% endif %}"
+            data-feed-comment-input
+          ></textarea>
+          <div class="feed-comment-mentions" data-feed-mention-list hidden></div>
+        </div>
+      </form>
+    </div>
+    {% endif %}
+
+    <div class="feed-comment-list" data-feed-comment-list>
+      {% for comment in post.comments %}
+      <article class="feed-comment" data-feed-comment-id="{{ comment.id }}">
+        <a href="{{ comment.author_profile_url }}" class="feed-comment__avatar-link" aria-label="{{ comment.author_name }} profile">
+          <img class="feed-avatar-image feed-avatar-image--sm" src="{{ comment.author_avatar_url }}" alt="{{ comment.author_name }}">
+        </a>
+        <div class="feed-comment__body">
+          <div class="feed-comment__bubble">
+            <div class="feed-comment__meta">
+              <a href="{{ comment.author_profile_url }}" class="feed-comment__author">{{ comment.author_name }}</a>
+              <span class="feed-role-badge">{{ comment.author_role_label }}</span>
+              <time class="feed-comment__time" datetime="{{ comment.created_at_iso }}">{{ comment.created_at_label }}</time>
+            </div>
+            <div class="feed-comment__content">{{ comment.content_html|safe }}</div>
+          </div>
+          <button
+            class="feed-comment__like {% if comment.liked_by_viewer %}is-active{% endif %}"
+            type="button"
+            data-feed-comment-like
+            data-like-endpoint="{{ url_for('api_feed_comment_like', comment_id=comment.id) }}"
+            aria-pressed="{% if comment.liked_by_viewer %}true{% else %}false{% endif %}"
+          >
+            Like <span data-feed-comment-like-count>{{ comment.like_count }}</span>
+          </button>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
 </article>

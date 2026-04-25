@@ -9,7 +9,7 @@
 {% set governance_active = ep in ('governance_audit_ready_output',) %}
 {% set esg_active = ep in ('csrd', 'csrd_policies', 'lca', 'lca_tool') %}
 {% set admin_active = current_user.is_admin and ep in ('admin_users', 'admin_access_requests', 'owner_analytics', 'admin', 'admin_mapping_panel', 'manage_emission_factors', 'admin_report') %}
-{% set settings_active = ep == 'profile_page' %}
+{% set settings_active = ep in ('profile_page', 'settings_profile_page') %}
 {% set feed_active = ep == 'feed' %}
 {% set selected_section = 'dashboard' %}
 {% if feed_active %}
@@ -266,7 +266,7 @@
           <h2>Settings</h2>
         </div>
         <nav class="app-sidebar__panel-menu">
-          <a href="{{ url_for('profile_page') }}" class="app-sidebar__menu-item {% if ep == 'profile_page' %}is-active{% endif %}" {% if ep == 'profile_page' %}aria-current="page"{% endif %}>
+          <a href="{{ url_for('settings_profile_page') }}" class="app-sidebar__menu-item {% if settings_active %}is-active{% endif %}" {% if settings_active %}aria-current="page"{% endif %}>
             {{ illu.illu_nav_cog('app-sidebar__icon') }}
             <span>Profile</span>
           </a>

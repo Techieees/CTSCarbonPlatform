@@ -588,6 +588,18 @@
       updateComposerState();
     }
 
+    function openChatForUser(userId) {
+      const normalizedUserId = Number(userId);
+      if (!normalizedUserId) {
+        return Promise.resolve();
+      }
+      return openThread(normalizedUserId).catch(function () {
+        setPanelOpen(true);
+        loadConversations().catch(function () {});
+        loadContacts().catch(function () {});
+      });
+    }
+
     launcherButtons.forEach(function (button) {
       button.addEventListener("click", function () {
         const nextState = !isPanelOpen();
@@ -660,6 +672,20 @@
         }, 120);
       });
     });
+
+    document.querySelectorAll("[data-open-chat-user]").forEach(function (button) {
+      button.addEventListener("click", function (event) {
+        event.preventDefault();
+        openChatForUser(button.getAttribute("data-open-chat-user"));
+      });
+    });
+
+    document.addEventListener("open-chat-user", function (event) {
+      const detail = event && event.detail ? event.detail : {};
+      openChatForUser(detail.userId);
+    });
+
+    window.openChatWithUser = openChatForUser;
 
     [conversationsList, contactsList].forEach(function (container) {
       container.addEventListener("click", function (event) {

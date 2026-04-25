@@ -90,7 +90,7 @@
                         <span class="d-none d-sm-inline">{{ account_display_name or 'Account' }}</span>
                     </a>
                     <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="accountDropdownTop">
-                        <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('profile_page') }}">{{ illu.illu_nav_id('me-2') }}Profile</a></li>
+                        <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('settings_profile_page') }}">{{ illu.illu_nav_id('me-2') }}Profile</a></li>
                         <li><button class="dropdown-item d-inline-flex align-items-center" type="button" data-open-chat>{{ illu.illu_nav_user('me-2') }}Messages</button></li>
                         <li><button class="dropdown-item d-inline-flex align-items-center" type="button" data-open-notifications>{{ illu.illu_nav_file('me-2') }}Notifications</button></li>
                         <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('logout') }}">{{ illu.illu_nav_signout('me-2') }}Logout</a></li>
@@ -176,7 +176,7 @@
                             <span class="d-none d-sm-inline">{{ account_display_name or 'Account' }}</span>
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="accountDropdownMarketingAuth">
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('profile_page') }}">{{ illu.illu_nav_id('me-2') }}Profile</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('settings_profile_page') }}">{{ illu.illu_nav_id('me-2') }}Profile</a></li>
                             <li><button class="dropdown-item d-inline-flex align-items-center" type="button" data-open-chat>{{ illu.illu_nav_user('me-2') }}Messages</button></li>
                             <li><button class="dropdown-item d-inline-flex align-items-center" type="button" data-open-notifications>{{ illu.illu_nav_file('me-2') }}Notifications</button></li>
                             <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('logout') }}">{{ illu.illu_nav_signout('me-2') }}Logout</a></li>
