@@ -85,6 +85,9 @@
     color: var(--bs-secondary-color);
     font-size: 0.92rem;
   }
+  .averages-page .averages-company-select {
+    max-width: 320px;
+  }
   @media (max-width: 991.98px) {
     .averages-page .averages-summary-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -93,6 +96,15 @@
   @media (max-width: 575.98px) {
     .averages-page .averages-summary-grid {
       grid-template-columns: 1fr;
+    }
+    .averages-page .averages-company-select {
+      max-width: 100%;
+    }
+    .averages-page .averages-actions > * {
+      width: 100%;
+    }
+    .averages-page .averages-feedback {
+      width: 100%;
     }
   }
 </style>
@@ -108,7 +120,7 @@
             <h1 class="h3 mb-2">Averages Input</h1>
             <p class="text-muted mb-1">Capture electricity, heating, waste, and water averages in one clean workspace.</p>
             {% if averages_owner_can_select_company %}
-            <div class="mt-3" style="max-width: 320px;">
+            <div class="mt-3 averages-company-select">
               <label class="form-label small text-muted mb-1" for="averagesCompanySelect">Select company</label>
               <select id="averagesCompanySelect" class="form-select">
                 {% for option in averages_company_options %}

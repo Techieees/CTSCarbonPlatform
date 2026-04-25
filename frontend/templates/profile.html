@@ -84,6 +84,29 @@
     padding: 1rem;
     background: var(--surface);
   }
+  @media (max-width: 767.98px) {
+    .profile-page {
+      max-width: 100%;
+    }
+    .profile-page .card-body {
+      padding: 1rem !important;
+    }
+    .profile-page__locations-header {
+      flex-direction: column;
+      align-items: stretch !important;
+    }
+    .profile-page-location {
+      padding: 0.875rem;
+    }
+    .profile-page-location .row > [class*="col-"] {
+      width: 100%;
+    }
+    .profile-page .btn,
+    .profile-page .form-control,
+    .profile-page .form-select {
+      max-width: 100%;
+    }
+  }
 </style>
 {% endblock %}
 
@@ -217,7 +240,7 @@
                                 </div>
                             </div>
                             <div class="col-12">
-                                <div class="d-flex align-items-center justify-content-between gap-3">
+                                <div class="d-flex align-items-center justify-content-between gap-3 profile-page__locations-header">
                                     <div>
                                         <label class="form-label mb-1">Operating Locations</label>
                                         <p class="text-muted mb-0 small">Add each country and site type combination used in operations.</p>

@@ -52,6 +52,7 @@
           <p class="feed-page__subtitle">Share project updates, reports, and alerts with your company in a clean internal feed.</p>
         </header>
 
+        {% if can_create_posts %}
         <section class="feed-card feed-composer-card" aria-label="Create post">
           <div class="feed-composer-card__row">
             <img class="feed-avatar-image" src="{{ feed_profile.avatar_url }}" alt="{{ feed_profile.name }}">
@@ -66,6 +67,24 @@
             </button>
           </div>
         </section>
+        {% else %}
+        <section class="feed-card feed-sidebar-card">
+          <h2 class="feed-sidebar-card__title">Read-only access</h2>
+          <p class="mb-0 text-muted small">Auditor accounts can browse feed activity, uploaded reports, and mapped outputs without editing data.</p>
+        </section>
+        {% endif %}
+
+        {% if can_create_challenges %}
+        <section class="feed-card feed-sidebar-card">
+          <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+            <div>
+              <h2 class="feed-sidebar-card__title mb-1">Challenges</h2>
+              <p class="mb-0 text-muted small">Create sustainability challenges that appear directly in the feed.</p>
+            </div>
+            <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#feedChallengeModal">New challenge</button>
+          </div>
+        </section>
+        {% endif %}
 
         <section class="feed-card feed-filter-card" aria-label="Feed filters">
           <div class="feed-filter-list">
@@ -88,101 +107,7 @@
           {% if posts %}
           <div class="feed-stream__list">
             {% for post in posts %}
-            <article class="feed-card feed-post" data-feed-post-id="{{ post.id }}">
-              <header class="feed-post__header">
-                <img class="feed-avatar-image" src="{{ post.author_avatar_url }}" alt="{{ post.author_name }}">
-                <div class="feed-post__identity">
-                  <div class="feed-post__headline">
-                    <h3 class="feed-post__name">{{ post.author_name }}</h3>
-                    <span class="feed-post__type-badge feed-post__type-badge--{{ post.post_type }}">{{ post.post_type_label }}</span>
-                  </div>
-                  <p class="feed-post__subtitle">
-                    {% if post.author_title and post.author_company %}
-                    {{ post.author_title }} &middot; {{ post.author_company }}
-                    {% elif post.author_title %}
-                    {{ post.author_title }}
-                    {% else %}
-                    {{ post.author_company }}
-                    {% endif %}
-                  </p>
-                  <p class="feed-post__time">
-                    <time datetime="{{ post.created_at_iso }}">{{ post.created_at_label }}</time>
-                  </p>
-                </div>
-              </header>
-
-              {% if post.content %}
-              <div class="feed-post__content">
-                <p>{{ post.content }}</p>
-              </div>
-              {% endif %}
-
-              {% if post.media_url and post.media_type == 'image' %}
-              <div class="feed-post__media">
-                <img src="{{ post.media_url }}" alt="Post image">
-              </div>
-              {% elif post.media_url and post.media_type == 'video' %}
-              <div class="feed-post__media">
-                <video controls preload="metadata">
-                  <source src="{{ post.media_url }}">
-                </video>
-              </div>
-              {% elif post.media_url and post.media_type == 'file' %}
-              <div class="feed-post__file">
-                <a href="{{ post.media_url }}" target="_blank" rel="noopener noreferrer">{{ post.media_name or 'Open file' }}</a>
-              </div>
-              {% endif %}
-
-              <div class="feed-post__reactions" data-feed-reaction-summary {% if not post.reaction_summary %}hidden{% endif %}>
-                {% for reaction in post.reaction_summary %}
-                <span class="feed-reaction-stat" data-reaction-type="{{ reaction.type }}">
-                  <span class="feed-reaction-stat__icon" aria-hidden="true">{{ reaction.icon }}</span>
-                  <span class="feed-reaction-stat__count">{{ reaction.count }}</span>
-                </span>
-                {% endfor %}
-              </div>
-
-              <footer class="feed-post__actions">
-                <div
-                  class="feed-reaction-picker"
-                  data-feed-reaction-picker
-                  data-reaction-endpoint="{{ url_for('api_feed_post_reaction', post_id=post.id) }}"
-                >
-                  <div class="feed-reaction-bar" role="toolbar" aria-label="Post reactions">
-                    {% for reaction in feed_reaction_options %}
-                    <button
-                      class="feed-reaction-bar__button"
-                      type="button"
-                      data-feed-reaction-option
-                      data-reaction-type="{{ reaction.type }}"
-                      data-reaction-label="{{ reaction.label }}"
-                      aria-label="{{ reaction.label }}"
-                    >
-                      {{ reaction.icon }}
-                    </button>
-                    {% endfor %}
-                  </div>
-                  <button
-                    class="feed-action feed-action--reaction {% if post.current_reaction %}is-active is-reacted feed-action--{{ post.current_reaction }}{% endif %}"
-                    type="button"
-                    data-feed-reaction-trigger
-                    data-current-reaction="{{ post.current_reaction }}"
-                    aria-pressed="{% if post.current_reaction %}true{% else %}false{% endif %}"
-                  >
-                    <span class="feed-action__icon" aria-hidden="true" data-feed-reaction-icon>{{ post.current_reaction_icon }}</span>
-                    <span data-feed-reaction-label>{{ post.current_reaction_label }}</span>
-                  </button>
-                </div>
-                <button class="feed-action" type="button" data-feed-ui="comment">
-                  <span class="feed-action__icon" aria-hidden="true">&#128172;</span>
-                  <span>Comment</span>
-                </button>
-                <button class="feed-action" type="button" data-feed-ui="share">
-                  <span class="feed-action__icon" aria-hidden="true">&#8599;</span>
-                  <span>Share</span>
-                </button>
-              </footer>
-            </article>
+            {% include 'partials/feed_post_card.html' %}
             {% endfor %}
           </div>
           {% else %}
@@ -226,6 +151,7 @@
   </div>
 </section>
 
+{% if can_create_posts %}
 <div class="modal fade" id="feedPostModal" tabindex="-1" aria-labelledby="feedPostModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-lg">
     <div class="modal-content feed-modal">
@@ -255,6 +181,11 @@
           <div class="feed-field">
             <label for="feedPostContent">Share with your team</label>
             <textarea id="feedPostContent" name="content" class="form-control" placeholder="What do you want to share?"></textarea>
+          </div>
+
+          <div class="feed-field">
+            <label for="feedReportTitle">Report title (used for PDF/Word uploads)</label>
+            <input id="feedReportTitle" name="report_title" type="text" class="form-control" placeholder="Optional report title">
           </div>
 
           <div class="feed-modal__actions">
@@ -289,6 +220,68 @@
     </div>
   </div>
 </div>
+{% endif %}
+
+{% if can_create_challenges %}
+<div class="modal fade" id="feedChallengeModal" tabindex="-1" aria-labelledby="feedChallengeModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content feed-modal">
+      <form method="post" action="{{ url_for('create_challenge') }}">
+        <div class="modal-header feed-modal__header">
+          <h3 id="feedChallengeModalLabel" class="feed-modal__name mb-0">New challenge</h3>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body feed-modal__body">
+          <div class="feed-field">
+            <label for="challengeTitle">Title</label>
+            <input id="challengeTitle" name="title" type="text" class="form-control" required>
+          </div>
+          <div class="feed-field">
+            <label for="challengeDescription">Description</label>
+            <textarea id="challengeDescription" name="description" class="form-control" rows="5" required></textarea>
+          </div>
+          <div class="feed-field">
+            <label for="challengeDeadline">Deadline</label>
+            <input id="challengeDeadline" name="deadline" type="datetime-local" class="form-control">
+          </div>
+        </div>
+        <div class="modal-footer feed-modal__footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Publish challenge</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if can_create_posts %}
+<div class="modal fade" id="feedChallengeResponseModal" tabindex="-1" aria-labelledby="feedChallengeResponseModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content feed-modal">
+      <form id="feedChallengeResponseForm" method="post">
+        <div class="modal-header feed-modal__header">
+          <div>
+            <h3 id="feedChallengeResponseModalLabel" class="feed-modal__name mb-1">Challenge response</h3>
+            <p class="feed-modal__meta mb-0" id="feedChallengeResponseTitle">Respond to challenge</p>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body feed-modal__body">
+          <div class="feed-field">
+            <label for="challengeResponseAnswer">Your response</label>
+            <textarea id="challengeResponseAnswer" name="answer" class="form-control" rows="5" required></textarea>
+          </div>
+        </div>
+        <div class="modal-footer feed-modal__footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Submit response</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}

@@ -1,6 +1,7 @@
 (function () {
   const STORAGE_KEY = "sidebarCollapsed";
   const desktopMq = window.matchMedia("(min-width: 992px)");
+  const mobileMq = window.matchMedia("(max-width: 767.98px)");
 
   function init() {
     const layout = document.getElementById("appLayout");
@@ -15,6 +16,8 @@
     const secondaryClose = sidebar.querySelector("[data-sidebar-secondary-close]");
     const branchButtons = Array.from(sidebar.querySelectorAll("[data-sidebar-secondary-trigger]"));
     const toggleButton = sidebar.querySelector("[data-sidebar-toggle]");
+    const mobileToggle = document.querySelector("[data-sidebar-mobile-toggle]");
+    const mobileBackdrop = sidebar.querySelector("[data-sidebar-mobile-backdrop]");
     let pinnedExpanded = false;
 
     function readStoredCollapsed() {
@@ -44,6 +47,22 @@
       if (toggleButton) {
         toggleButton.setAttribute("aria-expanded", expanded ? "true" : "false");
       }
+    }
+
+    function setMobileOpen(open) {
+      if (!mobileMq.matches) {
+        layout.classList.remove("is-sidebar-mobile-open");
+        document.body.classList.remove("app-mobile-sidebar-open");
+        if (mobileToggle) {
+          mobileToggle.setAttribute("aria-expanded", "false");
+        }
+        return;
+      }
+      layout.classList.toggle("is-sidebar-mobile-open", Boolean(open));
+      if (mobileToggle) {
+        mobileToggle.setAttribute("aria-expanded", open ? "true" : "false");
+      }
+      document.body.classList.toggle("app-mobile-sidebar-open", Boolean(open));
     }
 
     function setSection(sectionId) {
@@ -109,6 +128,14 @@
       });
     });
 
+    Array.from(sidebar.querySelectorAll("a.app-sidebar__menu-item")).forEach((link) => {
+      link.addEventListener("click", () => {
+        if (mobileMq.matches) {
+          setMobileOpen(false);
+        }
+      });
+    });
+
     branchButtons.forEach((button) => {
       button.addEventListener("click", () => {
         if (!isExpanded()) {
@@ -145,6 +172,18 @@
       });
     }
 
+    if (mobileToggle) {
+      mobileToggle.addEventListener("click", () => {
+        setMobileOpen(!layout.classList.contains("is-sidebar-mobile-open"));
+      });
+    }
+
+    if (mobileBackdrop) {
+      mobileBackdrop.addEventListener("click", () => {
+        setMobileOpen(false);
+      });
+    }
+
     sidebar.addEventListener("mouseenter", () => {
       if (!desktopMq.matches || pinnedExpanded) return;
       sidebar.classList.add("is-hover-expanded");
@@ -163,10 +202,15 @@
         pinnedExpanded = stored === "false" ? true : false;
         sidebar.classList.toggle("is-expanded", pinnedExpanded);
         sidebar.classList.remove("is-hover-expanded");
+        layout.classList.remove("app-layout--mobile-drawer");
       } else {
         pinnedExpanded = true;
         sidebar.classList.add("is-expanded");
         sidebar.classList.remove("is-hover-expanded");
+        layout.classList.toggle("app-layout--mobile-drawer", mobileMq.matches);
+      }
+      if (!mobileMq.matches) {
+        setMobileOpen(false);
       }
       syncExpandedState();
     }
@@ -176,6 +220,18 @@
     } else if (desktopMq.addListener) {
       desktopMq.addListener(applyResponsiveState);
     }
+
+    if (mobileMq.addEventListener) {
+      mobileMq.addEventListener("change", applyResponsiveState);
+    } else if (mobileMq.addListener) {
+      mobileMq.addListener(applyResponsiveState);
+    }
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && layout.classList.contains("is-sidebar-mobile-open")) {
+        setMobileOpen(false);
+      }
+    });
 
     const initialSection = sidebar.getAttribute("data-initial-section") || "dashboard";
     const initialSecondary = sidebar.getAttribute("data-initial-secondary") || "";

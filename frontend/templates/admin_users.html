@@ -2,6 +2,20 @@
 {% import 'macros/ui_illustrations.html' as illu %}
 
 {% block title %}User roles — Admin{% endblock %}
+{% block extra_head %}
+<style>
+  @media (max-width: 767.98px) {
+    .admin-users-search,
+    .admin-users-role-select {
+      width: 100%;
+      max-width: 100%;
+    }
+    .admin-users-role-form .btn {
+      width: 100%;
+    }
+  }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
@@ -122,7 +136,7 @@
           <p class="text-muted small mb-3">Owner only. Change roles for platform users. Changes apply immediately.</p>
           <div class="mb-3">
             <label for="adminUsersSearch" class="visually-hidden">Search users</label>
-            <input type="search" id="adminUsersSearch" class="form-control form-control-sm" placeholder="Search users..." autocomplete="off" style="max-width: 320px;">
+            <input type="search" id="adminUsersSearch" class="form-control form-control-sm admin-users-search" placeholder="Search users..." autocomplete="off">
           </div>
           <div class="table-responsive">
             <table class="table table-sm table-hover align-middle mb-0" id="adminUsersTable">
@@ -148,9 +162,9 @@
                   <td>{{ u.job_title or '—' }}</td>
                   <td>{{ u.company_name or '—' }}</td>
                   <td>
-                    <form method="post" action="{{ url_for('admin_users') }}" class="d-flex flex-wrap gap-2 align-items-center">
+                    <form method="post" action="{{ url_for('admin_users') }}" class="d-flex flex-wrap gap-2 align-items-center admin-users-role-form">
                       <input type="hidden" name="user_id" value="{{ u.id }}">
-                      <select name="role" class="form-select form-select-sm" style="max-width: 220px;" aria-label="Role for {{ u.email }}">
+                      <select name="role" class="form-select form-select-sm admin-users-role-select" aria-label="Role for {{ u.email }}">
                         {% for r in user_roles %}
                         <option value="{{ r }}" {% if (u.role or 'user') == r %}selected{% endif %}>{{ r }}</option>
                         {% endfor %}

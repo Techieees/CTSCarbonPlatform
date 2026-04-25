@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}{{ profile_user.first_name or profile_user.email }} - Profile{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/feed.css') }}">
+{% endblock %}
+
+{% block content %}
+<section class="feed-page feed-profile-page">
+  <div class="feed-shell">
+    <div class="feed-profile-layout">
+      <aside class="feed-card feed-profile-summary">
+        <div class="feed-profile-summary__hero">
+        </div>
+        <div class="feed-profile-summary__body">
+          <img class="feed-profile-card__avatar" src="{{ url_for('static', filename=profile_user.profile_photo_path) if profile_user.profile_photo_path else url_for('mouse_symbol_image') }}" alt="{{ ((profile_user.first_name or '') ~ ' ' ~ (profile_user.last_name or ''))|trim or profile_user.email }}">
+          <h1 class="feed-profile-card__name mt-3">{{ ((profile_user.first_name or '') ~ ' ' ~ (profile_user.last_name or ''))|trim or profile_user.email }}</h1>
+          <p class="feed-profile-card__title">{{ profile_user.job_title or 'Team Member' }}</p>
+          <p class="feed-profile-card__title">{{ profile_user.company_name }}</p>
+        </div>
+      </aside>
+
+      <main class="feed-column feed-column--center">
+        <section class="feed-card feed-sidebar-card" id="reports">
+          <h2 class="feed-sidebar-card__title">Uploaded reports</h2>
+          {% if profile_reports %}
+          <div class="feed-profile-reports">
+            {% for report in profile_reports %}
+            <article class="feed-report-card">
+              <div class="feed-report-stack" aria-label="Report preview">
+                {% for preview_url in report.preview_urls %}
+                <div class="feed-report-stack__page">
+                  <img src="{{ preview_url }}" alt="{{ report.title }} preview page {{ loop.index }}">
+                </div>
+                {% endfor %}
+              </div>
+              <div class="feed-report-card__meta">
+                <div>
+                  <div class="feed-report-card__label">Report</div>
+                  <strong>{{ report.title }}</strong>
+                </div>
+                <a class="btn btn-primary btn-sm" href="{{ report.file_url }}" target="_blank" rel="noopener noreferrer">Open Report</a>
+              </div>
+            </article>
+            {% endfor %}
+          </div>
+          {% else %}
+          <p class="mb-0 text-muted">No uploaded reports yet.</p>
+          {% endif %}
+        </section>
+
+        <section class="feed-stream" aria-label="Profile posts">
+          {% if profile_posts %}
+          <div class="feed-stream__list">
+            {% for post in profile_posts %}
+            {% include 'partials/feed_post_card.html' %}
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="feed-card feed-empty-state">
+            <h3>No feed activity yet</h3>
+            <p>This user has not published any feed posts yet.</p>
+          </div>
+          {% endif %}
+        </section>
+      </main>
+    </div>
+  </div>
+</section>
+{% if can_create_posts %}
+<div class="modal fade" id="feedChallengeResponseModal" tabindex="-1" aria-labelledby="feedChallengeResponseModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content feed-modal">
+      <form id="feedChallengeResponseForm" method="post">
+        <div class="modal-header feed-modal__header">
+          <div>
+            <h3 id="feedChallengeResponseModalLabel" class="feed-modal__name mb-1">Challenge response</h3>
+            <p class="feed-modal__meta mb-0" id="feedChallengeResponseTitle">Respond to challenge</p>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body feed-modal__body">
+          <div class="feed-field">
+            <label for="challengeResponseAnswer">Your response</label>
+            <textarea id="challengeResponseAnswer" name="answer" class="form-control" rows="5" required></textarea>
+          </div>
+        </div>
+        <div class="modal-footer feed-modal__footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Submit response</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/feed.js') }}"></script>
+{% endblock %}

@@ -40,8 +40,12 @@
       (function () {
         var el = document.getElementById("appLayout");
         if (!el) return;
-        var mq = window.matchMedia("(max-width: 991.98px)");
-        if (mq.matches) {
+        var mobileMq = window.matchMedia("(max-width: 767.98px)");
+        var tabletMq = window.matchMedia("(max-width: 991.98px)");
+        if (mobileMq.matches) {
+          el.classList.add("app-layout--mobile-drawer");
+          el.classList.add("app-sidebar-labels-hidden");
+        } else if (tabletMq.matches) {
           el.classList.add("app-layout--mobile-narrow");
           el.classList.add("app-sidebar-labels-hidden");
         } else {
@@ -58,6 +62,9 @@
     <div class="app-main-wrap">
     <header class="app-topbar">
         <div class="app-topbar__inner container-fluid px-3">
+            <button class="app-topbar__menu-toggle" type="button" data-sidebar-mobile-toggle aria-label="Open navigation menu" aria-controls="appSidebar" aria-expanded="false">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </button>
             <a class="app-topbar__brand navbar-logo d-flex align-items-center" href="{{ url_for('index') }}" aria-label="Home">
                 <img src="{{ url_for('mouse_symbol_image') }}" alt="" width="44" height="44" class="app-brand-symbol" style="width: auto; object-fit: contain;" />
             </a>

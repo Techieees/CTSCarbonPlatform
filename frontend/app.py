@@ -36,6 +36,12 @@ from urllib import request as urllib_request
 from urllib.parse import quote
 from email.message import EmailMessage
 from dotenv import load_dotenv
+from PIL import Image, ImageDraw, ImageFont
+
+try:
+    import fitz  # type: ignore
+except Exception:
+    fitz = None
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -130,6 +136,10 @@ FEED_FILE_ALLOWED_EXT = frozenset({".pdf", ".doc", ".docx", ".xls", ".xlsx", ".p
 FEED_POST_TYPES: tuple[str, ...] = ("update", "report", "alert")
 FEED_POST_TYPES_SET = frozenset(FEED_POST_TYPES)
 FEED_FILTER_OPTIONS: tuple[str, ...] = ("all",) + FEED_POST_TYPES
+REPORT_PREVIEWABLE_EXT = frozenset({".pdf", ".doc", ".docx"})
+REPORT_DOCUMENT_EXT = frozenset({".doc", ".docx"})
+REPORT_PREVIEW_PAGE_COUNT = 3
+FEED_REFERENCE_TYPES = frozenset({"report", "challenge", "challenge_response"})
 FEED_REACTION_OPTIONS: tuple[dict[str, str], ...] = (
     {"type": "like", "label": "Like", "icon": "👍"},
     {"type": "celebrate", "label": "Celebrate", "icon": "👏"},
@@ -609,6 +619,47 @@ def _ensure_activity_session_for_authenticated_user():
         _activity_session_id(create_if_missing=True)
 
 
+@app.before_request
+def _enforce_readonly_auditor_access():
+    if not current_user.is_authenticated or not _is_readonly_user(current_user):
+        return
+    endpoint = str(request.endpoint or "").strip()
+    method = str(request.method or "GET").upper()
+    blocked_pages = {
+        "dashboard",
+        "data_sources_averages",
+        "data_sources_scenarios",
+    }
+    blocked_write_endpoints = {
+        "create_feed_post",
+        "api_feed_post_reaction",
+        "create_challenge",
+        "submit_challenge_response",
+        "profile_page",
+        "api_excel_schema_save",
+        "api_averages_save",
+        "api_scenarios_save",
+        "api_mapping_run",
+        "api_pipeline_append_run",
+        "analytics_forecasting",
+        "analytics_decarbonization",
+        "analytics_mapped_window_output",
+        "analytics_emissions_totals",
+        "analytics_share_analysis",
+        "governance_audit_ready_output",
+        "governance_double_counting_check",
+        "data_sources_ccc_api",
+    }
+    if method == "GET" and endpoint in blocked_pages:
+        flash("Auditor accounts have read-only access to feed, reports, and mapped outputs.", "warning")
+        return redirect(url_for("feed"))
+    if method in {"POST", "PUT", "PATCH", "DELETE"} and endpoint in blocked_write_endpoints:
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "Auditor accounts have read-only access."}), 403
+        flash("Auditor accounts have read-only access.", "warning")
+        return redirect(url_for("feed"))
+
+
 @app.after_request
 def _log_authenticated_activity(response: Response):
     try:
@@ -671,7 +722,7 @@ class User(UserMixin, db.Model):
     operating_locations_json = db.Column(db.Text, nullable=True)
 
 
-USER_ROLES: tuple[str, ...] = ("owner", "super_admin", "admin", "manager", "user")
+USER_ROLES: tuple[str, ...] = ("owner", "super_admin", "admin", "manager", "auditor", "user")
 USER_ROLES_SET = frozenset(USER_ROLES)
 # Roles that may use existing admin routes (is_admin=True)
 ROLES_WITH_ADMIN_ACCESS = frozenset({"owner", "super_admin", "admin", "manager"})
@@ -871,6 +922,41 @@ class ScenariosData(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
+class Report(db.Model):
+    __tablename__ = "report"
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255), nullable=False)
+    file_path = db.Column(db.String(500), nullable=False)
+    preview_paths = db.Column(db.Text, nullable=True)
+    uploaded_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    company_id = db.Column(db.Integer, db.ForeignKey("companies.id"), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    uploader = db.relationship("User", lazy="joined")
+    company = db.relationship("Company", lazy="joined")
+
+
+class Challenge(db.Model):
+    __tablename__ = "challenge"
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text, nullable=False, default="")
+    created_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    deadline = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    creator = db.relationship("User", lazy="joined")
+
+
+class ChallengeResponse(db.Model):
+    __tablename__ = "challenge_response"
+    id = db.Column(db.Integer, primary_key=True)
+    challenge_id = db.Column(db.Integer, db.ForeignKey("challenge.id"), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    answer = db.Column(db.Text, nullable=False, default="")
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    challenge = db.relationship("Challenge", lazy="joined")
+    user = db.relationship("User", lazy="joined")
+
+
 class FeedPost(db.Model):
     __tablename__ = "feed_post"
     id = db.Column(db.Integer, primary_key=True)
@@ -879,6 +965,8 @@ class FeedPost(db.Model):
     post_type = db.Column(db.String(20), nullable=False, default="update", index=True)
     media_type = db.Column(db.String(20), nullable=True)
     media_path = db.Column(db.String(500), nullable=True)
+    reference_id = db.Column(db.Integer, nullable=True, index=True)
+    reference_type = db.Column(db.String(40), nullable=True, index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
     author = db.relationship("User", lazy="joined")
 
@@ -1377,6 +1465,7 @@ def _ensure_db_tables() -> None:
         _ensure_data_entry_columns()
         _ensure_mapping_run_source_entry_group_column()
         _ensure_user_profile_columns()
+        _ensure_feed_post_reference_columns()
     except Exception:
         pass
 
@@ -1968,6 +2057,11 @@ def _normalize_feed_post_type(raw: object) -> str:
     return value if value in FEED_POST_TYPES_SET else "update"
 
 
+def _normalize_feed_reference_type(raw: object) -> str:
+    value = str(raw or "").strip().lower()
+    return value if value in FEED_REFERENCE_TYPES else ""
+
+
 def _normalize_feed_reaction_type(raw: object) -> str:
     value = str(raw or "").strip().lower()
     return value if value in FEED_REACTION_TYPES_SET else ""
@@ -2060,12 +2154,15 @@ def _create_feed_post_record(
     author_id: int,
     content: str,
     post_type: str = "alert",
+    reference_id: int | None = None,
+    reference_type: str | None = None,
     created_at: datetime | None = None,
 ) -> FeedPost | None:
     clean_content = str(content or "").strip()
     if not author_id or not clean_content:
         return None
     normalized_post_type = _normalize_feed_post_type(post_type)
+    normalized_reference_type = _normalize_feed_reference_type(reference_type)
     post_created_at = created_at if isinstance(created_at, datetime) else datetime.utcnow()
     duplicate_window_start = post_created_at - timedelta(seconds=90)
     duplicate_window_end = post_created_at + timedelta(seconds=90)
@@ -2074,6 +2171,8 @@ def _create_feed_post_record(
             FeedPost.author_user_id == int(author_id),
             FeedPost.post_type == normalized_post_type,
             FeedPost.content == clean_content,
+            FeedPost.reference_id == (int(reference_id) if reference_id else None),
+            FeedPost.reference_type == (normalized_reference_type or None),
             FeedPost.created_at >= duplicate_window_start,
             FeedPost.created_at <= duplicate_window_end,
         )
@@ -2087,6 +2186,8 @@ def _create_feed_post_record(
         author_user_id=int(author_id),
         content=clean_content,
         post_type=normalized_post_type,
+        reference_id=int(reference_id) if reference_id else None,
+        reference_type=normalized_reference_type or None,
         created_at=post_created_at,
     )
     try:
@@ -2170,6 +2271,14 @@ def _positive_ratio(numerator: float | None, denominator: float | None) -> float
 
 def _is_owner_user(u: object | None) -> bool:
     return normalize_user_role(getattr(u, "role", None)) == "owner"
+
+
+def _is_auditor_user(u: object | None) -> bool:
+    return normalize_user_role(getattr(u, "role", None)) == "auditor"
+
+
+def _is_readonly_user(u: object | None) -> bool:
+    return _is_auditor_user(u)
 
 
 def _allowed_companies_for_averages() -> list[str]:
@@ -2543,6 +2652,145 @@ def _save_feed_media_file(storage, *, user_id: int) -> tuple[str | None, str | N
     return (dest.relative_to(APP_DIR / "static").as_posix(), media_type, None)
 
 
+def _json_list(value: object) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    try:
+        data = json.loads(str(value or "[]"))
+    except Exception:
+        return []
+    if not isinstance(data, list):
+        return []
+    return [str(item).strip() for item in data if str(item).strip()]
+
+
+def _company_row_for_name(company_name: str, *, created_by_user_id: int | None = None) -> Company | None:
+    resolved_name = _clean_company_name(company_name)
+    if not resolved_name:
+        return None
+    row = Company.query.filter_by(company_name=resolved_name).first()
+    if row is not None:
+        if created_by_user_id and not row.created_by_user_id:
+            row.created_by_user_id = int(created_by_user_id)
+        return row
+    row = Company(company_name=resolved_name, created_by_user_id=created_by_user_id)
+    db.session.add(row)
+    db.session.flush()
+    return row
+
+
+def _save_report_file(storage, *, user_id: int) -> tuple[str | None, str | None]:
+    if not storage or not getattr(storage, "filename", None):
+        return (None, "No report file provided.")
+    filename = secure_filename(storage.filename or "")
+    ext = Path(filename).suffix.lower()
+    if ext not in FEED_FILE_ALLOWED_EXT:
+        return (None, "Unsupported report file type.")
+    dest_dir = _static_subdir("reports")
+    stored_name = f"report_{user_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:10]}{ext}"
+    dest = dest_dir / stored_name
+    storage.save(str(dest))
+    return (dest.relative_to(APP_DIR / "static").as_posix(), None)
+
+
+def _make_report_preview_placeholder(title: str, *, page_number: int, base_name: str) -> str:
+    preview_dir = _static_subdir("report_previews")
+    dest = preview_dir / f"{base_name}_page_{page_number}.png"
+    image = Image.new("RGB", (900, 1200), color=(250, 251, 255))
+    draw = ImageDraw.Draw(image)
+    font = ImageFont.load_default()
+    draw.rounded_rectangle((36, 36, 864, 1164), radius=28, outline=(198, 209, 224), width=3, fill=(255, 255, 255))
+    draw.rectangle((74, 92, 826, 210), fill=(234, 242, 255))
+    draw.text((96, 120), f"Report preview {page_number}", fill=(38, 73, 137), font=font)
+    draw.text((96, 260), (title or "Untitled report")[:84], fill=(32, 37, 46), font=font)
+    draw.text((96, 320), "Preview generated for document upload.", fill=(92, 103, 119), font=font)
+    for idx in range(6):
+        top = 420 + idx * 92
+        draw.rounded_rectangle((96, top, 804, top + 42), radius=12, fill=(241, 245, 250))
+    image.save(dest, format="PNG")
+    return dest.relative_to(APP_DIR / "static").as_posix()
+
+
+def _generate_pdf_report_previews(source_path: Path, *, base_name: str) -> list[str]:
+    if fitz is None:
+        return []
+    previews: list[str] = []
+    preview_dir = _static_subdir("report_previews")
+    doc = fitz.open(str(source_path))
+    try:
+        for page_index in range(min(REPORT_PREVIEW_PAGE_COUNT, len(doc))):
+            page = doc.load_page(page_index)
+            pix = page.get_pixmap(matrix=fitz.Matrix(1.4, 1.4), alpha=False)
+            dest = preview_dir / f"{base_name}_page_{page_index + 1}.png"
+            pix.save(str(dest))
+            previews.append(dest.relative_to(APP_DIR / "static").as_posix())
+    finally:
+        doc.close()
+    return previews
+
+
+def _generate_report_preview_paths(*, report_title: str, report_rel_path: str, report_id: int) -> list[str]:
+    static_path = APP_DIR / "static" / str(report_rel_path or "")
+    ext = static_path.suffix.lower()
+    base_name = f"report_{report_id}_{uuid.uuid4().hex[:8]}"
+    previews: list[str] = []
+    if ext == ".pdf" and static_path.is_file():
+        try:
+            previews = _generate_pdf_report_previews(static_path, base_name=base_name)
+        except Exception:
+            previews = []
+    if previews:
+        return previews[:REPORT_PREVIEW_PAGE_COUNT]
+    return [
+        _make_report_preview_placeholder(report_title, page_number=index + 1, base_name=base_name)
+        for index in range(REPORT_PREVIEW_PAGE_COUNT)
+    ]
+
+
+def _report_payload(row: Report | None) -> dict[str, object] | None:
+    if row is None:
+        return None
+    preview_paths = _json_list(getattr(row, "preview_paths", None))
+    company_name = getattr(getattr(row, "company", None), "company_name", None) or ""
+    return {
+        "id": int(row.id),
+        "title": str(getattr(row, "title", "") or "").strip() or "Untitled report",
+        "file_url": url_for("open_report", report_id=int(row.id)),
+        "preview_urls": [_feed_media_url(path) for path in preview_paths if _feed_media_url(path)],
+        "created_at_label": _format_feed_timestamp(getattr(row, "created_at", None)),
+        "company_name": company_name,
+    }
+
+
+def _challenge_payload(row: Challenge | None) -> dict[str, object] | None:
+    if row is None:
+        return None
+    response_count = ChallengeResponse.query.filter_by(challenge_id=int(row.id)).count()
+    deadline = getattr(row, "deadline", None)
+    deadline_label = deadline.strftime("%d %b %Y %H:%M") if isinstance(deadline, datetime) else ""
+    return {
+        "id": int(row.id),
+        "title": str(getattr(row, "title", "") or "").strip() or "Challenge",
+        "description": str(getattr(row, "description", "") or "").strip(),
+        "deadline_label": deadline_label,
+        "deadline_iso": deadline.isoformat() if isinstance(deadline, datetime) else "",
+        "response_count": int(response_count or 0),
+        "is_open": bool(deadline is None or deadline >= datetime.utcnow()),
+    }
+
+
+def _challenge_response_payload(row: ChallengeResponse | None) -> dict[str, object] | None:
+    if row is None:
+        return None
+    challenge = getattr(row, "challenge", None)
+    return {
+        "id": int(row.id),
+        "answer": str(getattr(row, "answer", "") or "").strip(),
+        "challenge_id": int(getattr(row, "challenge_id", 0) or 0),
+        "challenge_title": str(getattr(challenge, "title", "") or "").strip(),
+    }
+
+
 def _feed_post_payload(
     row: FeedPost,
     *,
@@ -2550,6 +2798,11 @@ def _feed_post_payload(
     current_reaction: str | None = None,
 ) -> dict[str, object]:
     author = getattr(row, "author", None)
+    normalized_reference_type = _normalize_feed_reference_type(getattr(row, "reference_type", None))
+    reference_id = int(getattr(row, "reference_id", 0) or 0)
+    report_payload = _report_payload(Report.query.get(reference_id)) if normalized_reference_type == "report" and reference_id else None
+    challenge_payload = _challenge_payload(Challenge.query.get(reference_id)) if normalized_reference_type == "challenge" and reference_id else None
+    response_payload = _challenge_response_payload(ChallengeResponse.query.get(reference_id)) if normalized_reference_type == "challenge_response" and reference_id else None
     company_name = (getattr(author, "company_name", None) or "").strip() or "CTS Carbon Platform"
     author_title = (getattr(author, "job_title", None) or "").strip() or "Team Member"
     author_name = _user_display_name(author) or "CTS User"
@@ -2569,7 +2822,14 @@ def _feed_post_payload(
         "author_title": author_title,
         "author_company": company_name,
         "author_avatar_url": _user_avatar_url(author),
+        "author_profile_url": url_for("public_profile", user_id=int(author.id)) if getattr(author, "id", None) else url_for("feed"),
         "company_logo_url": _company_logo_url(company_name),
+        "reference_type": normalized_reference_type or None,
+        "reference_id": reference_id or None,
+        "report": report_payload,
+        "challenge": challenge_payload,
+        "challenge_response": response_payload,
+        "can_respond_to_challenge": bool(challenge_payload and not _is_readonly_user(current_user) and challenge_payload.get("is_open")),
         "reaction_summary": summary,
         "reaction_total": sum(int(item.get("count") or 0) for item in summary),
         "current_reaction": str(reaction_state.get("type") or ""),
@@ -2638,6 +2898,28 @@ def _ensure_user_profile_columns() -> None:
             if role_added:
                 conn.execute(text("UPDATE user SET role = 'admin' WHERE is_admin = 1"))
                 conn.execute(text("UPDATE user SET role = 'user' WHERE role IS NULL"))
+    except Exception:
+        pass
+
+
+def _ensure_feed_post_reference_columns() -> None:
+    try:
+        from sqlalchemy import inspect, text
+
+        inspector = inspect(db.engine)
+        if not inspector.has_table("feed_post"):
+            return
+        existing = {col["name"] for col in inspector.get_columns("feed_post")}
+        alters: list[str] = []
+        if "reference_id" not in existing:
+            alters.append("ALTER TABLE feed_post ADD COLUMN reference_id INTEGER")
+        if "reference_type" not in existing:
+            alters.append("ALTER TABLE feed_post ADD COLUMN reference_type VARCHAR(40)")
+        if not alters:
+            return
+        with db.engine.begin() as conn:
+            for stmt in alters:
+                conn.execute(text(stmt))
     except Exception:
         pass
 
@@ -6056,6 +6338,8 @@ def profile_page():
     _ensure_db_tables()
     if not _user_profile_complete(current_user):
         return redirect(url_for("profile_setup"))
+    if _is_readonly_user(current_user):
+        return redirect(url_for("public_profile", user_id=int(current_user.id)))
 
     if request.method == "POST":
         current_user.first_name = (request.form.get("first_name") or "").strip() or None
@@ -6098,6 +6382,50 @@ def profile_page():
 
 
 
+
+
+def _feed_payloads_for_rows(rows: list[FeedPost]) -> list[dict[str, object]]:
+    post_ids = [int(row.id) for row in rows]
+    reaction_summary_map, current_reaction_map = _feed_reaction_maps(post_ids, int(getattr(current_user, "id", 0) or 0))
+    return [
+        _feed_post_payload(
+            row,
+            reaction_summary=reaction_summary_map.get(int(row.id), []),
+            current_reaction=current_reaction_map.get(int(row.id), ""),
+        )
+        for row in rows
+    ]
+
+
+@app.route("/profile/<int:user_id>", methods=["GET"])
+@login_required
+def public_profile(user_id: int):
+    _ensure_db_tables()
+    user_row = User.query.get_or_404(int(user_id))
+    posts = FeedPost.query.filter_by(author_user_id=int(user_row.id)).order_by(FeedPost.created_at.desc(), FeedPost.id.desc()).all()
+    reports = Report.query.filter_by(uploaded_by=int(user_row.id)).order_by(Report.created_at.desc(), Report.id.desc()).all()
+    return render_template(
+        "user_profile.html",
+        profile_user=user_row,
+        profile_posts=_feed_payloads_for_rows(posts),
+        profile_reports=[payload for payload in (_report_payload(row) for row in reports) if payload],
+        feed_reaction_options=FEED_REACTION_OPTIONS,
+        can_create_posts=not _is_readonly_user(current_user),
+    )
+
+
+@app.route("/reports/<int:report_id>/open", methods=["GET"])
+@login_required
+def open_report(report_id: int):
+    _ensure_db_tables()
+    row = Report.query.get_or_404(int(report_id))
+    company_name = str(getattr(getattr(row, "company", None), "company_name", "") or "").strip()
+    if company_name and not _user_can_access_company(company_name):
+        abort(403)
+    disk_path = APP_DIR / "static" / str(getattr(row, "file_path", "") or "")
+    if not disk_path.is_file():
+        abort(404)
+    return send_file(str(disk_path), as_attachment=False, download_name=Path(disk_path).name)
 
 
 def _render_dashboard_admin_analytics():
@@ -6359,6 +6687,26 @@ def api_excel_schema_sheets():
             "enabled_categories": bundle.get("enabled_categories", []),
             "disabled_categories": bundle.get("disabled_categories", []),
             "metadata_validation": bundle.get("metadata_validation", []),
+        }
+    )
+
+
+@app.route("/debug/templates", methods=["GET"])
+@login_required
+def debug_templates():
+    _ensure_db_tables()
+    requested_company = (request.args.get("company") or "").strip()
+    company_name = requested_company or _resolve_template_company_name(getattr(current_user, "company_name", "") or "") or ""
+    if company_name and not _user_can_access_company(company_name):
+        return jsonify({"error": "Access denied"}), 403
+    bundle = _template_bundle_for_company(company_name)
+    return jsonify(
+        {
+            "company": company_name,
+            "template_mode": bundle.get("template_mode"),
+            "loaded_templates_count": len(TEMPLATE_REGISTRY.templates_2026),
+            "visible_templates": [item.get("sheet_name") for item in (bundle.get("visible_templates") or [])],
+            "missing_metadata": bundle.get("metadata_validation", []),
         }
     )
 
@@ -10295,18 +10643,9 @@ def feed():
     if selected_filter != "all":
         query = query.filter(FeedPost.post_type == selected_filter)
     rows = query.all()
-    post_ids = [int(row.id) for row in rows]
-    reaction_summary_map, current_reaction_map = _feed_reaction_maps(post_ids, int(getattr(current_user, "id", 0) or 0))
-    posts = [
-        _feed_post_payload(
-            row,
-            reaction_summary=reaction_summary_map.get(int(row.id), []),
-            current_reaction=current_reaction_map.get(int(row.id), ""),
-        )
-        for row in rows
-    ]
-    reports_href = url_for("admin_mapping_runs") if current_user.is_admin else url_for("mapping_runs")
+    posts = _feed_payloads_for_rows(rows)
     quick_reports_href = url_for("admin_report") if current_user.is_admin else url_for("analytics_emissions_totals")
+    can_create_posts = not _is_readonly_user(current_user)
     return render_template(
         "feed.html",
         posts=posts,
@@ -10314,14 +10653,16 @@ def feed():
         feed_filters=FEED_FILTER_OPTIONS,
         feed_post_types=FEED_POST_TYPES,
         feed_reaction_options=FEED_REACTION_OPTIONS,
+        can_create_posts=can_create_posts,
+        can_create_challenges=bool(current_user.is_admin and not _is_readonly_user(current_user)),
         feed_profile={
             "name": _user_display_name(current_user),
             "title": (getattr(current_user, "job_title", None) or "").strip() or "Team Member",
             "company_name": (getattr(current_user, "company_name", None) or "").strip() or "CTS Carbon Platform",
             "avatar_url": _user_avatar_url(current_user),
             "company_logo_url": _company_logo_url(getattr(current_user, "company_name", None)),
-            "profile_url": url_for("profile_page"),
-            "reports_url": reports_href,
+            "profile_url": url_for("public_profile", user_id=int(current_user.id)),
+            "reports_url": url_for("public_profile", user_id=int(current_user.id)) + "#reports",
             "updates_url": url_for("feed"),
             "analytics_url": url_for("analytics_emissions_totals"),
             "quick_reports_url": quick_reports_href,
@@ -10335,6 +10676,7 @@ def create_feed_post():
     _ensure_db_tables()
     post_type = _normalize_feed_post_type(request.form.get("post_type"))
     content = (request.form.get("content") or "").strip()
+    report_title = (request.form.get("report_title") or "").strip()
     image_file = request.files.get("image_file")
     video_file = request.files.get("video_file")
     report_file = request.files.get("report_file")
@@ -10353,11 +10695,49 @@ def create_feed_post():
 
     media_path = None
     media_type = None
+    reference_id = None
+    reference_type = None
     if selected_files:
-        media_path, media_type, media_error = _save_feed_media_file(selected_files[0], user_id=int(current_user.id))
-        if media_error:
-            flash(media_error, "warning")
-            return redirect(url_for("feed", type=_normalize_feed_filter(request.form.get("current_filter"))))
+        selected = selected_files[0]
+        selected_name = secure_filename(getattr(selected, "filename", "") or "")
+        selected_ext = Path(selected_name).suffix.lower()
+        if selected_ext in REPORT_PREVIEWABLE_EXT:
+            resolved_company = _clean_company_name(getattr(current_user, "company_name", "") or "")
+            company_row = _company_row_for_name(resolved_company, created_by_user_id=int(current_user.id))
+            if company_row is None:
+                flash("A company is required before publishing a report.", "warning")
+                return redirect(url_for("feed", type=_normalize_feed_filter(request.form.get("current_filter"))))
+            report_file_path, report_error = _save_report_file(selected, user_id=int(current_user.id))
+            if report_error:
+                flash(report_error, "warning")
+                return redirect(url_for("feed", type=_normalize_feed_filter(request.form.get("current_filter"))))
+            title = report_title or Path(selected_name).stem.replace("_", " ").strip() or "Untitled report"
+            report_row = Report(
+                title=title,
+                file_path=str(report_file_path),
+                preview_paths="[]",
+                uploaded_by=int(current_user.id),
+                company_id=int(company_row.id),
+            )
+            db.session.add(report_row)
+            db.session.flush()
+            report_row.preview_paths = json.dumps(
+                _generate_report_preview_paths(
+                    report_title=title,
+                    report_rel_path=str(report_file_path),
+                    report_id=int(report_row.id),
+                )
+            )
+            reference_id = int(report_row.id)
+            reference_type = "report"
+            post_type = "report"
+        else:
+            media_path, media_type, media_error = _save_feed_media_file(selected, user_id=int(current_user.id))
+            if media_error:
+                flash(media_error, "warning")
+                return redirect(url_for("feed", type=_normalize_feed_filter(request.form.get("current_filter"))))
+    if post_type == "report" and reference_type != "report":
+        post_type = "update"
 
     row = FeedPost(
         author_user_id=int(current_user.id),
@@ -10365,11 +10745,87 @@ def create_feed_post():
         post_type=post_type,
         media_type=media_type,
         media_path=media_path,
+        reference_id=reference_id,
+        reference_type=reference_type,
     )
     db.session.add(row)
     db.session.commit()
     flash("Post shared successfully.", "success")
     return redirect(url_for("feed", type=_normalize_feed_filter(request.form.get("current_filter"))))
+
+
+@app.route("/feed/challenges", methods=["POST"])
+@login_required
+def create_challenge():
+    _ensure_db_tables()
+    if not bool(current_user.is_admin):
+        abort(403)
+    title = (request.form.get("title") or "").strip()
+    description = (request.form.get("description") or "").strip()
+    deadline_raw = (request.form.get("deadline") or "").strip()
+    if not title or not description:
+        flash("Challenge title and description are required.", "warning")
+        return redirect(url_for("feed"))
+    deadline_value = None
+    if deadline_raw:
+        try:
+            deadline_value = datetime.fromisoformat(deadline_raw)
+        except Exception:
+            flash("Use a valid challenge deadline.", "warning")
+            return redirect(url_for("feed"))
+    row = Challenge(
+        title=title,
+        description=description,
+        created_by=int(current_user.id),
+        deadline=deadline_value,
+    )
+    db.session.add(row)
+    db.session.flush()
+    db.session.add(
+        FeedPost(
+            author_user_id=int(current_user.id),
+            content=description,
+            post_type="alert",
+            reference_id=int(row.id),
+            reference_type="challenge",
+        )
+    )
+    db.session.commit()
+    flash("Challenge published to the feed.", "success")
+    return redirect(url_for("feed", type="alert"))
+
+
+@app.route("/feed/challenges/<int:challenge_id>/responses", methods=["POST"])
+@login_required
+def submit_challenge_response(challenge_id: int):
+    _ensure_db_tables()
+    challenge_row = Challenge.query.get_or_404(int(challenge_id))
+    if getattr(challenge_row, "deadline", None) and challenge_row.deadline < datetime.utcnow():
+        flash("This challenge is closed.", "warning")
+        return redirect(url_for("feed"))
+    answer = (request.form.get("answer") or "").strip()
+    if not answer:
+        flash("Add a response before submitting.", "warning")
+        return redirect(url_for("feed"))
+    response_row = ChallengeResponse(
+        challenge_id=int(challenge_row.id),
+        user_id=int(current_user.id),
+        answer=answer,
+    )
+    db.session.add(response_row)
+    db.session.flush()
+    db.session.add(
+        FeedPost(
+            author_user_id=int(current_user.id),
+            content=answer,
+            post_type="update",
+            reference_id=int(response_row.id),
+            reference_type="challenge_response",
+        )
+    )
+    db.session.commit()
+    flash("Challenge response shared.", "success")
+    return redirect(url_for("feed", type="update"))
 
 
 @app.route("/api/feed/posts/<int:post_id>/reaction", methods=["POST"])

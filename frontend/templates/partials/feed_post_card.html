@@ -1,0 +1,153 @@
+<article class="feed-card feed-post" data-feed-post-id="{{ post.id }}">
+  <header class="feed-post__header">
+    <a href="{{ post.author_profile_url }}" class="feed-post__avatar-link" aria-label="{{ post.author_name }} profile">
+      <img class="feed-avatar-image" src="{{ post.author_avatar_url }}" alt="{{ post.author_name }}">
+    </a>
+    <div class="feed-post__identity">
+      <div class="feed-post__headline">
+        <div class="feed-post__headline-copy">
+          <h3 class="feed-post__name"><a href="{{ post.author_profile_url }}">{{ post.author_name }}</a></h3>
+          {% if post.report %}
+          <p class="feed-post__report-title">{{ post.report.title }}</p>
+          {% endif %}
+        </div>
+        <span class="feed-post__type-badge feed-post__type-badge--{{ post.post_type }}">{{ post.post_type_label }}</span>
+      </div>
+      <p class="feed-post__subtitle">
+        {% if post.author_title and post.author_company %}
+        {{ post.author_title }} &middot; {{ post.author_company }}
+        {% elif post.author_title %}
+        {{ post.author_title }}
+        {% else %}
+        {{ post.author_company }}
+        {% endif %}
+      </p>
+      <p class="feed-post__time">
+        <time datetime="{{ post.created_at_iso }}">{{ post.created_at_label }}</time>
+      </p>
+    </div>
+  </header>
+
+  {% if post.report %}
+  <section class="feed-report-card">
+    <div class="feed-report-stack" aria-label="Report preview">
+      {% for preview_url in post.report.preview_urls %}
+      <div class="feed-report-stack__page">
+        <img src="{{ preview_url }}" alt="{{ post.report.title }} preview page {{ loop.index }}">
+      </div>
+      {% endfor %}
+    </div>
+    <div class="feed-report-card__meta">
+      <div>
+        <div class="feed-report-card__label">Uploaded report</div>
+        <strong>{{ post.report.title }}</strong>
+      </div>
+      <a class="btn btn-primary btn-sm" href="{{ post.report.file_url }}" target="_blank" rel="noopener noreferrer">Open Report</a>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if post.challenge %}
+  <section class="feed-challenge-card">
+    <div class="feed-challenge-card__label">Sustainability Challenge</div>
+    <h4 class="feed-challenge-card__title">{{ post.challenge.title }}</h4>
+    <p class="feed-challenge-card__meta">
+      {% if post.challenge.deadline_label %}
+      Deadline: {{ post.challenge.deadline_label }}
+      {% else %}
+      Open challenge
+      {% endif %}
+      &middot; {{ post.challenge.response_count }} response{{ '' if post.challenge.response_count == 1 else 's' }}
+    </p>
+  </section>
+  {% endif %}
+
+  {% if post.challenge_response %}
+  <section class="feed-challenge-response-card">
+    <div class="feed-challenge-card__label">Challenge response</div>
+    <strong>{{ post.challenge_response.challenge_title or 'Challenge' }}</strong>
+  </section>
+  {% endif %}
+
+  {% if post.content %}
+  <div class="feed-post__content">
+    <p>{{ post.content }}</p>
+  </div>
+  {% endif %}
+
+  {% if post.media_url and post.media_type == 'image' %}
+  <div class="feed-post__media">
+    <img src="{{ post.media_url }}" alt="Post image">
+  </div>
+  {% elif post.media_url and post.media_type == 'video' %}
+  <div class="feed-post__media">
+    <video controls preload="metadata">
+      <source src="{{ post.media_url }}">
+    </video>
+  </div>
+  {% elif post.media_url and post.media_type == 'file' %}
+  <div class="feed-post__file">
+    <a href="{{ post.media_url }}" target="_blank" rel="noopener noreferrer">{{ post.media_name or 'Open file' }}</a>
+  </div>
+  {% endif %}
+
+  <div class="feed-post__reactions" data-feed-reaction-summary {% if not post.reaction_summary %}hidden{% endif %}>
+    {% for reaction in post.reaction_summary %}
+    <span class="feed-reaction-stat" data-reaction-type="{{ reaction.type }}">
+      <span class="feed-reaction-stat__icon" aria-hidden="true">{{ reaction.icon }}</span>
+      <span class="feed-reaction-stat__count">{{ reaction.count }}</span>
+    </span>
+    {% endfor %}
+  </div>
+
+  <footer class="feed-post__actions">
+    {% if can_create_posts %}
+    <div
+      class="feed-reaction-picker"
+      data-feed-reaction-picker
+      data-reaction-endpoint="{{ url_for('api_feed_post_reaction', post_id=post.id) }}"
+    >
+      <div class="feed-reaction-bar" role="toolbar" aria-label="Post reactions">
+        {% for reaction in feed_reaction_options %}
+        <button
+          class="feed-reaction-bar__button"
+          type="button"
+          data-feed-reaction-option
+          data-reaction-type="{{ reaction.type }}"
+          data-reaction-label="{{ reaction.label }}"
+          aria-label="{{ reaction.label }}"
+        >
+          {{ reaction.icon }}
+        </button>
+        {% endfor %}
+      </div>
+      <button
+        class="feed-action feed-action--reaction {% if post.current_reaction %}is-active is-reacted feed-action--{{ post.current_reaction }}{% endif %}"
+        type="button"
+        data-feed-reaction-trigger
+        data-current-reaction="{{ post.current_reaction }}"
+        aria-pressed="{% if post.current_reaction %}true{% else %}false{% endif %}"
+      >
+        <span class="feed-action__icon" aria-hidden="true" data-feed-reaction-icon>{{ post.current_reaction_icon }}</span>
+        <span data-feed-reaction-label>{{ post.current_reaction_label }}</span>
+      </button>
+    </div>
+    {% endif %}
+    {% if post.can_respond_to_challenge %}
+    <button
+      class="feed-action"
+      type="button"
+      data-feed-open-challenge-response
+      data-challenge-id="{{ post.challenge.id }}"
+      data-challenge-title="{{ post.challenge.title }}"
+    >
+      <span class="feed-action__icon" aria-hidden="true">&#9998;</span>
+      <span>Respond</span>
+    </button>
+    {% endif %}
+    <button class="feed-action" type="button" data-feed-ui="share">
+      <span class="feed-action__icon" aria-hidden="true">&#8599;</span>
+      <span>Share</span>
+    </button>
+  </footer>
+</article>

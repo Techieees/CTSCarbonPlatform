@@ -5,6 +5,9 @@
   const imageInput = document.getElementById("feedImageInput");
   const videoInput = document.getElementById("feedVideoInput");
   const fileInput = document.getElementById("feedFileInput");
+  const challengeResponseModalEl = document.getElementById("feedChallengeResponseModal");
+  const challengeResponseForm = document.getElementById("feedChallengeResponseForm");
+  const challengeResponseTitle = document.getElementById("feedChallengeResponseTitle");
   const preview = document.getElementById("feedMediaPreview");
   const fileName = document.getElementById("feedFileName");
   const reactionMeta = {
@@ -254,4 +257,27 @@
       }, 1200);
     });
   });
+
+  if (challengeResponseModalEl && challengeResponseForm) {
+    Array.from(document.querySelectorAll("[data-feed-open-challenge-response]")).forEach(function (button) {
+      button.addEventListener("click", function () {
+        const challengeId = String(button.getAttribute("data-challenge-id") || "").trim();
+        const challengeTitleText = String(button.getAttribute("data-challenge-title") || "").trim();
+        if (!challengeId) {
+          return;
+        }
+        challengeResponseForm.action = "/feed/challenges/" + encodeURIComponent(challengeId) + "/responses";
+        if (challengeResponseTitle) {
+          challengeResponseTitle.textContent = challengeTitleText || "Respond to challenge";
+        }
+        if (typeof bootstrap !== "undefined") {
+          bootstrap.Modal.getOrCreateInstance(challengeResponseModalEl).show();
+        }
+      });
+    });
+
+    challengeResponseModalEl.addEventListener("hidden.bs.modal", function () {
+      challengeResponseForm.reset();
+    });
+  }
 })();

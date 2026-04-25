@@ -129,6 +129,10 @@ body.dark-mode {
   color: var(--app-sidebar-hover-text);
 }
 
+.app-sidebar__backdrop {
+  display: none;
+}
+
 .app-sidebar__toggle-icon--collapse {
   display: none;
 }
@@ -413,6 +417,26 @@ body.dark-mode {
   color: var(--primary) !important;
 }
 
+.app-topbar__menu-toggle {
+  display: none;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ink);
+}
+
+.app-topbar__menu-toggle:hover,
+.app-topbar__menu-toggle:focus-visible {
+  background: var(--interaction-green-soft);
+  color: var(--interaction-green);
+}
+
 .navbar-logo img,
 .navbar-logo svg {
   height: 44px;
@@ -587,6 +611,149 @@ body.dark-mode .app-topbar .dropdown-item:focus-visible {
   .app-sidebar__secondary {
     border-top: 1px solid var(--app-sidebar-border);
     box-shadow: none;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .app-layout {
+    min-width: 0;
+  }
+
+  .app-layout--mobile-drawer {
+    position: relative;
+    flex-direction: row;
+    align-items: stretch;
+  }
+
+  .app-layout--mobile-drawer .app-main-wrap,
+  .app-layout--mobile-drawer .app-main-content {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .app-layout--mobile-drawer .app-sidebar {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    max-width: none;
+    border-right: 0;
+    box-shadow: none;
+    pointer-events: none;
+    z-index: 1085;
+  }
+
+  .app-layout--mobile-drawer.is-sidebar-mobile-open .app-sidebar {
+    pointer-events: auto;
+  }
+
+  .app-layout--mobile-drawer .app-sidebar__backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    border: 0;
+    padding: 0;
+    background: rgba(15, 23, 42, 0.46);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+  }
+
+  .app-layout--mobile-drawer.is-sidebar-mobile-open .app-sidebar__backdrop {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  .app-layout--mobile-drawer .app-sidebar__shell,
+  .app-layout--mobile-drawer .app-sidebar.is-secondary-open .app-sidebar__shell {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr;
+    width: min(260px, calc(100vw - 2rem));
+    max-width: 260px;
+    height: 100vh;
+    max-height: 100vh;
+    padding-top: max(0px, env(safe-area-inset-top));
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: var(--app-sidebar-bg);
+    border-right: 1px solid var(--app-sidebar-border);
+    box-shadow: var(--app-sidebar-shadow);
+    transform: translateX(calc(-100% - 24px));
+    transition: transform 0.24s ease;
+  }
+
+  .app-layout--mobile-drawer.is-sidebar-mobile-open .app-sidebar__shell,
+  .app-layout--mobile-drawer.is-sidebar-mobile-open .app-sidebar.is-secondary-open .app-sidebar__shell {
+    transform: translateX(0);
+  }
+
+  .app-layout--mobile-drawer .app-sidebar__rail {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    flex-direction: row;
+    justify-content: flex-start;
+    padding-inline: 10px;
+    background: var(--app-sidebar-rail);
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .app-layout--mobile-drawer .app-sidebar__toggle {
+    display: none;
+  }
+
+  .app-layout--mobile-drawer .app-sidebar__primary,
+  .app-layout--mobile-drawer .app-sidebar__secondary {
+    display: flex;
+    opacity: 1;
+    pointer-events: auto;
+    min-height: 0;
+    height: auto;
+  }
+
+  .app-layout--mobile-drawer .app-sidebar__secondary {
+    border-top: 1px solid var(--app-sidebar-border);
+    box-shadow: none;
+  }
+
+  .app-layout--mobile-drawer .app-sidebar__panel-menu {
+    max-height: none;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom));
+  }
+
+  .app-topbar {
+    padding: 8px 12px;
+  }
+
+  .app-topbar__inner {
+    gap: 8px;
+  }
+
+  .app-topbar__menu-toggle {
+    display: inline-flex;
+  }
+
+  .app-topbar__brand {
+    min-width: 0;
+  }
+
+  .app-topbar__spacer {
+    min-width: 0;
+  }
+
+  .app-topbar .navbar-nav {
+    gap: 0.25rem !important;
+  }
+
+  .app-topbar .nav-link {
+    padding-inline: 0.5rem;
+  }
+
+  .app-topbar .dropdown-menu {
+    min-width: min(200px, calc(100vw - 1rem));
   }
 }
 

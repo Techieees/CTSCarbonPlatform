@@ -537,6 +537,45 @@ body.dark-mode .data-grid__input::placeholder {
     margin-left: 0;
   }
 }
+
+@media (max-width: 767.98px) {
+  .dashboard-page {
+    overflow-x: hidden;
+  }
+
+  .data-entry-sidebar,
+  .data-entry-main {
+    width: 100%;
+  }
+
+  #sheetList {
+    max-height: 40vh !important;
+  }
+
+  .data-entry-toolbar__chip,
+  .data-entry-toolbar__chip--zoom {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .data-entry-table-scroll {
+    height: min(58vh, 28rem);
+    min-height: 22rem;
+  }
+
+  #mappingResult .table-responsive,
+  .dashboard-page .table-responsive {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .toast-container {
+    left: 0;
+    right: 0;
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
+}
 </style>
 <script>
 const ILLU_ROW_PEN = '<span class="dash-admin-illu dash-admin-illu--toolbar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 20l8-12 4 4-8 12H4v-4z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="currentColor" fill-opacity="0.06"/></svg></span>';

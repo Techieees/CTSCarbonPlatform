@@ -126,6 +126,7 @@
   }
 
   if (chatRoot) {
+    document.body.classList.add("has-chat-widget");
     const launcherButtons = Array.from(chatRoot.querySelectorAll("[data-chat-toggle]"));
     const panel = chatRoot.querySelector("[data-chat-panel]");
     const closeBtn = chatRoot.querySelector("[data-chat-close]");

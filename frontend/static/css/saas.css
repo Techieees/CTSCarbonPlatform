@@ -151,6 +151,25 @@ body{
   color: var(--ink);
   text-rendering: geometricPrecision;
   transition: background-color .25s ease, color .25s ease;
+  overflow-x: hidden;
+}
+
+img,
+video,
+canvas{
+  max-width: 100%;
+}
+
+main,
+.container,
+.container-fluid,
+.row,
+[class*="col-"],
+.card,
+.card-body,
+.modal-dialog,
+.modal-content{
+  min-width: 0;
 }
 
 /* Keep Bootstrap but make it feel modern */
@@ -1894,6 +1913,54 @@ body.dark-mode textarea::placeholder{
 
   .saas-footer__watermark{
     height: 64px;
+  }
+
+  html,
+  body{
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .container,
+  .container-fluid{
+    width: 100%;
+    max-width: 100%;
+  }
+
+  main,
+  .app-main-content{
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .card,
+  .card-body,
+  form,
+  fieldset,
+  .form-control,
+  .form-select,
+  .input-group,
+  .table-responsive{
+    max-width: 100%;
+  }
+
+  .form-control,
+  .form-select{
+    width: 100%;
+  }
+
+  .btn-group{
+    flex-wrap: wrap;
+  }
+
+  .table-responsive{
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .toast-container{
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom)) !important;
   }
 }
 
