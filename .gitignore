@@ -14,7 +14,20 @@ data/
 *.xlsb
 *.csv
 *.zip
+
+# allow specific static EF file
 !engine/stage2_mapping/CTS_Emission_factors_short_list.xlsx
+
+# ======================
+# AUDIT FILES (SERVER ONLY)
+# ======================
+engine/stage2_mapping/audit_2025/
+
+# ======================
+# PIPELINE OUTPUTS (DO NOT TRACK)
+# ======================
+engine/stage1_preprocess/output/
+engine/stage2_mapping/output/
 
 # ======================
 # PYTHON CACHE

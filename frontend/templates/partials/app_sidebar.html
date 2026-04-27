@@ -8,7 +8,7 @@
 {% set analytics_active = ep in ('analytics_forecasting', 'analytics_decarbonization', 'analytics_emissions_map', 'governance_double_counting_check') %}
 {% set governance_active = ep in ('governance_audit_ready_output',) %}
 {% set esg_active = ep in ('csrd', 'csrd_policies', 'lca', 'lca_tool') %}
-{% set resources_active = ep in ('reports_page', 'report_detail', 'newsletters_page', 'newsletter_detail', 'events_page', 'event_detail', 'awards_index', 'awards_form_page') %}
+{% set resources_active = ep in ('reports_page', 'report_detail', 'newsletters_page', 'newsletter_detail', 'events_page', 'event_detail', 'awards_index', 'awards_form_page', 'audit_2025_page') %}
 {% set admin_active = current_user.is_admin and ep in ('admin_users', 'admin_access_requests', 'owner_analytics', 'admin', 'admin_mapping_panel', 'manage_emission_factors', 'admin_report', 'awards_admin') %}
 {% set settings_active = ep in ('profile_page', 'settings_profile_page') %}
 {% set feed_active = ep == 'feed' %}
@@ -133,6 +133,10 @@
           <a href="{{ url_for('awards_index') }}" class="app-sidebar__menu-item {% if ep in ('awards_index', 'awards_form_page') %}is-active{% endif %}" {% if ep in ('awards_index', 'awards_form_page') %}aria-current="page"{% endif %}>
             {{ illu.illu_nav_file('app-sidebar__icon') }}
             <span>Awards</span>
+          </a>
+          <a href="{{ url_for('audit_2025_page') }}" class="app-sidebar__menu-item {% if ep == 'audit_2025_page' %}is-active{% endif %}" {% if ep == 'audit_2025_page' %}aria-current="page"{% endif %}>
+            {{ illu.illu_nav_chart_pie('app-sidebar__icon') }}
+            <span>Audit 2025</span>
           </a>
         </nav>
       </div>

@@ -184,6 +184,47 @@ TRAVEL_PROVIDER_OPTIONS: tuple[tuple[str, str], ...] = (
 )
 AWARDS_QUESTION_TYPES: tuple[str, ...] = ("text", "textarea", "single_choice", "file")
 AWARDS_QUESTION_TYPES_SET = frozenset(AWARDS_QUESTION_TYPES)
+AUDIT_2025_COLUMNS: tuple[str, ...] = (
+    "Month",
+    "Company",
+    "Scope 3 Category 1 Purchased Goods & Services",
+    "Scope 3 Cat 11 Use of Sold of Products",
+    "Scope 3 Category 12 End of Life",
+    "S3 Cat 3 FERA",
+    "Scope 3 Category 4 Upstream Transportation",
+    "Scope 3 Category 5 Waste",
+    "Scope 3 Category 6 Business Travel",
+    "S3 Cat 7 Employee Commute",
+    "Scope 3 Category 9 Downstream Transportation",
+    "Scope 1",
+    "Scope 2",
+    "Row Total (t)",
+    "Company Share in Total (%)",
+    "Company Share in Month (%)",
+)
+AUDIT_2025_CATEGORY_COLUMNS: tuple[str, ...] = (
+    "Scope 3 Category 1 Purchased Goods & Services",
+    "Scope 3 Cat 11 Use of Sold of Products",
+    "Scope 3 Category 12 End of Life",
+    "S3 Cat 3 FERA",
+    "Scope 3 Category 4 Upstream Transportation",
+    "Scope 3 Category 5 Waste",
+    "Scope 3 Category 6 Business Travel",
+    "S3 Cat 7 Employee Commute",
+    "Scope 3 Category 9 Downstream Transportation",
+    "Scope 1",
+    "Scope 2",
+)
+AUDIT_2025_NUMERIC_COLUMNS: tuple[str, ...] = AUDIT_2025_CATEGORY_COLUMNS + (
+    "Row Total (t)",
+    "Company Share in Total (%)",
+    "Company Share in Month (%)",
+)
+AUDIT_2025_WORKBOOK_PATH = PROJECT_ROOT / "engine" / "stage2_mapping" / "audit_2025" / "Audit 2025 Total Tables.xlsx"
+_AUDIT_2025_CACHE: dict[str, object] = {
+    "cache_key": None,
+    "payload": None,
+}
 OPERATING_SITE_TYPE_OPTIONS: tuple[str, ...] = ("office", "factory", "warehouse", "other")
 STAGE2_2026_SHEET_ALIASES: dict[str, str] = {
     "Scope 3 Category 1 Purchased Goods & Services": "Scope 3 Cat 1 Goods Spend",
@@ -3154,6 +3195,120 @@ def _save_awards_answer_file(storage, *, user_id: int, form_id: int, question_id
     dest = dest_dir / stored_name
     storage.save(str(dest))
     return (dest.relative_to(APP_DIR / "static").as_posix(), None)
+
+
+def _audit_2025_safe_cell(value: object) -> object:
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except Exception:
+        pass
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    if hasattr(value, "item"):
+        try:
+            return value.item()
+        except Exception:
+            return value
+    return value
+
+
+def _audit_2025_year_from_value(raw_value: object, parsed_value: object) -> int | None:
+    if isinstance(parsed_value, pd.Timestamp):
+        return int(parsed_value.year)
+    match = re.search(r"(20\d{2})", str(raw_value or ""))
+    if match:
+        try:
+            return int(match.group(1))
+        except Exception:
+            return None
+    return None
+
+
+def load_audit_2025_data() -> dict[str, object]:
+    path = AUDIT_2025_WORKBOOK_PATH
+    if not path.exists():
+        return {"ok": False, "error": "Audit 2025 workbook is not available on this server."}
+    try:
+        stat = path.stat()
+        cache_key = (int(stat.st_mtime_ns), int(stat.st_size))
+        if _AUDIT_2025_CACHE.get("cache_key") == cache_key and isinstance(_AUDIT_2025_CACHE.get("payload"), dict):
+            return dict(_AUDIT_2025_CACHE["payload"])
+
+        frame = pd.read_excel(path)
+        frame.columns = [str(column or "").strip() for column in frame.columns]
+        missing_columns = [column for column in AUDIT_2025_COLUMNS if column not in frame.columns]
+        if missing_columns:
+            return {"ok": False, "error": "Audit 2025 workbook is missing required columns."}
+
+        frame = frame.loc[:, list(AUDIT_2025_COLUMNS)].copy()
+        month_parsed = pd.to_datetime(frame["Month"], errors="coerce")
+        month_display: list[str] = []
+        month_sort: list[str] = []
+        year_values: list[int | None] = []
+        for raw_value, parsed_value in zip(frame["Month"].tolist(), month_parsed.tolist()):
+            if isinstance(parsed_value, pd.Timestamp):
+                month_display.append(parsed_value.strftime("%b %Y"))
+                month_sort.append(parsed_value.strftime("%Y-%m"))
+            else:
+                raw_label = str(raw_value or "").strip()
+                month_display.append(raw_label)
+                month_sort.append(raw_label)
+            year_values.append(_audit_2025_year_from_value(raw_value, parsed_value))
+
+        frame["_audit_month_label"] = month_display
+        frame["_audit_month_sort"] = month_sort
+        frame["_audit_year"] = year_values
+
+        numeric_frame = frame.copy()
+        for column in AUDIT_2025_NUMERIC_COLUMNS:
+            numeric_frame[column] = pd.to_numeric(numeric_frame[column], errors="coerce")
+
+        records: list[dict[str, object]] = []
+        for index in range(len(frame.index)):
+            row: dict[str, object] = {}
+            for column in AUDIT_2025_COLUMNS:
+                if column in AUDIT_2025_NUMERIC_COLUMNS:
+                    row[column] = _audit_2025_safe_cell(numeric_frame.iloc[index][column])
+                else:
+                    row[column] = _audit_2025_safe_cell(frame.iloc[index][column])
+            row["_audit_month_label"] = _audit_2025_safe_cell(frame.iloc[index]["_audit_month_label"])
+            row["_audit_month_sort"] = _audit_2025_safe_cell(frame.iloc[index]["_audit_month_sort"])
+            row["_audit_year"] = _audit_2025_safe_cell(frame.iloc[index]["_audit_year"])
+            records.append(row)
+
+        month_order_pairs = sorted(
+            {
+                (str(record.get("_audit_month_sort") or ""), str(record.get("_audit_month_label") or ""))
+                for record in records
+                if str(record.get("_audit_month_label") or "").strip()
+            },
+            key=lambda item: item[0],
+        )
+        payload = {
+            "ok": True,
+            "records": records,
+            "columns": list(AUDIT_2025_COLUMNS),
+            "category_columns": list(AUDIT_2025_CATEGORY_COLUMNS),
+            "years": sorted({int(value) for value in year_values if isinstance(value, int)}),
+            "months": [label for _sort_key, label in month_order_pairs],
+            "companies": sorted(
+                {
+                    str(value).strip()
+                    for value in frame["Company"].tolist()
+                    if str(value or "").strip()
+                },
+                key=lambda item: item.casefold(),
+            ),
+        }
+        _AUDIT_2025_CACHE["cache_key"] = cache_key
+        _AUDIT_2025_CACHE["payload"] = payload
+        return dict(payload)
+    except Exception:
+        app.logger.exception("Audit 2025 workbook could not be loaded.")
+        return {"ok": False, "error": "Audit 2025 workbook could not be loaded."}
 
 
 def _save_awards_header_image(storage, *, user_id: int, form_id: int | None = None) -> tuple[str | None, str | None]:
@@ -11926,6 +12081,20 @@ def _home_overview_context():
 def home():
     ctx = _home_overview_context()
     return render_template("home.html", **ctx)
+
+
+@app.route("/audit-2025")
+@login_required
+def audit_2025_page():
+    return render_template("audit_2025.html")
+
+
+@app.route("/api/audit-2025")
+@login_required
+def audit_2025_api():
+    payload = load_audit_2025_data()
+    status_code = 200 if payload.get("ok") else 503
+    return jsonify(payload), status_code
 
 
 @app.route("/feed")

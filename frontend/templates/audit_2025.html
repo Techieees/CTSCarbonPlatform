@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+
+{% block title %}Audit 2025 | CTS Carbon Platform{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/audit_2025.css') }}">
+{% endblock %}
+
+{% block content %}
+<section class="audit-2025-page py-4 py-lg-5">
+    <div class="container">
+        <div class="audit-2025-hero chart-surface report-panel mb-4">
+            <div class="report-panel__header audit-2025-hero__header">
+                <div>
+                    <span class="audit-2025-hero__eyebrow">Audit Review</span>
+                    <h1 class="audit-2025-hero__title">Audit 2025</h1>
+                    <p class="audit-2025-hero__subtitle">Final aggregated audit totals from the 2025 audit workbook.</p>
+                </div>
+                <div class="audit-2025-hero__note">
+                    Read-only audit view. Values are loaded from the server-side audit workbook.
+                </div>
+            </div>
+        </div>
+
+        <div id="audit2025Error" class="alert alert-warning audit-2025-error-card d-none" role="alert"></div>
+
+        <div class="report-kpi-grid mb-4" id="audit2025SummaryCards">
+            <article class="report-kpi-card">
+                <span class="report-kpi-card__label">Total Emissions</span>
+                <span class="report-kpi-card__value" data-summary-key="totalEmissions">-</span>
+                <span class="report-kpi-card__meta">Filtered Row Total (t)</span>
+            </article>
+            <article class="report-kpi-card">
+                <span class="report-kpi-card__label">Companies</span>
+                <span class="report-kpi-card__value" data-summary-key="companyCount">-</span>
+                <span class="report-kpi-card__meta">Visible in current filter</span>
+            </article>
+            <article class="report-kpi-card">
+                <span class="report-kpi-card__label">Months</span>
+                <span class="report-kpi-card__value" data-summary-key="monthCount">-</span>
+                <span class="report-kpi-card__meta">Reporting periods in view</span>
+            </article>
+            <article class="report-kpi-card">
+                <span class="report-kpi-card__label">Highest Company</span>
+                <span class="report-kpi-card__value audit-2025-kpi-text" data-summary-key="highestCompany">-</span>
+                <span class="report-kpi-card__meta" data-summary-key="highestCompanyValue">-</span>
+            </article>
+            <article class="report-kpi-card">
+                <span class="report-kpi-card__label">Highest Category</span>
+                <span class="report-kpi-card__value audit-2025-kpi-text" data-summary-key="highestCategory">-</span>
+                <span class="report-kpi-card__meta" data-summary-key="highestCategoryValue">-</span>
+            </article>
+        </div>
+
+        <div class="chart-surface report-panel mb-4">
+            <div class="report-panel__header">
+                <div>
+                    <h2 class="report-panel__title">Filters</h2>
+                    <p class="report-panel__subtitle">Apply client-side filters to update every chart and the audit table.</p>
+                </div>
+                <div class="audit-2025-toolbar">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="audit2025ResetFilters">Reset Filters</button>
+                </div>
+            </div>
+            <div class="audit-2025-filter-grid">
+                <label class="audit-2025-filter">
+                    <span>Year</span>
+                    <select id="audit2025YearFilter" class="form-select">
+                        <option value="all">All years</option>
+                    </select>
+                </label>
+                <label class="audit-2025-filter">
+                    <span>Month</span>
+                    <select id="audit2025MonthFilter" class="form-select">
+                        <option value="all">All months</option>
+                    </select>
+                </label>
+                <label class="audit-2025-filter">
+                    <span>Company</span>
+                    <select id="audit2025CompanyFilter" class="form-select">
+                        <option value="all">All companies</option>
+                    </select>
+                </label>
+                <label class="audit-2025-filter">
+                    <span>Category</span>
+                    <select id="audit2025CategoryFilter" class="form-select">
+                        <option value="all">All categories</option>
+                    </select>
+                </label>
+            </div>
+        </div>
+
+        <div class="audit-2025-grid audit-2025-grid--two mb-4">
+            <section class="chart-surface report-panel">
+                <div class="report-panel__header">
+                    <div>
+                        <h3 class="report-panel__title">Total Emissions Over Time</h3>
+                        <p class="report-panel__subtitle">Monthly Row Total (t) grouped by company.</p>
+                    </div>
+                </div>
+                <div id="audit2025TrendChart" class="chart-host chart-host--lg"></div>
+            </section>
+            <section class="chart-surface report-panel">
+                <div class="report-panel__header">
+                    <div>
+                        <h3 class="report-panel__title">Company Comparison</h3>
+                        <p class="report-panel__subtitle">Company ranking based on the current category selection.</p>
+                    </div>
+                </div>
+                <div id="audit2025CompanyChart" class="chart-host chart-host--lg"></div>
+            </section>
+        </div>
+
+        <div class="audit-2025-grid audit-2025-grid--two mb-4">
+            <section class="chart-surface report-panel">
+                <div class="report-panel__header">
+                    <div>
+                        <h3 class="report-panel__title">Category Breakdown</h3>
+                        <p class="report-panel__subtitle">Monthly emissions stacked by the selected category scope.</p>
+                    </div>
+                </div>
+                <div id="audit2025CategoryStackChart" class="chart-host chart-host--lg"></div>
+            </section>
+            <section class="chart-surface report-panel">
+                <div class="report-panel__header audit-2025-panel-header">
+                    <div>
+                        <h3 class="report-panel__title">Category-Specific Analysis</h3>
+                        <p class="report-panel__subtitle">Inspect one emissions category over time, grouped by company.</p>
+                    </div>
+                    <label class="audit-2025-inline-filter">
+                        <span>Analysis Category</span>
+                        <select id="audit2025AnalysisCategory" class="form-select form-select-sm"></select>
+                    </label>
+                </div>
+                <div id="audit2025CategoryDetailChart" class="chart-host chart-host--lg"></div>
+            </section>
+        </div>
+
+        <div class="audit-2025-grid audit-2025-grid--two mb-4">
+            <section class="chart-surface report-panel">
+                <div class="report-panel__header">
+                    <div>
+                        <h3 class="report-panel__title">Company Share in Total (%)</h3>
+                        <p class="report-panel__subtitle">Average visible share of total emissions by company.</p>
+                    </div>
+                </div>
+                <div id="audit2025ShareTotalChart" class="chart-host chart-host--md"></div>
+            </section>
+            <section class="chart-surface report-panel">
+                <div class="report-panel__header">
+                    <div>
+                        <h3 class="report-panel__title">Company Share in Month (%)</h3>
+                        <p class="report-panel__subtitle">Average visible share within the reporting month by company.</p>
+                    </div>
+                </div>
+                <div id="audit2025ShareMonthChart" class="chart-host chart-host--md"></div>
+            </section>
+        </div>
+
+        <div class="chart-surface report-panel mb-4">
+            <div class="report-panel__header">
+                <div>
+                    <h3 class="report-panel__title">Category Totals</h3>
+                    <p class="report-panel__subtitle">Ranked category totals and share of the current filtered emissions total.</p>
+                </div>
+            </div>
+            <div class="audit-2025-table-wrap audit-2025-table-wrap--compact">
+                <table class="table audit-2025-table audit-2025-table--compact mb-0">
+                    <thead>
+                        <tr>
+                            <th scope="col">Rank</th>
+                            <th scope="col">Category</th>
+                            <th scope="col">Total tCO2e</th>
+                            <th scope="col">Share of filtered total</th>
+                        </tr>
+                    </thead>
+                    <tbody id="audit2025CategoryTotalsBody">
+                        <tr>
+                            <td colspan="4" class="text-center text-muted py-4">Loading category totals...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="chart-surface report-panel">
+            <div class="report-panel__header audit-2025-panel-header">
+                <div>
+                    <h3 class="report-panel__title">Audit Table</h3>
+                    <p class="report-panel__subtitle">Full filtered dataset with client-side sorting, search, and CSV export.</p>
+                </div>
+                <div class="audit-2025-toolbar">
+                    <label class="audit-2025-search">
+                        <span class="visually-hidden">Search audit table</span>
+                        <input type="search" id="audit2025Search" class="form-control" placeholder="Search visible rows">
+                    </label>
+                    <button type="button" class="btn btn-primary btn-sm" id="audit2025ExportCsv">Export filtered CSV</button>
+                </div>
+            </div>
+            <div class="audit-2025-table-meta" id="audit2025TableMeta">Loading audit workbook...</div>
+            <div class="audit-2025-table-wrap">
+                <table class="table audit-2025-table mb-0">
+                    <thead id="audit2025TableHead"></thead>
+                    <tbody id="audit2025TableBody">
+                        <tr>
+                            <td class="text-center text-muted py-5">Loading audit workbook...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<script type="module" src="{{ url_for('static', filename='js/audit_2025.js') }}"></script>
+{% endblock %}
