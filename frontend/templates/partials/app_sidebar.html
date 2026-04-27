@@ -8,12 +8,15 @@
 {% set analytics_active = ep in ('analytics_forecasting', 'analytics_decarbonization', 'analytics_emissions_map', 'governance_double_counting_check') %}
 {% set governance_active = ep in ('governance_audit_ready_output',) %}
 {% set esg_active = ep in ('csrd', 'csrd_policies', 'lca', 'lca_tool') %}
-{% set admin_active = current_user.is_admin and ep in ('admin_users', 'admin_access_requests', 'owner_analytics', 'admin', 'admin_mapping_panel', 'manage_emission_factors', 'admin_report') %}
+{% set resources_active = ep in ('reports_page', 'report_detail', 'newsletters_page', 'newsletter_detail', 'events_page', 'event_detail', 'awards_index', 'awards_form_page') %}
+{% set admin_active = current_user.is_admin and ep in ('admin_users', 'admin_access_requests', 'owner_analytics', 'admin', 'admin_mapping_panel', 'manage_emission_factors', 'admin_report', 'awards_admin') %}
 {% set settings_active = ep in ('profile_page', 'settings_profile_page') %}
 {% set feed_active = ep == 'feed' %}
 {% set selected_section = 'dashboard' %}
 {% if feed_active %}
   {% set selected_section = 'feed' %}
+{% elif resources_active %}
+  {% set selected_section = 'resources' %}
 {% elif carbon_active %}
   {% set selected_section = 'carbon' %}
 {% elif data_active %}
@@ -56,6 +59,9 @@
       </button>
       <button type="button" class="app-sidebar__rail-item {% if selected_section == 'feed' %}is-active{% endif %}" data-sidebar-section-trigger data-section-id="feed" title="Feed" aria-label="Feed">
         {{ illu.illu_nav_file('app-sidebar__icon') }}
+      </button>
+      <button type="button" class="app-sidebar__rail-item {% if selected_section == 'resources' %}is-active{% endif %}" data-sidebar-section-trigger data-section-id="resources" title="Resources" aria-label="Resources">
+        {{ illu.illu_nav_layers('app-sidebar__icon') }}
       </button>
       <button type="button" class="app-sidebar__rail-item {% if selected_section == 'carbon' %}is-active{% endif %}" data-sidebar-section-trigger data-section-id="carbon" title="Carbon Accounting" aria-label="Carbon Accounting">
         {{ illu.illu_nav_chart('app-sidebar__icon') }}
@@ -103,6 +109,30 @@
           <a href="{{ url_for('feed') }}" class="app-sidebar__menu-item {% if feed_active %}is-active{% endif %}" {% if feed_active %}aria-current="page"{% endif %}>
             {{ illu.illu_nav_file('app-sidebar__icon') }}
             <span>Feed</span>
+          </a>
+        </nav>
+      </div>
+
+      <div class="app-sidebar__primary-panel {% if selected_section == 'resources' %}is-active{% endif %}" data-sidebar-section-panel="resources">
+        <div class="app-sidebar__panel-header">
+          <h2>Resources</h2>
+        </div>
+        <nav class="app-sidebar__panel-menu">
+          <a href="{{ url_for('reports_page') }}" class="app-sidebar__menu-item {% if ep in ('reports_page', 'report_detail') %}is-active{% endif %}" {% if ep in ('reports_page', 'report_detail') %}aria-current="page"{% endif %}>
+            {{ illu.illu_nav_file('app-sidebar__icon') }}
+            <span>Reports</span>
+          </a>
+          <a href="{{ url_for('newsletters_page') }}" class="app-sidebar__menu-item {% if ep in ('newsletters_page', 'newsletter_detail') %}is-active{% endif %}" {% if ep in ('newsletters_page', 'newsletter_detail') %}aria-current="page"{% endif %}>
+            {{ illu.illu_nav_file('app-sidebar__icon') }}
+            <span>Newsletters</span>
+          </a>
+          <a href="{{ url_for('events_page') }}" class="app-sidebar__menu-item {% if ep in ('events_page', 'event_detail') %}is-active{% endif %}" {% if ep in ('events_page', 'event_detail') %}aria-current="page"{% endif %}>
+            {{ illu.illu_nav_file('app-sidebar__icon') }}
+            <span>Events</span>
+          </a>
+          <a href="{{ url_for('awards_index') }}" class="app-sidebar__menu-item {% if ep in ('awards_index', 'awards_form_page') %}is-active{% endif %}" {% if ep in ('awards_index', 'awards_form_page') %}aria-current="page"{% endif %}>
+            {{ illu.illu_nav_file('app-sidebar__icon') }}
+            <span>Awards</span>
           </a>
         </nav>
       </div>
@@ -256,6 +286,10 @@
           <a href="{{ url_for('admin_report') }}" class="app-sidebar__menu-item {% if ep == 'admin_report' %}is-active{% endif %}" {% if ep == 'admin_report' %}aria-current="page"{% endif %}>
             {{ illu.illu_nav_data('app-sidebar__icon') }}
             <span>Admin Report</span>
+          </a>
+          <a href="{{ url_for('awards_admin') }}" class="app-sidebar__menu-item {% if ep == 'awards_admin' %}is-active{% endif %}" {% if ep == 'awards_admin' %}aria-current="page"{% endif %}>
+            {{ illu.illu_nav_file('app-sidebar__icon') }}
+            <span>Awards Builder</span>
           </a>
         </nav>
       </div>

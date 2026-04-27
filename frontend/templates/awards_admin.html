@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}Awards Builder{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <div class="row g-4">
+    <div class="col-lg-4">
+      <div class="card shadow-sm border-0">
+        <div class="card-body p-4">
+          <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
+            <h1 class="h4 mb-0">Awards Builder</h1>
+            <a class="btn btn-outline-primary btn-sm" href="{{ url_for('awards_admin') }}">New form</a>
+          </div>
+          <p class="text-muted">Create and edit sustainability award forms.</p>
+          <div class="d-flex flex-column gap-2 mt-3">
+            {% for form in forms %}
+            <a
+              href="{{ form.admin_url }}"
+              class="text-decoration-none border rounded-3 p-3 {% if edit_form and edit_form.id == form.id %}border-primary{% else %}border-secondary-subtle{% endif %}"
+            >
+              <strong class="d-block text-body">{{ form.title }}</strong>
+              <span class="small text-muted">{{ form.question_count }} questions · {{ form.submission_count }} submissions</span>
+            </a>
+            {% else %}
+            <div class="text-muted small">No forms created yet.</div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-8">
+      <div class="card shadow-sm border-0">
+        <div class="card-body p-4">
+          <h2 class="h4 mb-3">{% if edit_form %}Edit form{% else %}Create form{% endif %}</h2>
+          <form method="post" id="awardsBuilderForm" enctype="multipart/form-data" class="d-flex flex-column gap-4">
+            <input type="hidden" name="form_id" value="{{ edit_form.id if edit_form else '' }}">
+            <input type="hidden" name="questions_payload" id="awardsQuestionsPayload">
+
+            <div>
+              <label class="form-label" for="awardsFormTitle">Title</label>
+              <input id="awardsFormTitle" name="title" type="text" class="form-control" value="{{ edit_form.title if edit_form else '' }}" required>
+            </div>
+
+            <div>
+              <label class="form-label" for="awardsFormDescription">Description</label>
+              <textarea id="awardsFormDescription" name="description" class="form-control" rows="4">{{ edit_form.description if edit_form else '' }}</textarea>
+            </div>
+
+            <div>
+              <label class="form-label" for="awardsHeaderImage">Header Image</label>
+              <input id="awardsHeaderImage" name="header_image" type="file" class="form-control" accept=".jpg,.jpeg,.png">
+              <div class="form-text">Allowed file types: JPG and PNG.</div>
+              {% if edit_form and edit_form.header_image_url %}
+              <img src="{{ edit_form.header_image_url }}" alt="{{ edit_form.title }}" class="img-fluid rounded-3 mt-3" style="max-height: 180px; object-fit: cover;">
+              {% endif %}
+            </div>
+
+            <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div>
+                <h3 class="h5 mb-1">Questions</h3>
+                <p class="text-muted mb-0">Add, edit, remove, and reorder questions before publishing.</p>
+              </div>
+              <button type="button" class="btn btn-outline-primary" id="awardsAddQuestion">Add question</button>
+            </div>
+
+            <div class="d-flex flex-column gap-3" id="awardsQuestionsList"></div>
+
+            <div class="d-flex gap-2 flex-wrap">
+              <button type="submit" class="btn btn-primary">{% if edit_form %}Save changes{% else %}Publish form{% endif %}</button>
+              <a class="btn btn-outline-primary" href="{{ url_for('awards_index') }}">View user page</a>
+              {% if edit_form %}
+              <a class="btn btn-outline-primary" href="{{ edit_form.submissions_url }}">View submissions</a>
+              {% endif %}
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script id="awards-builder-initial" type="application/json">{{ edit_questions|tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/awards_admin.js') }}"></script>
+{% endblock %}

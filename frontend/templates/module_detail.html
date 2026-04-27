@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <div class="card shadow-sm border-0">
+    <div class="card-body p-4">
+      <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+        <div>
+          <p class="text-uppercase text-muted small mb-2">{{ module_key|title }}</p>
+          <h1 class="h3 mb-2">{{ item.title }}</h1>
+          <div class="small text-muted d-flex gap-3 flex-wrap">
+            {% if module_key == 'report' and item.category_name %}
+            <span>Category {{ item.category_name }}</span>
+            {% endif %}
+            {% if item.author_name %}
+            <span>By {{ item.author_name }}</span>
+            {% endif %}
+            {% if item.created_at_display %}
+            <span>Created {{ item.created_at_display }}</span>
+            {% endif %}
+            {% if module_key == 'event' and item.event_date_label %}
+            <span>Event date {{ item.event_date_label }}</span>
+            {% endif %}
+          </div>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+          {% if module_key == 'report' %}
+          <a class="btn btn-outline-primary" href="{{ url_for('reports_page') }}">Back to reports</a>
+          <a class="btn btn-primary" href="{{ item.file_url }}" target="_blank" rel="noopener noreferrer">Open report</a>
+          {% elif module_key == 'newsletter' %}
+          <a class="btn btn-outline-primary" href="{{ url_for('newsletters_page') }}">Back to newsletters</a>
+          <a class="btn btn-primary" href="{{ item.file_url }}" target="_blank" rel="noopener noreferrer">Open newsletter</a>
+          {% else %}
+          <a class="btn btn-outline-primary" href="{{ url_for('events_page') }}">Back to events</a>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if module_key == 'report' and item.preview_urls %}
+      <div class="row g-3 mt-1">
+        {% for preview_url in item.preview_urls %}
+        <div class="col-md-4">
+          <div class="card h-100 border-0 bg-body-tertiary">
+            <div class="card-body p-2">
+              <img src="{{ preview_url }}" alt="{{ item.title }} preview {{ loop.index }}" class="img-fluid rounded">
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if module_key == 'event' %}
+      <div class="mt-4">
+        <h2 class="h5 mb-3">Description</h2>
+        <p class="mb-0">{{ item.description }}</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

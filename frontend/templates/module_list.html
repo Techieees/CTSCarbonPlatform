@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <div class="row g-4">
+    <div class="col-lg-8">
+      <div class="card shadow-sm border-0">
+        <div class="card-body p-4">
+          <h1 class="h3 mb-2">{{ page_title }}</h1>
+          <p class="text-muted mb-0">{{ page_subtitle }}</p>
+        </div>
+      </div>
+
+      <div class="d-flex flex-column gap-3 mt-4">
+        {% if items %}
+          {% for item in items %}
+          <article class="card shadow-sm border-0">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                <div class="flex-grow-1">
+                  <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+                    <h2 class="h5 mb-0">
+                      <a class="text-decoration-none" href="{{ item.detail_url }}">{{ item.title }}</a>
+                    </h2>
+                    {% if module_key != 'event' %}
+                    <span class="badge text-bg-light">{{ item.file_type_label }}</span>
+                    {% endif %}
+                  </div>
+                  {% if module_key == 'event' and item.event_date_label %}
+                  <p class="text-muted mb-2">Event date: {{ item.event_date_label }}</p>
+                  {% endif %}
+                  {% if module_key == 'event' and item.description %}
+                  <p class="mb-3">{{ item.description }}</p>
+                  {% endif %}
+                  <div class="small text-muted d-flex gap-3 flex-wrap">
+                    {% if item.author_name %}
+                    <span>By {{ item.author_name }}</span>
+                    {% endif %}
+                    {% if item.created_at_display %}
+                    <span>Created {{ item.created_at_display }}</span>
+                    {% endif %}
+                  </div>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                  <a class="btn btn-outline-primary btn-sm" href="{{ item.detail_url }}">View details</a>
+                  {% if module_key != 'event' %}
+                  <a class="btn btn-primary btn-sm" href="{{ item.file_url }}" target="_blank" rel="noopener noreferrer">Open file</a>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          </article>
+          {% endfor %}
+        {% else %}
+        <div class="card shadow-sm border-0">
+          <div class="card-body p-4">
+            <h2 class="h5 mb-2">No {{ page_title|lower }} yet</h2>
+            <p class="text-muted mb-0">New items published by the sustainability team will appear here.</p>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card shadow-sm border-0">
+        <div class="card-body p-4">
+          <h2 class="h5 mb-2">Access</h2>
+          {% if can_manage %}
+          <p class="text-muted">You can publish new {{ page_title|lower }} from this page.</p>
+          {% else %}
+          <p class="text-muted mb-0">This page is read-only for non-admin users.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if can_manage %}
+      <div class="card shadow-sm border-0 mt-4">
+        <div class="card-body p-4">
+          {% if module_key == 'event' %}
+          <h2 class="h5 mb-3">Create event</h2>
+          <form method="post" action="{{ upload_action }}" class="d-flex flex-column gap-3">
+            <div>
+              <label class="form-label" for="eventTitle">Title</label>
+              <input id="eventTitle" name="title" type="text" class="form-control" required>
+            </div>
+            <div>
+              <label class="form-label" for="eventDescription">Description</label>
+              <textarea id="eventDescription" name="description" class="form-control" rows="4" required></textarea>
+            </div>
+            <div>
+              <label class="form-label" for="eventDate">Event date</label>
+              <input id="eventDate" name="event_date" type="datetime-local" class="form-control" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Create event</button>
+          </form>
+          {% else %}
+          <h2 class="h5 mb-3">
+            {% if module_key == 'report' %}Upload report{% elif module_key == 'newsletter' %}Upload newsletter{% else %}Upload file{% endif %}
+          </h2>
+          <form method="post" action="{{ upload_action }}" enctype="multipart/form-data" class="d-flex flex-column gap-3">
+            <div>
+              <label class="form-label" for="{{ module_key }}Title">Title</label>
+              <input id="{{ module_key }}Title" name="title" type="text" class="form-control" placeholder="Optional title">
+            </div>
+            <div>
+              <label class="form-label" for="{{ module_key }}File">File</label>
+              <input id="{{ module_key }}File" name="file" type="file" class="form-control" accept=".pdf,.docx" required>
+              <div class="form-text">Allowed file types: PDF and DOCX.</div>
+            </div>
+            <button type="submit" class="btn btn-primary">Upload</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

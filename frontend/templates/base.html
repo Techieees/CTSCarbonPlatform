@@ -79,8 +79,8 @@
                 <li class="nav-item">
                     {% include 'components/notification_dropdown.html' %}
                 </li>
-                <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle d-flex align-items-center py-2 px-2" href="#" id="accountDropdownTop" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <li class="nav-item dropdown d-flex align-items-center">
+                    <a class="nav-link d-flex align-items-center py-2 px-2" href="{{ url_for('public_profile', user_id=current_user.id) }}">
                         {% set _purl = nav_profile_photo_url() %}
                         {% if _purl %}
                         <img src="{{ _purl }}" alt="" width="28" height="28" class="rounded-circle me-1 flex-shrink-0" style="object-fit:cover;">
@@ -89,8 +89,12 @@
                         {% endif %}
                         <span class="d-none d-sm-inline">{{ account_display_name or 'Account' }}</span>
                     </a>
+                    <button class="nav-link dropdown-toggle border-0 bg-transparent py-2 px-1" type="button" id="accountDropdownTop" data-bs-toggle="dropdown" aria-expanded="false">
+                        <span class="visually-hidden">Open account menu</span>
+                    </button>
                     <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="accountDropdownTop">
-                        <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('settings_profile_page') }}">{{ illu.illu_nav_id('me-2') }}Profile</a></li>
+                        <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('public_profile', user_id=current_user.id) }}">{{ illu.illu_nav_id('me-2') }}Profile</a></li>
+                        <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('settings_profile_page') }}">{{ illu.illu_nav_file('me-2') }}Profile Settings</a></li>
                         <li><button class="dropdown-item d-inline-flex align-items-center" type="button" data-open-chat>{{ illu.illu_nav_user('me-2') }}Messages</button></li>
                         <li><button class="dropdown-item d-inline-flex align-items-center" type="button" data-open-notifications>{{ illu.illu_nav_file('me-2') }}Notifications</button></li>
                         <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('logout') }}">{{ illu.illu_nav_signout('me-2') }}Logout</a></li>
@@ -165,8 +169,8 @@
                         {% include 'components/notification_dropdown.html' %}
                     </li>
                     <li class="nav-item ms-lg-2"><a class="btn btn-ghost" href="{{ url_for('home') }}">Dashboard</a></li>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle d-flex align-items-center py-2 px-2" href="#" id="accountDropdownMarketingAuth" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <li class="nav-item dropdown d-flex align-items-center">
+                        <a class="nav-link d-flex align-items-center py-2 px-2" href="{{ url_for('public_profile', user_id=current_user.id) }}">
                             {% set _purl2 = nav_profile_photo_url() %}
                             {% if _purl2 %}
                             <img src="{{ _purl2 }}" alt="" width="28" height="28" class="rounded-circle me-1 flex-shrink-0" style="object-fit:cover;">
@@ -175,8 +179,12 @@
                             {% endif %}
                             <span class="d-none d-sm-inline">{{ account_display_name or 'Account' }}</span>
                         </a>
+                        <button class="nav-link dropdown-toggle border-0 bg-transparent py-2 px-1" type="button" id="accountDropdownMarketingAuth" data-bs-toggle="dropdown" aria-expanded="false">
+                            <span class="visually-hidden">Open account menu</span>
+                        </button>
                         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="accountDropdownMarketingAuth">
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('settings_profile_page') }}">{{ illu.illu_nav_id('me-2') }}Profile</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('public_profile', user_id=current_user.id) }}">{{ illu.illu_nav_id('me-2') }}Profile</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('settings_profile_page') }}">{{ illu.illu_nav_file('me-2') }}Profile Settings</a></li>
                             <li><button class="dropdown-item d-inline-flex align-items-center" type="button" data-open-chat>{{ illu.illu_nav_user('me-2') }}Messages</button></li>
                             <li><button class="dropdown-item d-inline-flex align-items-center" type="button" data-open-notifications>{{ illu.illu_nav_file('me-2') }}Notifications</button></li>
                             <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('logout') }}">{{ illu.illu_nav_signout('me-2') }}Logout</a></li>

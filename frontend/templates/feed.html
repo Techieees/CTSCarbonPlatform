@@ -39,8 +39,8 @@
           <h2 class="feed-sidebar-card__title">Quick links</h2>
           <nav class="feed-sidebar-links" aria-label="Quick links">
             <a href="{{ feed_profile.quick_reports_url }}">Reports</a>
-            <a href="#" aria-disabled="true">Newsletters</a>
-            <a href="#" aria-disabled="true">Events</a>
+            <a href="{{ feed_profile.quick_newsletters_url }}">Newsletters</a>
+            <a href="{{ feed_profile.quick_events_url }}">Events</a>
           </nav>
         </section>
       </aside>
@@ -48,8 +48,8 @@
       <main class="feed-column feed-column--center">
         <header class="feed-page__header">
           <p class="feed-page__eyebrow">Internal Feed</p>
-          <h2 class="feed-page__title">Team updates</h2>
-          <p class="feed-page__subtitle">Share project updates, reports, and alerts with your company in a clean internal feed.</p>
+          <h2 class="feed-page__title">{% if is_my_updates_view %}My updates{% else %}Team updates{% endif %}</h2>
+          <p class="feed-page__subtitle">{% if is_my_updates_view %}Posts you have shared across the platform.{% else %}Share project updates, reports, newsletters, events, and alerts.{% endif %}</p>
         </header>
 
         {% if can_create_posts %}

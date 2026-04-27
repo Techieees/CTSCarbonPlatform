@@ -191,11 +191,14 @@
   function copyText(text) {
     const value = String(text || "").trim();
     if (!value) {
-      return;
+      return Promise.resolve(false);
     }
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(value).catch(function () {});
-      return;
+      return navigator.clipboard.writeText(value).then(function () {
+        return true;
+      }).catch(function () {
+        return false;
+      });
     }
     const temp = document.createElement("textarea");
     temp.value = value;
@@ -204,8 +207,9 @@
     temp.style.left = "-9999px";
     document.body.appendChild(temp);
     temp.select();
-    document.execCommand("copy");
+    const copied = document.execCommand("copy");
     document.body.removeChild(temp);
+    return Promise.resolve(Boolean(copied));
   }
 
   function escapeHtml(value) {
@@ -503,11 +507,22 @@
 
   Array.from(document.querySelectorAll('[data-feed-ui="share"]')).forEach(function (button) {
     button.addEventListener("click", function () {
-      copyText(window.location.href);
-      button.classList.add("is-active");
-      window.setTimeout(function () {
-        button.classList.remove("is-active");
-      }, 1200);
+      const rawUrl = String(button.dataset.shareUrl || "").trim() || window.location.href;
+      const shareUrl = new URL(rawUrl, window.location.origin).href;
+      const labelNode = button.querySelector("span:last-child");
+      const originalLabel = labelNode ? labelNode.textContent : "Share";
+      copyText(shareUrl).then(function (copied) {
+        button.classList.add("is-active");
+        if (labelNode) {
+          labelNode.textContent = copied ? "Copied" : "Share";
+        }
+        window.setTimeout(function () {
+          button.classList.remove("is-active");
+          if (labelNode) {
+            labelNode.textContent = originalLabel;
+          }
+        }, 1200);
+      });
     });
   });
 

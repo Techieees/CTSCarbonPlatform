@@ -21,7 +21,7 @@ import hashlib
 import json
 from collections import defaultdict, Counter
 import csv
-from io import BytesIO
+from io import BytesIO, StringIO
 import re
 import time
 import math
@@ -134,13 +134,16 @@ TRAVEL_ALLOWED_EXT = frozenset({".xlsb"})
 FEED_IMAGE_ALLOWED_EXT = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif"})
 FEED_VIDEO_ALLOWED_EXT = frozenset({".mp4", ".webm", ".mov", ".m4v"})
 FEED_FILE_ALLOWED_EXT = frozenset({".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".csv", ".txt"})
-FEED_POST_TYPES: tuple[str, ...] = ("update", "report", "alert")
+MODULE_DOCUMENT_ALLOWED_EXT = frozenset({".pdf", ".docx"})
+AWARDS_HEADER_IMAGE_ALLOWED_EXT = frozenset({".png", ".jpg", ".jpeg"})
+FEED_POST_TYPES: tuple[str, ...] = ("update", "report", "newsletter", "event", "award", "alert")
 FEED_POST_TYPES_SET = frozenset(FEED_POST_TYPES)
 FEED_FILTER_OPTIONS: tuple[str, ...] = ("all",) + FEED_POST_TYPES
+FEED_COMPOSER_TYPES: tuple[str, ...] = ("update", "report", "alert")
 REPORT_PREVIEWABLE_EXT = frozenset({".pdf", ".doc", ".docx"})
 REPORT_DOCUMENT_EXT = frozenset({".doc", ".docx"})
 REPORT_PREVIEW_PAGE_COUNT = 3
-FEED_REFERENCE_TYPES = frozenset({"report", "challenge", "challenge_response"})
+FEED_REFERENCE_TYPES = frozenset({"report", "newsletter", "event", "award", "challenge", "challenge_response"})
 FEED_REACTION_OPTIONS: tuple[dict[str, str], ...] = (
     {"type": "like", "label": "Like", "icon": "👍"},
     {"type": "celebrate", "label": "Celebrate", "icon": "👏"},
@@ -179,6 +182,8 @@ TRAVEL_PROVIDER_OPTIONS: tuple[tuple[str, str], ...] = (
     ("yes", "Yes"),
     ("no", "No"),
 )
+AWARDS_QUESTION_TYPES: tuple[str, ...] = ("text", "textarea", "single_choice", "file")
+AWARDS_QUESTION_TYPES_SET = frozenset(AWARDS_QUESTION_TYPES)
 OPERATING_SITE_TYPE_OPTIONS: tuple[str, ...] = ("office", "factory", "warehouse", "other")
 STAGE2_2026_SHEET_ALIASES: dict[str, str] = {
     "Scope 3 Category 1 Purchased Goods & Services": "Scope 3 Cat 1 Goods Spend",
@@ -967,9 +972,83 @@ class Report(db.Model):
     preview_paths = db.Column(db.Text, nullable=True)
     uploaded_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
     company_id = db.Column(db.Integer, db.ForeignKey("companies.id"), nullable=False, index=True)
+    category_id = db.Column(db.Integer, db.ForeignKey("reports_categories.id"), nullable=True, index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
     uploader = db.relationship("User", lazy="joined")
     company = db.relationship("Company", lazy="joined")
+    category = db.relationship("ReportCategory", lazy="joined")
+
+
+class ReportCategory(db.Model):
+    __tablename__ = "reports_categories"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False, unique=True, index=True)
+    created_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    creator = db.relationship("User", lazy="joined")
+
+
+class Newsletter(db.Model):
+    __tablename__ = "newsletter"
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255), nullable=False)
+    file_path = db.Column(db.String(500), nullable=False)
+    uploaded_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    uploader = db.relationship("User", lazy="joined")
+
+
+class Event(db.Model):
+    __tablename__ = "event"
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text, nullable=False, default="")
+    event_date = db.Column(db.DateTime, nullable=False, index=True)
+    created_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    creator = db.relationship("User", lazy="joined")
+
+
+class AwardsForm(db.Model):
+    __tablename__ = "awards_forms"
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text, nullable=False, default="")
+    header_image = db.Column(db.String(500), nullable=True)
+    created_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    creator = db.relationship("User", lazy="joined")
+
+
+class AwardsQuestion(db.Model):
+    __tablename__ = "awards_questions"
+    id = db.Column(db.Integer, primary_key=True)
+    form_id = db.Column(db.Integer, db.ForeignKey("awards_forms.id"), nullable=False, index=True)
+    question_text = db.Column(db.Text, nullable=False)
+    question_type = db.Column(db.String(40), nullable=False)
+    required = db.Column(db.Boolean, nullable=False, default=False)
+    options = db.Column(db.Text, nullable=True)
+    form = db.relationship("AwardsForm", lazy="joined")
+
+
+class AwardsSubmission(db.Model):
+    __tablename__ = "awards_submissions"
+    id = db.Column(db.Integer, primary_key=True)
+    form_id = db.Column(db.Integer, db.ForeignKey("awards_forms.id"), nullable=False, index=True)
+    submitted_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    form = db.relationship("AwardsForm", lazy="joined")
+    submitter = db.relationship("User", lazy="joined")
+
+
+class AwardsAnswer(db.Model):
+    __tablename__ = "awards_answers"
+    id = db.Column(db.Integer, primary_key=True)
+    submission_id = db.Column(db.Integer, db.ForeignKey("awards_submissions.id"), nullable=False, index=True)
+    question_id = db.Column(db.Integer, db.ForeignKey("awards_questions.id"), nullable=False, index=True)
+    answer_text = db.Column(db.Text, nullable=True)
+    submission = db.relationship("AwardsSubmission", lazy="joined")
+    question = db.relationship("AwardsQuestion", lazy="joined")
 
 
 class Challenge(db.Model):
@@ -1536,6 +1615,8 @@ def _ensure_db_tables() -> None:
         _ensure_mapping_run_source_entry_group_column()
         _ensure_user_profile_columns()
         _ensure_feed_post_reference_columns()
+        _ensure_report_category_columns()
+        _ensure_awards_form_columns()
     except Exception:
         pass
 
@@ -2282,6 +2363,33 @@ def _create_feed_post_record(
         return None
 
 
+def _create_content_feed_post(
+    *,
+    author_id: int,
+    reference_type: str,
+    reference_id: int,
+    title: str,
+) -> FeedPost | None:
+    normalized_reference_type = _normalize_feed_reference_type(reference_type)
+    normalized_title = str(title or "").strip() or "Untitled"
+    message_map = {
+        "report": f"New report published: {normalized_title}",
+        "newsletter": f"New newsletter published: {normalized_title}",
+        "event": f"New event created: {normalized_title}",
+        "award": "New Sustainability Award open for submissions",
+    }
+    message = message_map.get(normalized_reference_type, "")
+    if not message:
+        return None
+    return _create_feed_post_record(
+        author_id=int(author_id),
+        content=message,
+        post_type=normalized_reference_type,
+        reference_id=int(reference_id),
+        reference_type=normalized_reference_type,
+    )
+
+
 def _build_system_feed_post_message(
     *,
     event_key: str | None,
@@ -2781,8 +2889,22 @@ def _save_report_file(storage, *, user_id: int) -> tuple[str | None, str | None]
     ext = Path(filename).suffix.lower()
     if ext not in FEED_FILE_ALLOWED_EXT:
         return (None, "Unsupported report file type.")
-    dest_dir = _static_subdir("reports")
+    dest_dir = _static_subdir("uploads", "reports")
     stored_name = f"report_{user_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:10]}{ext}"
+    dest = dest_dir / stored_name
+    storage.save(str(dest))
+    return (dest.relative_to(APP_DIR / "static").as_posix(), None)
+
+
+def _save_module_document(storage, *, user_id: int, module_name: str) -> tuple[str | None, str | None]:
+    if not storage or not getattr(storage, "filename", None):
+        return (None, "No file provided.")
+    filename = secure_filename(storage.filename or "")
+    ext = Path(filename).suffix.lower()
+    if ext not in MODULE_DOCUMENT_ALLOWED_EXT:
+        return (None, "Unsupported file type. Please upload a PDF or DOCX file.")
+    dest_dir = _static_subdir("uploads", module_name)
+    stored_name = f"{module_name}_{user_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:10]}{ext}"
     dest = dest_dir / stored_name
     storage.save(str(dest))
     return (dest.relative_to(APP_DIR / "static").as_posix(), None)
@@ -2851,9 +2973,11 @@ def _report_payload(row: Report | None) -> dict[str, object] | None:
     ext = Path(file_path).suffix.lower().lstrip(".")
     file_type_label = "PDF" if ext == "pdf" else ("Word" if ext in {"doc", "docx"} else (ext.upper() if ext else "File"))
     file_type_icon = "PDF" if ext == "pdf" else ("DOC" if ext in {"doc", "docx"} else "FILE")
+    uploader = getattr(row, "uploader", None)
     return {
         "id": int(row.id),
         "title": str(getattr(row, "title", "") or "").strip() or "Untitled report",
+        "detail_url": url_for("report_detail", report_id=int(row.id)),
         "file_url": url_for("open_report", report_id=int(row.id)),
         "preview_urls": [_feed_media_url(path) for path in preview_paths if _feed_media_url(path)],
         "created_at_label": _format_feed_timestamp(getattr(row, "created_at", None)),
@@ -2861,7 +2985,249 @@ def _report_payload(row: Report | None) -> dict[str, object] | None:
         "file_type_label": file_type_label,
         "file_type_icon": file_type_icon,
         "company_name": company_name,
+        "category_name": str(getattr(getattr(row, "category", None), "name", "") or "").strip(),
+        "author_name": _user_display_name(uploader),
+        "author_profile_url": url_for("public_profile", user_id=int(uploader.id)) if getattr(uploader, "id", None) else "",
     }
+
+
+def _newsletter_payload(row: Newsletter | None) -> dict[str, object] | None:
+    if row is None:
+        return None
+    file_path = str(getattr(row, "file_path", "") or "")
+    ext = Path(file_path).suffix.lower().lstrip(".")
+    uploader = getattr(row, "uploader", None)
+    return {
+        "id": int(row.id),
+        "title": str(getattr(row, "title", "") or "").strip() or "Untitled newsletter",
+        "detail_url": url_for("newsletter_detail", newsletter_id=int(row.id)),
+        "file_url": url_for("open_newsletter", newsletter_id=int(row.id)),
+        "created_at_label": _format_feed_timestamp(getattr(row, "created_at", None)),
+        "created_at_display": getattr(row, "created_at", None).strftime("%d %b %Y") if getattr(row, "created_at", None) else "",
+        "file_type_label": "PDF" if ext == "pdf" else "Word",
+        "file_type_icon": "PDF" if ext == "pdf" else "DOC",
+        "author_name": _user_display_name(uploader),
+        "author_profile_url": url_for("public_profile", user_id=int(uploader.id)) if getattr(uploader, "id", None) else "",
+    }
+
+
+def _event_payload(row: Event | None) -> dict[str, object] | None:
+    if row is None:
+        return None
+    creator = getattr(row, "creator", None)
+    event_date = getattr(row, "event_date", None)
+    return {
+        "id": int(row.id),
+        "title": str(getattr(row, "title", "") or "").strip() or "Untitled event",
+        "description": str(getattr(row, "description", "") or "").strip(),
+        "detail_url": url_for("event_detail", event_id=int(row.id)),
+        "event_date_label": event_date.strftime("%d %b %Y %H:%M") if isinstance(event_date, datetime) else "",
+        "event_date_iso": event_date.isoformat() if isinstance(event_date, datetime) else "",
+        "created_at_label": _format_feed_timestamp(getattr(row, "created_at", None)),
+        "created_at_display": getattr(row, "created_at", None).strftime("%d %b %Y") if getattr(row, "created_at", None) else "",
+        "author_name": _user_display_name(creator),
+        "author_profile_url": url_for("public_profile", user_id=int(creator.id)) if getattr(creator, "id", None) else "",
+    }
+
+
+def _award_form_payload(row: AwardsForm | None) -> dict[str, object] | None:
+    if row is None:
+        return None
+    creator = getattr(row, "creator", None)
+    submission_count = AwardsSubmission.query.filter_by(form_id=int(row.id)).count()
+    question_count = AwardsQuestion.query.filter_by(form_id=int(row.id)).count()
+    return {
+        "id": int(row.id),
+        "title": str(getattr(row, "title", "") or "").strip() or "Untitled award",
+        "description": str(getattr(row, "description", "") or "").strip(),
+        "header_image_url": url_for("static", filename=str(getattr(row, "header_image", "") or "")) if getattr(row, "header_image", None) else "",
+        "detail_url": url_for("awards_form_page", form_id=int(row.id)),
+        "admin_url": url_for("awards_admin", form_id=int(row.id)),
+        "submissions_url": url_for("awards_submissions_page", form_id=int(row.id)),
+        "export_url": url_for("awards_export_csv", form_id=int(row.id)),
+        "created_at_label": _format_feed_timestamp(getattr(row, "created_at", None)),
+        "created_at_display": getattr(row, "created_at", None).strftime("%d %b %Y") if getattr(row, "created_at", None) else "",
+        "author_name": _user_display_name(creator),
+        "author_profile_url": url_for("public_profile", user_id=int(creator.id)) if getattr(creator, "id", None) else "",
+        "submission_count": int(submission_count or 0),
+        "question_count": int(question_count or 0),
+    }
+
+
+def _report_category_payload(row: ReportCategory | None) -> dict[str, object] | None:
+    if row is None:
+        return None
+    return {
+        "id": int(row.id),
+        "name": str(getattr(row, "name", "") or "").strip() or "Category",
+        "created_at_display": getattr(row, "created_at", None).strftime("%d %b %Y") if getattr(row, "created_at", None) else "",
+    }
+
+
+def _normalize_awards_question_type(raw: object) -> str:
+    value = str(raw or "").strip().lower()
+    return value if value in AWARDS_QUESTION_TYPES_SET else "text"
+
+
+def _parse_awards_question_options(raw: object) -> list[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        values = raw
+    else:
+        try:
+            decoded = json.loads(str(raw))
+            values = decoded if isinstance(decoded, list) else []
+        except Exception:
+            values = [line for line in str(raw or "").splitlines()]
+    out: list[str] = []
+    for item in values:
+        value = str(item or "").strip()
+        if value and value not in out:
+            out.append(value)
+    return out
+
+
+def _awards_question_payload(row: AwardsQuestion | None) -> dict[str, object] | None:
+    if row is None:
+        return None
+    options = _parse_awards_question_options(getattr(row, "options", None))
+    question_type = _normalize_awards_question_type(getattr(row, "question_type", None))
+    return {
+        "id": int(row.id),
+        "question_text": str(getattr(row, "question_text", "") or "").strip(),
+        "question_type": question_type,
+        "required": bool(getattr(row, "required", False)),
+        "options": options,
+        "options_text": "\n".join(options),
+        "type_label": {
+            "text": "Single line text",
+            "textarea": "Multi-line text",
+            "single_choice": "Single choice",
+            "file": "File upload",
+        }.get(question_type, "Question"),
+    }
+
+
+def _parse_awards_builder_questions(raw: object) -> tuple[list[dict[str, object]], str | None]:
+    try:
+        decoded = json.loads(str(raw or "[]"))
+    except Exception:
+        return [], "Questions payload is invalid."
+    if not isinstance(decoded, list):
+        return [], "Questions payload is invalid."
+    questions: list[dict[str, object]] = []
+    for item in decoded:
+        if not isinstance(item, dict):
+            continue
+        question_text = str(item.get("question_text") or "").strip()
+        question_type = _normalize_awards_question_type(item.get("question_type"))
+        required = bool(item.get("required"))
+        options = _parse_awards_question_options(item.get("options"))
+        if not question_text:
+            continue
+        if question_type == "single_choice" and not options:
+            return [], "Single choice questions require at least one option."
+        questions.append(
+            {
+                "question_text": question_text,
+                "question_type": question_type,
+                "required": required,
+                "options": options,
+            }
+        )
+    if not questions:
+        return [], "Add at least one question."
+    return questions, None
+
+
+def _save_awards_answer_file(storage, *, user_id: int, form_id: int, question_id: int) -> tuple[str | None, str | None]:
+    if not storage or not getattr(storage, "filename", None):
+        return (None, "No file provided.")
+    filename = secure_filename(storage.filename or "")
+    ext = Path(filename).suffix.lower()
+    allowed = MODULE_DOCUMENT_ALLOWED_EXT | PROFILE_PHOTO_ALLOWED_EXT
+    if ext not in allowed:
+        return (None, "Unsupported file type.")
+    dest_dir = _static_subdir("uploads", "awards")
+    stored_name = f"award_{form_id}_{question_id}_{user_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}{ext}"
+    dest = dest_dir / stored_name
+    storage.save(str(dest))
+    return (dest.relative_to(APP_DIR / "static").as_posix(), None)
+
+
+def _save_awards_header_image(storage, *, user_id: int, form_id: int | None = None) -> tuple[str | None, str | None]:
+    if not storage or not getattr(storage, "filename", None):
+        return (None, None)
+    filename = secure_filename(storage.filename or "")
+    ext = Path(filename).suffix.lower()
+    if ext not in AWARDS_HEADER_IMAGE_ALLOWED_EXT:
+        return (None, "Unsupported image type. Please upload a JPG or PNG image.")
+    dest_dir = _static_subdir("uploads", "awards")
+    form_part = f"form_{int(form_id)}_" if form_id else "form_new_"
+    stored_name = f"{form_part}{user_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}{ext}"
+    dest = dest_dir / stored_name
+    storage.save(str(dest))
+    return (dest.relative_to(APP_DIR / "static").as_posix(), None)
+
+
+def _awards_answer_display_payload(question: AwardsQuestion | None, answer_text: object) -> dict[str, object]:
+    payload = _awards_question_payload(question) or {}
+    value = str(answer_text or "").strip()
+    is_file = str(payload.get("question_type") or "") == "file"
+    file_url = url_for("static", filename=value) if is_file and value else ""
+    return {
+        "question_text": str(payload.get("question_text") or "Question"),
+        "answer_text": value,
+        "is_file": is_file,
+        "file_url": file_url,
+    }
+
+
+def _awards_submission_payload(row: AwardsSubmission | None) -> dict[str, object] | None:
+    if row is None:
+        return None
+    answer_rows = (
+        AwardsAnswer.query.filter_by(submission_id=int(row.id))
+        .join(AwardsQuestion, AwardsQuestion.id == AwardsAnswer.question_id)
+        .order_by(AwardsQuestion.id.asc(), AwardsAnswer.id.asc())
+        .all()
+    )
+    submitter = getattr(row, "submitter", None)
+    return {
+        "id": int(row.id),
+        "user": _user_display_name(submitter),
+        "created_at_label": _format_feed_timestamp(getattr(row, "created_at", None)),
+        "created_at_display": getattr(row, "created_at", None).strftime("%d %b %Y %H:%M") if getattr(row, "created_at", None) else "",
+        "answers": [
+            _awards_answer_display_payload(getattr(answer, "question", None), getattr(answer, "answer_text", None))
+            for answer in answer_rows
+        ],
+    }
+
+
+def _awards_single_choice_analytics(form_id: int) -> list[dict[str, object]]:
+    question_rows = (
+        AwardsQuestion.query.filter_by(form_id=int(form_id), question_type="single_choice")
+        .order_by(AwardsQuestion.id.asc())
+        .all()
+    )
+    analytics: list[dict[str, object]] = []
+    for question in question_rows:
+        options = _parse_awards_question_options(getattr(question, "options", None))
+        counts = {option: 0 for option in options}
+        answer_rows = AwardsAnswer.query.filter_by(question_id=int(question.id)).all()
+        for answer in answer_rows:
+            value = str(getattr(answer, "answer_text", "") or "").strip()
+            if value in counts:
+                counts[value] += 1
+        analytics.append(
+            {
+                "question_text": str(getattr(question, "question_text", "") or "").strip() or "Question",
+                "options": [{"label": option, "count": int(counts.get(option, 0))} for option in options],
+            }
+        )
+    return analytics
 
 
 def _challenge_payload(row: Challenge | None) -> dict[str, object] | None:
@@ -3035,6 +3401,9 @@ def _feed_post_payload(
     normalized_reference_type = _normalize_feed_reference_type(getattr(row, "reference_type", None))
     reference_id = int(getattr(row, "reference_id", 0) or 0)
     report_payload = _report_payload(Report.query.get(reference_id)) if normalized_reference_type == "report" and reference_id else None
+    newsletter_payload = _newsletter_payload(Newsletter.query.get(reference_id)) if normalized_reference_type == "newsletter" and reference_id else None
+    event_payload = _event_payload(Event.query.get(reference_id)) if normalized_reference_type == "event" and reference_id else None
+    award_payload = _award_form_payload(AwardsForm.query.get(reference_id)) if normalized_reference_type == "award" and reference_id else None
     challenge_payload = _challenge_payload(Challenge.query.get(reference_id)) if normalized_reference_type == "challenge" and reference_id else None
     response_payload = _challenge_response_payload(ChallengeResponse.query.get(reference_id)) if normalized_reference_type == "challenge_response" and reference_id else None
     company_name = (getattr(author, "company_name", None) or "").strip() or "CTS Carbon Platform"
@@ -3060,9 +3429,13 @@ def _feed_post_payload(
         "author_avatar_url": _user_avatar_url(author),
         "author_profile_url": url_for("public_profile", user_id=int(author.id)) if getattr(author, "id", None) else url_for("feed"),
         "company_logo_url": _company_logo_url(company_name),
+        "share_url": url_for("feed") + f"#post-{int(row.id)}",
         "reference_type": normalized_reference_type or None,
         "reference_id": reference_id or None,
         "report": report_payload,
+        "newsletter": newsletter_payload,
+        "event": event_payload,
+        "award": award_payload,
         "challenge": challenge_payload,
         "challenge_response": response_payload,
         "can_respond_to_challenge": bool(challenge_payload and not _is_readonly_user(current_user) and challenge_payload.get("is_open")),
@@ -3160,6 +3533,38 @@ def _ensure_feed_post_reference_columns() -> None:
         with db.engine.begin() as conn:
             for stmt in alters:
                 conn.execute(text(stmt))
+    except Exception:
+        pass
+
+
+def _ensure_report_category_columns() -> None:
+    try:
+        from sqlalchemy import inspect, text
+
+        inspector = inspect(db.engine)
+        if not inspector.has_table("report"):
+            return
+        existing = {col["name"] for col in inspector.get_columns("report")}
+        if "category_id" in existing:
+            return
+        with db.engine.begin() as conn:
+            conn.execute(text("ALTER TABLE report ADD COLUMN category_id INTEGER"))
+    except Exception:
+        pass
+
+
+def _ensure_awards_form_columns() -> None:
+    try:
+        from sqlalchemy import inspect, text
+
+        inspector = inspect(db.engine)
+        if not inspector.has_table("awards_forms"):
+            return
+        existing = {col["name"] for col in inspector.get_columns("awards_forms")}
+        if "header_image" in existing:
+            return
+        with db.engine.begin() as conn:
+            conn.execute(text("ALTER TABLE awards_forms ADD COLUMN header_image VARCHAR(500)"))
     except Exception:
         pass
 
@@ -6782,13 +7187,479 @@ def public_profile(user_id: int):
 def open_report(report_id: int):
     _ensure_db_tables()
     row = Report.query.get_or_404(int(report_id))
-    company_name = str(getattr(getattr(row, "company", None), "company_name", "") or "").strip()
-    if company_name and not _user_can_access_company(company_name):
-        abort(403)
     disk_path = APP_DIR / "static" / str(getattr(row, "file_path", "") or "")
     if not disk_path.is_file():
         abort(404)
     return send_file(str(disk_path), as_attachment=False, download_name=Path(disk_path).name)
+
+
+@app.route("/reports", methods=["GET"])
+@login_required
+def reports_page():
+    _ensure_db_tables()
+    selected_category_raw = str(request.args.get("category") or "").strip()
+    selected_category_id = int(selected_category_raw) if selected_category_raw.isdigit() else None
+    category_rows = ReportCategory.query.order_by(ReportCategory.name.asc(), ReportCategory.id.asc()).all()
+    query = Report.query.order_by(Report.created_at.desc(), Report.id.desc())
+    if selected_category_id:
+        query = query.filter(Report.category_id == int(selected_category_id))
+    rows = query.all()
+    category_items = [
+        {
+            "id": None,
+            "name": "All Reports",
+            "count": Report.query.count(),
+            "href": url_for("reports_page"),
+            "is_active": selected_category_id is None,
+        }
+    ]
+    for category in category_rows:
+        category_items.append(
+            {
+                "id": int(category.id),
+                "name": str(category.name or "").strip() or "Category",
+                "count": Report.query.filter_by(category_id=int(category.id)).count(),
+                "href": url_for("reports_page", category=int(category.id)),
+                "is_active": selected_category_id == int(category.id),
+            }
+        )
+    return render_template(
+        "reports.html",
+        page_title="Reports",
+        page_subtitle="Shared reports published by the sustainability team.",
+        items=[payload for payload in (_report_payload(row) for row in rows) if payload],
+        can_manage=bool(current_user.is_admin and not _is_readonly_user(current_user)),
+        upload_action=url_for("upload_report"),
+        create_category_action=url_for("create_report_category"),
+        categories=category_items,
+        report_categories=[payload for payload in (_report_category_payload(row) for row in category_rows) if payload],
+        selected_category_id=selected_category_id,
+    )
+
+
+@app.route("/reports/<int:report_id>", methods=["GET"])
+@login_required
+def report_detail(report_id: int):
+    _ensure_db_tables()
+    row = Report.query.get_or_404(int(report_id))
+    payload = _report_payload(row)
+    return render_template(
+        "module_detail.html",
+        module_key="report",
+        page_title=payload["title"] if payload else "Report",
+        item=payload,
+    )
+
+
+@app.route("/newsletters", methods=["GET"])
+@login_required
+def newsletters_page():
+    _ensure_db_tables()
+    rows = Newsletter.query.order_by(Newsletter.created_at.desc(), Newsletter.id.desc()).all()
+    return render_template(
+        "module_list.html",
+        module_key="newsletter",
+        page_title="Newsletters",
+        page_subtitle="Internal newsletters shared across the platform.",
+        items=[payload for payload in (_newsletter_payload(row) for row in rows) if payload],
+        can_manage=bool(current_user.is_admin and not _is_readonly_user(current_user)),
+        upload_action=url_for("upload_newsletter"),
+    )
+
+
+@app.route("/newsletters/<int:newsletter_id>", methods=["GET"])
+@login_required
+def newsletter_detail(newsletter_id: int):
+    _ensure_db_tables()
+    row = Newsletter.query.get_or_404(int(newsletter_id))
+    payload = _newsletter_payload(row)
+    return render_template(
+        "module_detail.html",
+        module_key="newsletter",
+        page_title=payload["title"] if payload else "Newsletter",
+        item=payload,
+    )
+
+
+@app.route("/newsletters/<int:newsletter_id>/open", methods=["GET"])
+@login_required
+def open_newsletter(newsletter_id: int):
+    _ensure_db_tables()
+    row = Newsletter.query.get_or_404(int(newsletter_id))
+    disk_path = APP_DIR / "static" / str(getattr(row, "file_path", "") or "")
+    if not disk_path.is_file():
+        abort(404)
+    return send_file(str(disk_path), as_attachment=False, download_name=Path(disk_path).name)
+
+
+@app.route("/events", methods=["GET"])
+@login_required
+def events_page():
+    _ensure_db_tables()
+    rows = Event.query.order_by(Event.event_date.desc(), Event.created_at.desc(), Event.id.desc()).all()
+    return render_template(
+        "module_list.html",
+        module_key="event",
+        page_title="Events",
+        page_subtitle="Upcoming and recent sustainability events.",
+        items=[payload for payload in (_event_payload(row) for row in rows) if payload],
+        can_manage=bool(current_user.is_admin and not _is_readonly_user(current_user)),
+        upload_action=url_for("create_event"),
+    )
+
+
+@app.route("/events/<int:event_id>", methods=["GET"])
+@login_required
+def event_detail(event_id: int):
+    _ensure_db_tables()
+    row = Event.query.get_or_404(int(event_id))
+    payload = _event_payload(row)
+    return render_template(
+        "module_detail.html",
+        module_key="event",
+        page_title=payload["title"] if payload else "Event",
+        item=payload,
+    )
+
+
+@app.route("/reports/categories", methods=["POST"])
+@login_required
+def create_report_category():
+    _ensure_db_tables()
+    if not bool(current_user.is_admin) or _is_readonly_user(current_user):
+        abort(403)
+    name = " ".join(str(request.form.get("name") or "").strip().split())
+    if not name:
+        flash("Category name is required.", "warning")
+        return redirect(url_for("reports_page"))
+    existing = ReportCategory.query.filter(db.func.lower(ReportCategory.name) == name.lower()).first()
+    if existing is not None:
+        flash("Category already exists.", "warning")
+        return redirect(url_for("reports_page", category=int(existing.id)))
+    row = ReportCategory(name=name, created_by=int(current_user.id))
+    db.session.add(row)
+    db.session.commit()
+    flash("Report category created.", "success")
+    return redirect(url_for("reports_page", category=int(row.id)))
+
+
+@app.route("/upload/report", methods=["POST"])
+@login_required
+def upload_report():
+    _ensure_db_tables()
+    if not bool(current_user.is_admin) or _is_readonly_user(current_user):
+        abort(403)
+    upload = request.files.get("file")
+    upload_name = secure_filename(getattr(upload, "filename", "") or "")
+    title = (request.form.get("title") or "").strip() or Path(upload_name).stem.replace("_", " ").strip() or "Untitled report"
+    file_path, error = _save_module_document(upload, user_id=int(current_user.id), module_name="reports")
+    if error:
+        flash(error, "warning")
+        return redirect(url_for("reports_page"))
+    company_label = _clean_company_name(getattr(current_user, "company_name", "") or "") or "CTS Carbon Platform"
+    company_row = _company_row_for_name(company_label, created_by_user_id=int(current_user.id))
+    if company_row is None:
+        flash("A company is required before uploading a report.", "warning")
+        return redirect(url_for("reports_page"))
+    category_raw = str(request.form.get("category_id") or "").strip()
+    category_id = int(category_raw) if category_raw.isdigit() else None
+    category_row = ReportCategory.query.get(category_id) if category_id else None
+    row = Report(
+        title=title,
+        file_path=str(file_path),
+        preview_paths="[]",
+        uploaded_by=int(current_user.id),
+        company_id=int(company_row.id),
+        category_id=int(category_row.id) if category_row is not None else None,
+    )
+    db.session.add(row)
+    db.session.flush()
+    row.preview_paths = json.dumps(
+        _generate_report_preview_paths(
+            report_title=title,
+            report_rel_path=str(file_path),
+            report_id=int(row.id),
+        )
+    )
+    db.session.commit()
+    _create_content_feed_post(
+        author_id=int(current_user.id),
+        reference_type="report",
+        reference_id=int(row.id),
+        title=row.title,
+    )
+    flash("Report uploaded successfully.", "success")
+    return redirect(url_for("reports_page"))
+
+
+@app.route("/upload/newsletter", methods=["POST"])
+@login_required
+def upload_newsletter():
+    _ensure_db_tables()
+    if not bool(current_user.is_admin) or _is_readonly_user(current_user):
+        abort(403)
+    upload = request.files.get("file")
+    upload_name = secure_filename(getattr(upload, "filename", "") or "")
+    title = (request.form.get("title") or "").strip() or Path(upload_name).stem.replace("_", " ").strip() or "Untitled newsletter"
+    file_path, error = _save_module_document(upload, user_id=int(current_user.id), module_name="newsletters")
+    if error:
+        flash(error, "warning")
+        return redirect(url_for("newsletters_page"))
+    row = Newsletter(
+        title=title,
+        file_path=str(file_path),
+        uploaded_by=int(current_user.id),
+    )
+    db.session.add(row)
+    db.session.commit()
+    _create_content_feed_post(
+        author_id=int(current_user.id),
+        reference_type="newsletter",
+        reference_id=int(row.id),
+        title=row.title,
+    )
+    flash("Newsletter uploaded successfully.", "success")
+    return redirect(url_for("newsletters_page"))
+
+
+@app.route("/create/event", methods=["POST"])
+@login_required
+def create_event():
+    _ensure_db_tables()
+    if not bool(current_user.is_admin) or _is_readonly_user(current_user):
+        abort(403)
+    title = (request.form.get("title") or "").strip()
+    description = (request.form.get("description") or "").strip()
+    event_date_raw = (request.form.get("event_date") or "").strip()
+    if not title or not description or not event_date_raw:
+        flash("Title, description, and event date are required.", "warning")
+        return redirect(url_for("events_page"))
+    try:
+        event_date = datetime.fromisoformat(event_date_raw)
+    except Exception:
+        flash("Use a valid event date.", "warning")
+        return redirect(url_for("events_page"))
+    row = Event(
+        title=title,
+        description=description,
+        event_date=event_date,
+        created_by=int(current_user.id),
+    )
+    db.session.add(row)
+    db.session.commit()
+    _create_content_feed_post(
+        author_id=int(current_user.id),
+        reference_type="event",
+        reference_id=int(row.id),
+        title=row.title,
+    )
+    flash("Event created successfully.", "success")
+    return redirect(url_for("events_page"))
+
+
+@app.route("/awards", methods=["GET"])
+@login_required
+def awards_index():
+    _ensure_db_tables()
+    rows = AwardsForm.query.order_by(AwardsForm.created_at.desc(), AwardsForm.id.desc()).all()
+    return render_template(
+        "awards_index.html",
+        forms=[payload for payload in (_award_form_payload(row) for row in rows) if payload],
+        can_manage=bool(current_user.is_admin and not _is_readonly_user(current_user)),
+    )
+
+
+@app.route("/awards/admin", methods=["GET", "POST"])
+@login_required
+def awards_admin():
+    _ensure_db_tables()
+    if not bool(current_user.is_admin) or _is_readonly_user(current_user):
+        abort(403)
+    form_id_raw = str(request.values.get("form_id") or "").strip()
+    edit_form = AwardsForm.query.get(int(form_id_raw)) if form_id_raw.isdigit() else None
+    if request.method == "POST":
+        title = (request.form.get("title") or "").strip()
+        description = (request.form.get("description") or "").strip()
+        questions, question_error = _parse_awards_builder_questions(request.form.get("questions_payload"))
+        if not title:
+            flash("Form title is required.", "warning")
+            return redirect(url_for("awards_admin", form_id=int(edit_form.id)) if edit_form else url_for("awards_admin"))
+        if question_error:
+            flash(question_error, "warning")
+            return redirect(url_for("awards_admin", form_id=int(edit_form.id)) if edit_form else url_for("awards_admin"))
+        is_new_form = edit_form is None
+        if edit_form is None:
+            edit_form = AwardsForm(
+                title=title,
+                description=description,
+                created_by=int(current_user.id),
+            )
+            db.session.add(edit_form)
+            db.session.flush()
+        else:
+            edit_form.title = title
+            edit_form.description = description
+        header_image_path, header_image_error = _save_awards_header_image(
+            request.files.get("header_image"),
+            user_id=int(current_user.id),
+            form_id=int(edit_form.id) if getattr(edit_form, "id", None) else None,
+        )
+        if header_image_error:
+            flash(header_image_error, "warning")
+            return redirect(url_for("awards_admin", form_id=int(edit_form.id)) if edit_form else url_for("awards_admin"))
+        if header_image_path:
+            edit_form.header_image = header_image_path
+        if not is_new_form:
+            AwardsQuestion.query.filter_by(form_id=int(edit_form.id)).delete()
+        for question in questions:
+            db.session.add(
+                AwardsQuestion(
+                    form_id=int(edit_form.id),
+                    question_text=str(question["question_text"]),
+                    question_type=str(question["question_type"]),
+                    required=bool(question["required"]),
+                    options=json.dumps(question["options"]) if question["options"] else None,
+                )
+            )
+        db.session.commit()
+        if is_new_form:
+            _create_content_feed_post(
+                author_id=int(current_user.id),
+                reference_type="award",
+                reference_id=int(edit_form.id),
+                title=edit_form.title,
+            )
+            flash("Awards form created.", "success")
+        else:
+            flash("Awards form updated.", "success")
+        return redirect(url_for("awards_admin", form_id=int(edit_form.id)))
+    form_rows = AwardsForm.query.order_by(AwardsForm.created_at.desc(), AwardsForm.id.desc()).all()
+    edit_questions = (
+        AwardsQuestion.query.filter_by(form_id=int(edit_form.id)).order_by(AwardsQuestion.id.asc()).all()
+        if edit_form is not None
+        else []
+    )
+    return render_template(
+        "awards_admin.html",
+        forms=[payload for payload in (_award_form_payload(row) for row in form_rows) if payload],
+        edit_form=_award_form_payload(edit_form) if edit_form is not None else None,
+        edit_questions=[payload for payload in (_awards_question_payload(row) for row in edit_questions) if payload],
+        awards_question_types=AWARDS_QUESTION_TYPES,
+    )
+
+
+@app.route("/awards/<int:form_id>/submissions", methods=["GET"])
+@login_required
+def awards_submissions_page(form_id: int):
+    _ensure_db_tables()
+    if not bool(current_user.is_admin) or _is_readonly_user(current_user):
+        abort(403)
+    form_row = AwardsForm.query.get_or_404(int(form_id))
+    submission_rows = (
+        AwardsSubmission.query.filter_by(form_id=int(form_row.id))
+        .order_by(AwardsSubmission.created_at.desc(), AwardsSubmission.id.desc())
+        .all()
+    )
+    return render_template(
+        "awards_submissions.html",
+        form_item=_award_form_payload(form_row),
+        submissions=[payload for payload in (_awards_submission_payload(row) for row in submission_rows) if payload],
+        analytics=_awards_single_choice_analytics(int(form_row.id)),
+        total_submissions=len(submission_rows),
+    )
+
+
+@app.route("/awards/<int:form_id>/export", methods=["GET"])
+@login_required
+def awards_export_csv(form_id: int):
+    _ensure_db_tables()
+    if not bool(current_user.is_admin) or _is_readonly_user(current_user):
+        abort(403)
+    form_row = AwardsForm.query.get_or_404(int(form_id))
+    question_rows = AwardsQuestion.query.filter_by(form_id=int(form_row.id)).order_by(AwardsQuestion.id.asc()).all()
+    submission_rows = (
+        AwardsSubmission.query.filter_by(form_id=int(form_row.id))
+        .order_by(AwardsSubmission.created_at.asc(), AwardsSubmission.id.asc())
+        .all()
+    )
+    output = StringIO()
+    writer = csv.writer(output)
+    headers = ["Submission ID", "User", "Date"] + [str(getattr(question, "question_text", "") or f"Question {index + 1}") for index, question in enumerate(question_rows)]
+    writer.writerow(headers)
+    for submission in submission_rows:
+        answer_map: dict[int, str] = {}
+        for answer in AwardsAnswer.query.filter_by(submission_id=int(submission.id)).all():
+            answer_map[int(answer.question_id)] = str(getattr(answer, "answer_text", "") or "")
+        writer.writerow(
+            [
+                int(submission.id),
+                _user_display_name(getattr(submission, "submitter", None)),
+                getattr(submission, "created_at", None).strftime("%Y-%m-%d %H:%M:%S") if getattr(submission, "created_at", None) else "",
+                *[answer_map.get(int(question.id), "") for question in question_rows],
+            ]
+        )
+    csv_text = output.getvalue()
+    output.close()
+    filename_slug = re.sub(r"[^0-9a-zA-Z]+", "_", str(getattr(form_row, "title", "") or "awards")).strip("_") or "awards"
+    return Response(
+        csv_text,
+        mimetype="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename_slug}_submissions.csv"'},
+    )
+
+
+@app.route("/awards/<int:form_id>", methods=["GET", "POST"])
+@login_required
+def awards_form_page(form_id: int):
+    _ensure_db_tables()
+    form_row = AwardsForm.query.get_or_404(int(form_id))
+    question_rows = AwardsQuestion.query.filter_by(form_id=int(form_row.id)).order_by(AwardsQuestion.id.asc()).all()
+    if request.method == "POST":
+        submission = AwardsSubmission(form_id=int(form_row.id), submitted_by=int(current_user.id))
+        db.session.add(submission)
+        db.session.flush()
+        for question in question_rows:
+            payload = _awards_question_payload(question) or {}
+            question_type = str(payload.get("question_type") or "text")
+            answer_text = ""
+            if question_type == "file":
+                file_answer, file_error = _save_awards_answer_file(
+                    request.files.get(f"question_{int(question.id)}"),
+                    user_id=int(current_user.id),
+                    form_id=int(form_row.id),
+                    question_id=int(question.id),
+                )
+                if file_error and bool(payload.get("required")):
+                    db.session.rollback()
+                    flash(file_error, "warning")
+                    return redirect(url_for("awards_form_page", form_id=int(form_row.id)))
+                answer_text = str(file_answer or "")
+            else:
+                answer_text = (request.form.get(f"question_{int(question.id)}") or "").strip()
+            if payload.get("required") and not answer_text:
+                db.session.rollback()
+                flash("Please complete all required questions.", "warning")
+                return redirect(url_for("awards_form_page", form_id=int(form_row.id)))
+            if question_type == "single_choice" and answer_text and answer_text not in list(payload.get("options") or []):
+                db.session.rollback()
+                flash("One of the selected answers is invalid.", "warning")
+                return redirect(url_for("awards_form_page", form_id=int(form_row.id)))
+            db.session.add(
+                AwardsAnswer(
+                    submission_id=int(submission.id),
+                    question_id=int(question.id),
+                    answer_text=answer_text or None,
+                )
+            )
+        db.session.commit()
+        flash("Submission received successfully.", "success")
+        return redirect(url_for("awards_form_page", form_id=int(form_row.id)))
+    return render_template(
+        "awards_form.html",
+        form_item=_award_form_payload(form_row),
+        questions=[payload for payload in (_awards_question_payload(row) for row in question_rows) if payload],
+        can_manage=bool(current_user.is_admin and not _is_readonly_user(current_user)),
+    )
 
 
 @app.route("/api/profile/cover", methods=["POST"])
@@ -11062,23 +11933,26 @@ def home():
 def feed():
     _ensure_db_tables()
     selected_filter = _normalize_feed_filter(request.args.get("type"))
+    is_my_updates_view = str(request.args.get("view") or "").strip().lower() == "mine"
     query = FeedPost.query.order_by(FeedPost.created_at.desc(), FeedPost.id.desc())
+    if is_my_updates_view:
+        query = query.filter(FeedPost.author_user_id == int(current_user.id))
     if selected_filter != "all":
         query = query.filter(FeedPost.post_type == selected_filter)
     rows = query.all()
     posts = _feed_payloads_for_rows(rows)
-    quick_reports_href = url_for("admin_report") if current_user.is_admin else url_for("analytics_emissions_totals")
     can_create_posts = not _is_readonly_user(current_user)
     return render_template(
         "feed.html",
         posts=posts,
         selected_filter=selected_filter,
         feed_filters=FEED_FILTER_OPTIONS,
-        feed_post_types=FEED_POST_TYPES,
+        feed_post_types=FEED_COMPOSER_TYPES,
         feed_reaction_options=FEED_REACTION_OPTIONS,
         can_create_posts=can_create_posts,
         comment_actor_avatar_url=_user_avatar_url(current_user),
         can_create_challenges=bool(current_user.is_admin and not _is_readonly_user(current_user)),
+        is_my_updates_view=is_my_updates_view,
         feed_profile={
             "name": _user_display_name(current_user),
             "title": _user_professional_title(current_user),
@@ -11087,9 +11961,11 @@ def feed():
             "company_logo_url": _company_logo_url(getattr(current_user, "company_name", None)),
             "profile_url": url_for("public_profile", user_id=int(current_user.id)),
             "reports_url": url_for("public_profile", user_id=int(current_user.id)) + "#reports",
-            "updates_url": url_for("feed"),
+            "updates_url": url_for("feed", view="mine"),
             "analytics_url": url_for("analytics_emissions_totals"),
-            "quick_reports_url": quick_reports_href,
+            "quick_reports_url": url_for("reports_page"),
+            "quick_newsletters_url": url_for("newsletters_page"),
+            "quick_events_url": url_for("events_page"),
         },
     )
 
@@ -11160,7 +12036,7 @@ def create_feed_post():
             if media_error:
                 flash(media_error, "warning")
                 return redirect(url_for("feed", type=_normalize_feed_filter(request.form.get("current_filter"))))
-    if post_type == "report" and reference_type != "report":
+    if post_type in {"report", "newsletter", "event"} and reference_type != post_type:
         post_type = "update"
 
     row = FeedPost(

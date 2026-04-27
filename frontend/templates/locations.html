@@ -18,15 +18,20 @@
     </div>
 
     <div class="locations-map-card">
-      <div class="locations-map-wrap">
-        <div id="locationsMap" class="locations-map" aria-label="World map with company locations"></div>
-        <div class="legend-box" aria-label="Map legend">
-          <div class="legend-box__title">Locations</div>
-          <div class="legend-box__item"><span class="legend-box__swatch legend-box__swatch--hq"></span>Headquarters</div>
-          <div class="legend-box__item"><span class="legend-box__swatch legend-box__swatch--office"></span>Corporate Offices</div>
-          <div class="legend-box__item"><span class="legend-box__swatch legend-box__swatch--production"></span> Sites</div>
+      <div class="locations-map-layout">
+        <div class="locations-map-wrap">
+          <div id="locationsMap" class="locations-map" aria-label="World map with company locations"></div>
+          <div id="locationsMapNotice" class="locations-map__notice" hidden></div>
         </div>
-        <div id="locationsMapNotice" class="locations-map__notice" hidden></div>
+        <aside class="locations-side-panel" aria-label="Map controls">
+          <div class="legend-box locations-side-panel__card" aria-label="Map legend">
+            <div class="legend-box__title">Locations</div>
+            <div class="legend-box__item"><span class="legend-box__swatch legend-box__swatch--hq"></span>Headquarters</div>
+            <div class="legend-box__item"><span class="legend-box__swatch legend-box__swatch--office"></span>Corporate Offices</div>
+            <div class="legend-box__item"><span class="legend-box__swatch legend-box__swatch--production"></span>Sites</div>
+          </div>
+          <div id="locationsLayerPanel" class="locations-side-panel__card locations-layer-panel" aria-label="Layer controls"></div>
+        </aside>
       </div>
     </div>
   </div>

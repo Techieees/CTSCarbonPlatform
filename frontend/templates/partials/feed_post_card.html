@@ -1,4 +1,4 @@
-<article class="feed-card feed-post" data-feed-post-id="{{ post.id }}">
+<article class="feed-card feed-post" id="post-{{ post.id }}" data-feed-post-id="{{ post.id }}">
   <header class="feed-post__header">
     <a href="{{ post.author_profile_url }}" class="feed-post__header-link" aria-label="{{ post.author_name }} profile">
       <span class="feed-post__avatar-link">
@@ -48,9 +48,56 @@
       <div>
         <div class="feed-report-card__label">Uploaded report</div>
         <strong>{{ post.report.title }}</strong>
+        {% if post.report.category_name %}
+        <div class="text-muted small mt-1">{{ post.report.category_name }}</div>
+        {% endif %}
       </div>
-      <a class="btn btn-primary btn-sm" href="{{ post.report.file_url }}" target="_blank" rel="noopener noreferrer">Open Report</a>
+      <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-primary btn-sm" href="{{ post.report.detail_url }}">View Details</a>
+        <a class="btn btn-primary btn-sm" href="{{ post.report.file_url }}" target="_blank" rel="noopener noreferrer">Open Report</a>
+      </div>
     </div>
+  </section>
+  {% endif %}
+
+  {% if post.newsletter %}
+  <section class="feed-report-card">
+    <div class="feed-report-card__meta">
+      <div>
+        <div class="feed-report-card__label">Newsletter</div>
+        <strong>{{ post.newsletter.title }}</strong>
+      </div>
+      <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-primary btn-sm" href="{{ post.newsletter.detail_url }}">View Details</a>
+        <a class="btn btn-primary btn-sm" href="{{ post.newsletter.file_url }}" target="_blank" rel="noopener noreferrer">Open Newsletter</a>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if post.award %}
+  <section class="feed-challenge-card">
+    <div class="feed-challenge-card__label">Sustainability Award</div>
+    <h4 class="feed-challenge-card__title">{{ post.award.title }}</h4>
+    {% if post.award.description %}
+    <p class="mb-3">{{ post.award.description }}</p>
+    {% endif %}
+    <p class="feed-challenge-card__meta">{{ post.award.question_count }} question{{ '' if post.award.question_count == 1 else 's' }} · {{ post.award.submission_count }} submission{{ '' if post.award.submission_count == 1 else 's' }}</p>
+    <a class="btn btn-outline-primary btn-sm" href="{{ post.award.detail_url }}">Open Award</a>
+  </section>
+  {% endif %}
+
+  {% if post.event %}
+  <section class="feed-challenge-card">
+    <div class="feed-challenge-card__label">Event</div>
+    <h4 class="feed-challenge-card__title">{{ post.event.title }}</h4>
+    {% if post.event.event_date_label %}
+    <p class="feed-challenge-card__meta">Event date: {{ post.event.event_date_label }}</p>
+    {% endif %}
+    {% if post.event.description %}
+    <p class="mb-3">{{ post.event.description }}</p>
+    {% endif %}
+    <a class="btn btn-outline-primary btn-sm" href="{{ post.event.detail_url }}">View Details</a>
   </section>
   {% endif %}
 
@@ -151,7 +198,7 @@
       <span>{% if post.challenge %}Respond{% else %}Comment{% endif %}</span>
     </button>
     {% endif %}
-    <button class="feed-action" type="button" data-feed-ui="share">
+    <button class="feed-action" type="button" data-feed-ui="share" data-share-url="{{ post.share_url }}">
       <span class="feed-action__icon" aria-hidden="true">&#8599;</span>
       <span>Share</span>
     </button>

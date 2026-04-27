@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}{{ form_item.title }} Submissions{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <div class="row g-4">
+    <div class="col-lg-4">
+      <div class="card shadow-sm border-0">
+        <div class="card-body p-4">
+          <h1 class="h4 mb-2">{{ form_item.title }}</h1>
+          <p class="text-muted mb-3">Review submissions and export results.</p>
+          <div class="d-flex flex-column gap-2">
+            <div class="small text-muted">Total submissions</div>
+            <div class="h3 mb-0">{{ total_submissions }}</div>
+          </div>
+          <div class="d-flex gap-2 flex-wrap mt-4">
+            <a class="btn btn-primary" href="{{ form_item.export_url }}">Export to CSV</a>
+            <a class="btn btn-outline-primary" href="{{ form_item.admin_url }}">Edit form</a>
+          </div>
+        </div>
+      </div>
+
+      {% if analytics %}
+      <div class="card shadow-sm border-0 mt-4">
+        <div class="card-body p-4">
+          <h2 class="h5 mb-3">Analytics</h2>
+          <div class="d-flex flex-column gap-3">
+            {% for item in analytics %}
+            <section>
+              <strong class="d-block mb-2">{{ item.question_text }}</strong>
+              <div class="d-flex flex-column gap-2">
+                {% for option in item.options %}
+                <div class="d-flex justify-content-between gap-3 small">
+                  <span>{{ option.label }}</span>
+                  <span>{{ option.count }}</span>
+                </div>
+                {% endfor %}
+              </div>
+            </section>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="col-lg-8">
+      <div class="d-flex flex-column gap-3">
+        {% if submissions %}
+          {% for submission in submissions %}
+          <article class="card shadow-sm border-0">
+            <div class="card-body p-4">
+              <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+                <div>
+                  <h2 class="h5 mb-1">{{ submission.user }}</h2>
+                  <div class="small text-muted">{{ submission.created_at_display }}</div>
+                </div>
+                <span class="badge text-bg-light">Submission #{{ submission.id }}</span>
+              </div>
+              <div class="d-flex flex-column gap-3">
+                {% for answer in submission.answers %}
+                <section>
+                  <div class="fw-semibold mb-1">{{ answer.question_text }}</div>
+                  {% if answer.is_file and answer.file_url %}
+                  <a href="{{ answer.file_url }}" target="_blank" rel="noopener noreferrer">{{ answer.answer_text }}</a>
+                  {% else %}
+                  <div class="text-body">{{ answer.answer_text or '-' }}</div>
+                  {% endif %}
+                </section>
+                {% endfor %}
+              </div>
+            </div>
+          </article>
+          {% endfor %}
+        {% else %}
+        <div class="card shadow-sm border-0">
+          <div class="card-body p-4">
+            <h2 class="h5 mb-2">No submissions yet</h2>
+            <p class="text-muted mb-0">Submissions will appear here when users complete the form.</p>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
