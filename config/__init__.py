@@ -8,6 +8,7 @@ DATA_DIR = BASE_DIR / "data"
 PROJECT_ROOT = BASE_DIR.parent
 
 
+load_dotenv(PROJECT_ROOT / ".env")
 load_dotenv(BASE_DIR / "api_credentials.env")
 
 
@@ -44,6 +45,8 @@ PUBLIC_APP_BASE_URL = os.getenv(
     "PUBLIC_APP_BASE_URL",
     "https://ctscarbonplatform.com"
 )
+
+OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY", "").strip()
 
 
 # -----------------

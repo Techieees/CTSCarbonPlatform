@@ -210,16 +210,16 @@ function initHomeEnterprise() {
       showEmptyState(el, "Company-level scope stacks appear when aggregated company data is available.");
       return;
     }
-    const top = companyRows.slice(0, 12);
+    const dynamicHeight = Math.max(340, companyRows.length * 18);
     mountStackedBarChart(el, {
-      labels: top.map((r) => r.company),
+      labels: companyRows.map((r) => r.company),
       seriesColorKind: "scope",
       series: [
-        { name: "Scope 1 Direct Emissions", data: top.map((r) => r.scope1) },
-        { name: "Scope 2 Indirect Emissions", data: top.map((r) => r.scope2) },
-        { name: "Scope 3 Value Chain Emissions", data: top.map((r) => r.scope3) }
+        { name: "Scope 1 Direct Emissions", data: companyRows.map((r) => r.scope1) },
+        { name: "Scope 2 Indirect Emissions", data: companyRows.map((r) => r.scope2) },
+        { name: "Scope 3 Value Chain Emissions", data: companyRows.map((r) => r.scope3) }
       ],
-      height: 300
+      height: dynamicHeight
     });
   });
 
@@ -253,11 +253,12 @@ function initHomeEnterprise() {
       showEmptyState(el, "Company ranking uses administrator company aggregates.");
       return;
     }
-    const sorted = [...companyRows].sort((a, b) => Number(b.total) - Number(a.total)).slice(0, 12);
+    const sorted = [...companyRows].sort((a, b) => Number(b.total) - Number(a.total));
+    const dynamicHeight = Math.max(340, sorted.length * 26);
     mountCompanyRankingChart(el, {
       labels: sorted.map((r) => r.company),
       values: sorted.map((r) => r.total),
-      height: 300,
+      height: dynamicHeight,
       categoryColorKind: "company",
       tooltipSuffix: " tCO₂e"
     });
@@ -484,12 +485,13 @@ function initDashboardEnterprise() {
       showEmptyState(el, "No companies in filtered data.");
       return;
     }
-    const top = companyRows.slice(0, 12);
-    const sum = top.reduce((a, r) => a + Number(r.total || 0), 0) || 1;
+    const allCompanies = [...companyRows];
+    const sum = allCompanies.reduce((a, r) => a + Number(r.total || 0), 0) || 1;
+    const dynamicHeight = Math.max(360, allCompanies.length * 26);
     mountHorizontalBarChart(el, {
-      labels: top.map((r) => r.company),
-      values: top.map((r) => (Number(r.total || 0) / sum) * 100),
-      height: 320,
+      labels: allCompanies.map((r) => r.company),
+      values: allCompanies.map((r) => (Number(r.total || 0) / sum) * 100),
+      height: dynamicHeight,
       categoryColorKind: "company",
       seriesName: "Company Share",
       tooltipSuffix: " %",
@@ -550,11 +552,12 @@ function initAdminReportEnterpriseBindings(rows, bind) {
   });
 
   bind("admEntCompanyCompare", (el) => {
-    const ct = companyTotals(rows).slice(0, 12);
+    const ct = companyTotals(rows);
+    const dynamicHeight = Math.max(360, ct.length * 26);
     mountCompanyRankingChart(el, {
       labels: ct.map(([name]) => name),
       values: ct.map(([, v]) => v),
-      height: 320,
+      height: dynamicHeight,
       categoryColorKind: "company",
       tooltipSuffix: " tCO₂e"
     });

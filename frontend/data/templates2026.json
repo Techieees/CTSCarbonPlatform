@@ -1,29 +1,18 @@
 {
-    "Scope 1 Fuel Usage Spend": {
+    "Scope 1 Fuel Usage": {
       "columns": [
         "Reporting period (month, year)",
-        "Vehicle Type",
-        "Spend",
-        "Currency",
-        "Country",
-        "Site Tag",
-        "Data Source"
-      ],
-      "mapping_keys": ["Vehicle Type"],
-      "calculation_type": "spend_based",
-      "calculation_fields": ["Spend"]
-    },
-  
-    "Scope 1 Fuel Usage Activity": {
-      "columns": [
         "Vehicle Type",
         "Fuel consumption",
         "Unit",
         "Distance travelled",
         "Distance Unit",
+        "Spend",
+        "Currency",
         "Country",
         "Site Tag",
-        "Data Source"
+        "Data Source",
+        ""
       ],
       "mapping_keys": ["Vehicle Type"],
       "calculation_type": "conditional",
@@ -38,6 +27,11 @@
             "condition": "Fuel consumption",
             "type": "fuel_based",
             "fields": ["Fuel consumption"]
+          },
+          {
+            "condition": "Spend",
+            "type": "spend_based",
+            "fields": ["Spend"]
           }
         ]
       }
@@ -116,12 +110,12 @@
     "Scope 3 Category 5 Waste": {
       "columns": [
         "Reporting period (month, year)",
-        "Site",
         "Waste Stream",
         "Weight",
         "Weight Unit",
         "Treatment Method",
         "Country",
+        "Site Tag",
         "Data Source"
       ],
       "mapping_keys": ["Waste Stream"],
@@ -184,22 +178,7 @@
       "calculation_type": "weight_based",
       "calculation_fields": ["Weight"]
     },
-  
-    "Scope 3 Category 15 Pensions": {
-      "columns": [
-        "Reporting period (month, year)",
-        "Employee Headcount",
-        "Pension Provider",
-        "Employer Contribution",
-        "Currency",
-        "Country",
-        "Data Source"
-      ],
-      "mapping_keys": [],
-      "calculation_type": "spend_based",
-      "calculation_fields": ["Employer Contribution"]
-    },
-  
+
     "Water Tracker": {
       "columns": [
         "Reporting period (month, year)",
@@ -212,5 +191,28 @@
       "mapping_keys": [],
       "calculation_type": "consumption_based",
       "calculation_fields": ["Water Consumption"]
+    },
+
+    "Scope 3 Category 11 Upstream Transportation"
+      "columns": [
+        "Reporting period (month, year)",
+        "Product",
+        "Quantity",
+        "Weight",
+        "Weight Unit",
+        "Waste Stream",
+        "Treatment Method",
+        "Country",
+        "Data Source"
+      ],
+      "mapping_keys": ["Waste Stream"],
+      "calculation_type": "weight_based",
+      "calculation_fields": ["Weight"]
+    },
+
+
+
+
+
+  ]
     }
-  }

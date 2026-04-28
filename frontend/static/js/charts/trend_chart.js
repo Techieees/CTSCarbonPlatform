@@ -66,7 +66,11 @@ export function renderTrendChart(config) {
     ? series
     : [{ name: config.seriesName || "Trend", data: values }];
 
-  const largestSeries = Math.max(labels.length, ...normalizedSeries.map((item) => item.data?.length || 0));
+  const normalizedLabels = Array.from(
+    { length: Math.max(labels.length, ...normalizedSeries.map((item) => item.data?.length || 0)) },
+    (_, index) => String(labels[index] ?? `Point ${index + 1}`)
+  );
+  const largestSeries = normalizedLabels.length;
   const perf = getPerformanceOptions(largestSeries, "line");
 
   chart.setOption({
@@ -75,14 +79,17 @@ export function renderTrendChart(config) {
     animationDurationUpdate: perf.animation ? 420 : 0,
     animationEasing: "cubicInOut",
     animationThreshold: 2500,
-    grid: getGrid(false),
-    legend: getLegend(showLegend || normalizedSeries.length > 1),
+    grid: getGrid(false, showLegend || normalizedSeries.length > 1),
+    legend: getLegend(showLegend || normalizedSeries.length > 1, normalizedSeries.length),
     tooltip: {
       ...getTooltipBase((params) => {
         const entries = Array.isArray(params) ? params : [params];
         const title = entries[0]?.axisValueLabel || entries[0]?.name || "";
         const rows = entries
-          .map((entry) => `<div style="display:flex;justify-content:space-between;gap:16px;margin-top:6px;"><span>${entry.seriesName}</span><strong>${formatFull(entry.value)}${tooltipSuffix}</strong></div>`)
+          .map((entry) => {
+            const marker = `<span style="display:inline-block;width:10px;height:10px;border-radius:999px;margin-right:8px;background:${entry.color};"></span>`;
+            return `<div style="display:flex;justify-content:space-between;gap:16px;margin-top:6px;"><span style="display:flex;align-items:center;">${marker}${entry.seriesName}</span><strong>${formatFull(entry.value)}${tooltipSuffix}</strong></div>`;
+          })
           .join("");
 
         return `<div><div style="font-size:12px;font-weight:600;color:rgba(226,232,240,.82);margin-bottom:2px;">${title}</div>${rows}</div>`;
@@ -98,7 +105,7 @@ export function renderTrendChart(config) {
     xAxis: {
       type: "category",
       boundaryGap: false,
-      data: labels,
+      data: normalizedLabels,
       axisTick: { show: false },
       axisLine: { lineStyle: { color: "rgba(148, 163, 184, 0.18)" } },
       splitLine: { show: false },
@@ -150,7 +157,7 @@ export function renderTrendChart(config) {
         animationDelay: perf.animation
           ? (dataIndex) => Math.min(dataIndex * 28 + index * 40, 360)
           : 0,
-        data: seriesItem.data || [],
+        data: (seriesItem.data || []).slice(0, normalizedLabels.length),
         lineStyle: {
           width: 3,
           color: pal.line
@@ -165,6 +172,17 @@ export function renderTrendChart(config) {
         },
         emphasis: {
           focus: "series"
+        },
+        blur: {
+          lineStyle: {
+            opacity: 0.2
+          },
+          areaStyle: {
+            opacity: 0.05
+          },
+          itemStyle: {
+            opacity: 0.2
+          }
         }
       };
     })

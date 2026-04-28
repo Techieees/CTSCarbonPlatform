@@ -21,8 +21,8 @@ export function mountCategoryContributionChart(container, { labels = [], series 
     animation: true,
     animationDuration: 900,
     animationEasing: "cubicOut",
-    grid: getGrid(false),
-    legend: getLegend(coloredSeries.length > 1),
+    grid: getGrid(false, coloredSeries.length > 1),
+    legend: getLegend(coloredSeries.length > 1, coloredSeries.length),
     tooltip: {
       ...getTooltipBase((params) => {
         const entries = Array.isArray(params) ? params : [params];

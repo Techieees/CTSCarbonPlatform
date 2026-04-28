@@ -40,7 +40,12 @@ export function renderCompanyChart(config) {
     ? series
     : [{ name: config.seriesName || "Value", data: values }];
 
-  const largestSeries = Math.max(labels.length, ...normalizedSeries.map((item) => item.data?.length || 0));
+  const normalizedLabels = Array.from(
+    { length: Math.max(labels.length, ...normalizedSeries.map((item) => item.data?.length || 0)) },
+    (_, index) => String(labels[index] ?? `Item ${index + 1}`)
+  );
+
+  const largestSeries = normalizedLabels.length;
   const perf = getPerformanceOptions(largestSeries, "bar");
 
   const defaultTooltip = (params) => {
@@ -58,7 +63,7 @@ export function renderCompanyChart(config) {
 
   const categoryAxis = {
     type: "category",
-    data: labels,
+    data: normalizedLabels,
     inverse,
     axisTick: { show: false },
     axisLine: { lineStyle: { color: "rgba(148, 163, 184, 0.18)" } },
@@ -84,7 +89,7 @@ export function renderCompanyChart(config) {
       return raw;
     }
     return raw.map((v, di) => {
-      const label = labels[di] ?? `Item ${di}`;
+      const label = normalizedLabels[di] ?? `Item ${di + 1}`;
       const c = getColorByKey(label, categoryColorKind);
       const radius = horizontal ? [0, 12, 12, 0] : [12, 12, 0, 0];
       const val = animateValues ? v : 0;
@@ -106,7 +111,7 @@ export function renderCompanyChart(config) {
       const palette = getPalette(index);
       const name = item.name || `Series ${index + 1}`;
       const isLast = index === normalizedSeries.length - 1;
-      const row = dataset[index] || [];
+      const row = (dataset[index] || []).slice(0, normalizedLabels.length);
 
       let itemStyle;
       if (seriesColorKind) {
@@ -187,8 +192,8 @@ export function renderCompanyChart(config) {
     animationDurationUpdate: perf.animation ? 1150 : 0,
     animationEasing: "quarticOut",
     animationThreshold: 2000,
-    grid: getGrid(horizontal),
-    legend: getLegend(showLegend || normalizedSeries.length > 1),
+    grid: getGrid(horizontal, showLegend || normalizedSeries.length > 1),
+    legend: getLegend(showLegend || normalizedSeries.length > 1, normalizedSeries.length),
     tooltip: getTooltipBase(tooltipFormatter || defaultTooltip),
     xAxis: horizontal ? valueAxis : categoryAxis,
     yAxis: horizontal ? categoryAxis : valueAxis

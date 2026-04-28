@@ -14,11 +14,11 @@
     <div class="locations-page__intro mb-3 mb-lg-4">
       <p class="locations-page__eyebrow mb-2">Locations</p>
       <h1 class="locations-page__title mb-2">Global company footprint</h1>
-      <p class="locations-page__subtitle mb-0">A high level view of headquarters, corporate offices, and production sites across the network.</p>
+      <p class="locations-page__subtitle mb-0">A high level view of headquarters, corporate offices, and production sites across the globe.</p>
     </div>
 
-    <div class="locations-map-card">
-      <div class="locations-map-layout">
+    <div id="map-container" class="locations-map-card">
+      <div class="locations-map-layout main-layout">
         <div class="locations-map-wrap">
           <div id="locationsMap" class="locations-map" aria-label="World map with company locations"></div>
           <div id="locationsMapNotice" class="locations-map__notice" hidden></div>
@@ -41,6 +41,7 @@
 {% block scripts %}
 <script>
   window.MAPBOX_TOKEN = "{{ mapbox_token | default('', true) }}";
+  window.OPENWEATHER_API_KEY = "{{ OPENWEATHER_API_KEY | default('', true) }}";
   window.__locationsMapConfig = {
     dataUrl: "{{ url_for('static', filename='data/locations.json') }}",
     style: "mapbox://styles/mapbox/streets-v12",

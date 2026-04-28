@@ -83,6 +83,30 @@ export function makeGradient(index = 0, horizontal = false, opacityFrom = 1, opa
 }
 
 export function withOpacity(hex, opacity) {
+  if (typeof hex !== "string") {
+    return `rgba(100, 116, 139, ${opacity})`;
+  }
+
+  if (/^hsla?\(/i.test(hex)) {
+    const parts = hex
+      .replace(/^hsla?\(/i, "")
+      .replace(/\)$/, "")
+      .split(",")
+      .map((part) => part.trim());
+    const [h, s, l] = parts;
+    return `hsla(${h}, ${s}, ${l}, ${opacity})`;
+  }
+
+  if (/^rgba?\(/i.test(hex)) {
+    const parts = hex
+      .replace(/^rgba?\(/i, "")
+      .replace(/\)$/, "")
+      .split(",")
+      .map((part) => part.trim());
+    const [r, g, b] = parts;
+    return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+  }
+
   const normalized = hex.replace("#", "");
   const value = normalized.length === 3
     ? normalized.split("").map((char) => char + char).join("")
@@ -109,11 +133,11 @@ export function getPerformanceOptions(dataSize, kind = "bar") {
   };
 }
 
-export function getGrid(horizontal = false) {
+export function getGrid(horizontal = false, withLegend = false) {
   return {
     top: 24,
     right: horizontal ? 20 : 12,
-    bottom: 18,
+    bottom: withLegend ? 72 : 18,
     left: horizontal ? 12 : 8,
     containLabel: true
   };
@@ -150,18 +174,31 @@ export function getTooltipBase(customFormatter) {
   };
 }
 
-export function getLegend(show) {
+export function getLegend(show, itemCount = 0) {
   return show
     ? {
-        top: 0,
+        type: itemCount > 10 ? "scroll" : "plain",
+        bottom: 0,
         left: 0,
+        right: 0,
         itemWidth: 10,
         itemHeight: 10,
         icon: "roundRect",
+        selectedMode: true,
+        pageIconColor: getCssVar("--chart-axis-strong", "#475569"),
+        pageIconInactiveColor: "rgba(148, 163, 184, 0.4)",
+        pageTextStyle: {
+          color: getCssVar("--muted", "#64748b"),
+          fontSize: 11,
+          fontWeight: 600
+        },
         textStyle: {
           color: getCssVar("--muted", "#64748b"),
           fontSize: 12,
           fontWeight: 600
+        },
+        tooltip: {
+          show: true
         }
       }
     : { show: false };

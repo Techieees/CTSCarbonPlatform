@@ -66,6 +66,7 @@ from config import (
     MAIL_USERNAME,
     PIPELINE_RUNS_DIR,
     PIPELINE_TEMPLATE_DIR,
+    OPENWEATHER_API_KEY,
     PROJECT_ROOT,
     PUBLIC_APP_BASE_URL,
     SECRET_KEY,
@@ -6369,8 +6370,11 @@ def platform():
 
 @app.route('/locations')
 def locations():
-    load_dotenv(PROJECT_ROOT / ".env", override=True)
-    return render_template("locations.html", mapbox_token=(os.getenv("MAPBOX_TOKEN") or "").strip())
+    return render_template(
+        "locations.html",
+        mapbox_token=(os.getenv("MAPBOX_TOKEN") or "").strip(),
+        OPENWEATHER_API_KEY=OPENWEATHER_API_KEY,
+    )
 
 def _render_methodology_scope3_category(category_num, category_title, category_slug):
     chart_payload = _scope3_category_charts_payload(int(category_num))

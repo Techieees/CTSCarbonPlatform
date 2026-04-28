@@ -363,8 +363,8 @@ function renderTrendChart(rows) {
         .join("<br>");
       return `<strong>${escapeHtml(params[0]?.axisValue || "")}</strong><br>${items}`;
     }),
-    legend: getLegend(companies.length > 1),
-    grid: getGrid(),
+    legend: getLegend(companies.length > 1, companies.length),
+    grid: getGrid(false, companies.length > 1),
     xAxis: {
       type: "category",
       data: months,
@@ -438,8 +438,8 @@ function renderCategoryStackChart(rows) {
         .join("<br>");
       return `<strong>${escapeHtml(params[0]?.axisValue || "")}</strong><br>${items}`;
     }),
-    legend: getLegend(categories.length > 1),
-    grid: getGrid(),
+    legend: getLegend(categories.length > 1, categories.length),
+    grid: getGrid(false, categories.length > 1),
     xAxis: {
       type: "category",
       data: months,
@@ -488,8 +488,8 @@ function renderCategoryDetailChart(rows) {
         .join("<br>");
       return `<strong>${escapeHtml(params[0]?.axisValue || "")}</strong><br>${items}`;
     }),
-    legend: getLegend(companies.length > 1),
-    grid: getGrid(),
+    legend: getLegend(companies.length > 1, companies.length),
+    grid: getGrid(false, companies.length > 1),
     xAxis: {
       type: "category",
       data: months,

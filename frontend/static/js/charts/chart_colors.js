@@ -2,26 +2,20 @@
  * Deterministic colors for dashboards: same key → same color across all charts.
  */
 
-const COMPANY_PALETTE = [
-  "#2563eb",
-  "#16a34a",
-  "#ea580c",
-  "#8b5cf6",
-  "#ec4899",
-  "#14b8a6",
-  "#f59e0b",
-  "#6366f1",
-  "#ef4444",
-  "#84cc16",
-  "#06b6d4",
-  "#d946ef",
-  "#f97316",
-  "#0ea5e9",
-  "#22c55e",
-  "#a855f7",
-  "#e11d48",
-  "#0891b2"
-];
+const companyColorMap = new Map();
+const categoryColorMap = new Map();
+
+export function generateColors(count) {
+  const total = Math.max(1, Number(count || 0));
+  const colors = [];
+  for (let index = 0; index < total; index += 1) {
+    const hue = Math.round((360 / total) * index);
+    colors.push(`hsl(${hue}, 65%, 55%)`);
+  }
+  return colors;
+}
+
+const COMPANY_PALETTE = generateColors(96);
 
 const CATEGORY_PALETTE = [
   "#3b82f6",
@@ -52,6 +46,19 @@ function hashString(s) {
     h = Math.imul(h, 16777619);
   }
   return h >>> 0;
+}
+
+function normalizeKey(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function allocateMappedColor(registry, key, palette) {
+  if (registry.has(key)) {
+    return registry.get(key);
+  }
+  const color = palette[registry.size % palette.length];
+  registry.set(key, color);
+  return color;
 }
 
 /**
@@ -90,7 +97,17 @@ export function getColorByKey(key, kind = "company") {
     return "#64748b";
   }
 
-  const pal = kind === "category" ? CATEGORY_PALETTE : COMPANY_PALETTE;
-  const salt = kind === "category" ? "cat:" : "co:";
-  return pal[hashString(salt + k.toLowerCase()) % pal.length];
+  const normalized = normalizeKey(k);
+
+  if (kind === "company") {
+    return allocateMappedColor(companyColorMap, normalized, COMPANY_PALETTE);
+  }
+
+  if (kind === "category") {
+    const categoryPalette = CATEGORY_PALETTE.length >= 48 ? CATEGORY_PALETTE : generateColors(48);
+    return allocateMappedColor(categoryColorMap, normalized, categoryPalette);
+  }
+
+  const pal = COMPANY_PALETTE;
+  return pal[hashString(`generic:${normalized}`) % pal.length];
 }
