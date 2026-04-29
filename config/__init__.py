@@ -65,9 +65,12 @@ STAGE1_INPUT_DIR = PROJECT_ROOT / "data"
 STAGE1_INPUT_BACKUP_DIR = PROJECT_ROOT / "data"
 STAGE1_KLARAKARBON_OUTPUT_DIR = PROJECT_ROOT / "data"
 
-STAGE2_MAPPING_DIR = PROJECT_ROOT / "engine"
-STAGE2_OUTPUT_DIR = PROJECT_ROOT / "data"
-STAGE2_TRAVEL_DIR = PROJECT_ROOT / "data"
+STAGE2_MAPPING_DIR = PROJECT_ROOT / "engine" / "stage2_mapping"
+STAGE2_INPUT_DIR = PROJECT_ROOT / "data" / "stage2_mapping" / "input"
+STAGE2_OUTPUT_DIR = PROJECT_ROOT / "data" / "stage2_mapping" / "output"
+STAGE2_MANUAL_MAPPING_DIR = PROJECT_ROOT / "data" / "stage2_mapping" / "manual_mappings"
+STAGE2_TRAVEL_DIR = PROJECT_ROOT / "data" / "stage2_mapping" / "travel"
+STAGE2_HEADCOUNT_CSV = STAGE2_INPUT_DIR / "headcount_info.csv"
 
 STAGE2_EF_XLSX = (
     PROJECT_ROOT
