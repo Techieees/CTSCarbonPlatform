@@ -1,3 +1,4 @@
+{% import 'macros/ui_illustrations.html' as icons %}
 <article class="feed-card feed-post" id="post-{{ post.id }}" data-feed-post-id="{{ post.id }}">
   <header class="feed-post__header">
     <a href="{{ post.author_profile_url }}" class="feed-post__header-link" aria-label="{{ post.author_name }} profile">
@@ -194,12 +195,12 @@
       data-feed-comment-toggle
       aria-expanded="false"
     >
-      <span class="feed-action__icon" aria-hidden="true">&#9998;</span>
+      <span class="feed-action__icon">{{ icons.icon("comment", 16, "small-icon") }}</span>
       <span>{% if post.challenge %}Respond{% else %}Comment{% endif %}</span>
     </button>
     {% endif %}
     <button class="feed-action" type="button" data-feed-ui="share" data-share-url="{{ post.share_url }}">
-      <span class="feed-action__icon" aria-hidden="true">&#8599;</span>
+      <span class="feed-action__icon">{{ icons.icon("share", 16, "small-icon") }}</span>
       <span>Share</span>
     </button>
   </footer>

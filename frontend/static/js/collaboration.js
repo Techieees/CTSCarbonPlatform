@@ -8,6 +8,17 @@
     });
   }
 
+  const chatEmojiTokens = {
+    like: "\u{1F44D}",
+    celebrate: "\u{1F44F}",
+    support: "\u{2764}\u{FE0F}",
+    positive: "\u{1F60A}",
+    party: "\u{1F389}",
+    important: "\u{1F525}",
+    done: "\u{2705}",
+    attachment: "\u{1F4CE}"
+  };
+
   async function fetchJson(url, options) {
     const response = await fetch(url, Object.assign({ headers: { Accept: "application/json" } }, options || {}));
     const data = await response.json().catch(function () { return {}; });
@@ -746,9 +757,10 @@
         emojiPicker.hidden = !emojiPicker.hidden;
       });
       emojiPicker.addEventListener("click", function (event) {
-        const button = event.target.closest("[data-chat-emoji]");
+        const button = event.target.closest("[data-chat-emoji-token]");
         if (!button || !input) return;
-        const emoji = String(button.textContent || "");
+        const token = String(button.dataset.chatEmojiToken || "");
+        const emoji = String(chatEmojiTokens[token] || button.textContent || "");
         const start = Number(input.selectionStart || input.value.length);
         const end = Number(input.selectionEnd || input.value.length);
         const currentValue = String(input.value || "");

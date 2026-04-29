@@ -302,7 +302,8 @@
       const meta = categoryMeta[category] || { title: 'Category ' + category, description: '' };
       const fields = fieldConfig[category] || [];
       const values = currentInputs[category] || {};
-      const icon = category === '9' ? '&#128666;' : (category === '11' ? '&#9881;' : '&#9851;');
+      const iconName = category === '9' ? 'transport' : (category === '11' ? 'energy' : 'waste');
+      const icon = '<img src="{{ url_for('static', filename='icons/') }}' + iconName + '.svg" class="icon large-icon" width="32" height="32" alt="" aria-hidden="true">';
 
       const col = document.createElement('div');
       col.className = 'col-xl-4 col-md-6';

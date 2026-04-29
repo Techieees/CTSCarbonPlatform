@@ -146,11 +146,11 @@ REPORT_DOCUMENT_EXT = frozenset({".doc", ".docx"})
 REPORT_PREVIEW_PAGE_COUNT = 3
 FEED_REFERENCE_TYPES = frozenset({"report", "newsletter", "event", "award", "challenge", "challenge_response"})
 FEED_REACTION_OPTIONS: tuple[dict[str, str], ...] = (
-    {"type": "like", "label": "Like", "icon": "👍"},
-    {"type": "celebrate", "label": "Celebrate", "icon": "👏"},
-    {"type": "support", "label": "Support", "icon": "❤️"},
-    {"type": "insightful", "label": "Insightful", "icon": "💡"},
-    {"type": "funny", "label": "Funny", "icon": "😂"},
+    {"type": "like", "label": "Like", "icon": "L"},
+    {"type": "celebrate", "label": "Celebrate", "icon": "C"},
+    {"type": "support", "label": "Support", "icon": "S"},
+    {"type": "insightful", "label": "Insightful", "icon": "I"},
+    {"type": "funny", "label": "Funny", "icon": "F"},
 )
 FEED_REACTION_META: dict[str, dict[str, str]] = {
     item["type"]: item for item in FEED_REACTION_OPTIONS
@@ -2279,7 +2279,7 @@ def _feed_reaction_button_state(current_reaction: object | None) -> dict[str, ob
     return {
         "type": normalized,
         "label": str(meta.get("label") or "Like"),
-        "icon": str(meta.get("icon") or "👍"),
+        "icon": str(meta.get("icon") or "L"),
         "is_active": bool(normalized),
     }
 
@@ -3601,7 +3601,7 @@ def _feed_post_payload(
         "reaction_total": sum(int(item.get("count") or 0) for item in summary),
         "current_reaction": str(reaction_state.get("type") or ""),
         "current_reaction_label": str(reaction_state.get("label") or "Like"),
-        "current_reaction_icon": str(reaction_state.get("icon") or "👍"),
+        "current_reaction_icon": str(reaction_state.get("icon") or "L"),
     }
 
 
@@ -7332,6 +7332,14 @@ def public_profile(user_id: int):
         suggested_users=_suggested_profile_users(int(user_row.id), company_name=company_name),
         profile_posts=_feed_payloads_for_rows(posts),
         profile_reports=[payload for payload in (_report_payload(row) for row in reports) if payload],
+        feed_profile={
+            "name": _user_display_name(current_user),
+            "title": _user_professional_title(current_user),
+            "company_name": (getattr(current_user, "company_name", None) or "").strip() or "CTS Carbon Platform",
+            "avatar_url": _user_avatar_url(current_user),
+        },
+        feed_post_types=FEED_COMPOSER_TYPES,
+        feed_post_next_url=url_for("public_profile", user_id=int(user_row.id)),
         feed_reaction_options=FEED_REACTION_OPTIONS,
         can_create_posts=not _is_readonly_user(current_user),
         comment_actor_avatar_url=_user_avatar_url(current_user),
@@ -12147,6 +12155,12 @@ def feed():
 @login_required
 def create_feed_post():
     _ensure_db_tables()
+    def redirect_after_post():
+        next_url = str(request.form.get("next") or "").strip()
+        if next_url.startswith("/") and not next_url.startswith("//"):
+            return redirect(next_url)
+        return redirect(url_for("feed", type=_normalize_feed_filter(request.form.get("current_filter"))))
+
     post_type = _normalize_feed_post_type(request.form.get("post_type"))
     content = (request.form.get("content") or "").strip()
     report_title = (request.form.get("report_title") or "").strip()
@@ -12160,11 +12174,11 @@ def create_feed_post():
 
     if not content and not selected_files:
         flash("Add some text or attach a file before posting.", "warning")
-        return redirect(url_for("feed", type=_normalize_feed_filter(request.form.get("current_filter"))))
+        return redirect_after_post()
 
     if len(selected_files) > 1:
         flash("Please upload only one image, video, or file per post.", "warning")
-        return redirect(url_for("feed", type=_normalize_feed_filter(request.form.get("current_filter"))))
+        return redirect_after_post()
 
     media_path = None
     media_type = None
@@ -12179,11 +12193,11 @@ def create_feed_post():
             company_row = _company_row_for_name(resolved_company, created_by_user_id=int(current_user.id))
             if company_row is None:
                 flash("A company is required before publishing a report.", "warning")
-                return redirect(url_for("feed", type=_normalize_feed_filter(request.form.get("current_filter"))))
+                return redirect_after_post()
             report_file_path, report_error = _save_report_file(selected, user_id=int(current_user.id))
             if report_error:
                 flash(report_error, "warning")
-                return redirect(url_for("feed", type=_normalize_feed_filter(request.form.get("current_filter"))))
+                return redirect_after_post()
             title = report_title or Path(selected_name).stem.replace("_", " ").strip() or "Untitled report"
             report_row = Report(
                 title=title,
@@ -12208,7 +12222,7 @@ def create_feed_post():
             media_path, media_type, media_error = _save_feed_media_file(selected, user_id=int(current_user.id))
             if media_error:
                 flash(media_error, "warning")
-                return redirect(url_for("feed", type=_normalize_feed_filter(request.form.get("current_filter"))))
+                return redirect_after_post()
     if post_type in {"report", "newsletter", "event"} and reference_type != post_type:
         post_type = "update"
 
@@ -12224,7 +12238,7 @@ def create_feed_post():
     db.session.add(row)
     db.session.commit()
     flash("Post shared successfully.", "success")
-    return redirect(url_for("feed", type=_normalize_feed_filter(request.form.get("current_filter"))))
+    return redirect_after_post()
 
 
 @app.route("/feed/challenges", methods=["POST"])
@@ -12399,7 +12413,7 @@ def api_feed_post_reaction(post_id: int):
             "reaction_total": sum(int(item.get("count") or 0) for item in summary),
             "current_reaction": str(button_state.get("type") or ""),
             "current_reaction_label": str(button_state.get("label") or "Like"),
-            "current_reaction_icon": str(button_state.get("icon") or "👍"),
+            "current_reaction_icon": str(button_state.get("icon") or "L"),
         }
     )
 

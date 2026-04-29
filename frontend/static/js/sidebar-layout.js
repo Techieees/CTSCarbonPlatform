@@ -1,5 +1,4 @@
 (function () {
-  const STORAGE_KEY = "sidebarCollapsed";
   const desktopMq = window.matchMedia("(min-width: 992px)");
   const mobileMq = window.matchMedia("(max-width: 767.98px)");
 
@@ -20,20 +19,6 @@
     const mobileBackdrop = sidebar.querySelector("[data-sidebar-mobile-backdrop]");
     let pinnedExpanded = false;
 
-    function readStoredCollapsed() {
-      try {
-        return window.localStorage.getItem(STORAGE_KEY);
-      } catch (e) {
-        return null;
-      }
-    }
-
-    function storeCollapsed(isCollapsed) {
-      try {
-        window.localStorage.setItem(STORAGE_KEY, isCollapsed ? "true" : "false");
-      } catch (e) {}
-    }
-
     function isExpanded() {
       return sidebar.classList.contains("is-expanded") || sidebar.classList.contains("is-hover-expanded");
     }
@@ -43,6 +28,7 @@
       sidebar.classList.toggle("is-collapsed", !expanded);
       if (!expanded) {
         closeSecondary();
+        sidebar.classList.remove("is-primary-open");
       }
       if (toggleButton) {
         toggleButton.setAttribute("aria-expanded", expanded ? "true" : "false");
@@ -68,7 +54,9 @@
     function setSection(sectionId) {
       const normalized = String(sectionId || "").trim();
       railButtons.forEach((button) => {
-        button.classList.toggle("is-active", button.getAttribute("data-section-id") === normalized);
+        const isMatch = button.getAttribute("data-section-id") === normalized;
+        button.classList.toggle("is-active", isMatch);
+        button.classList.toggle("active", isMatch);
       });
       sectionPanels.forEach((panel) => {
         panel.classList.toggle("is-active", panel.getAttribute("data-sidebar-section-panel") === normalized);
@@ -121,6 +109,7 @@
     railButtons.forEach((button) => {
       button.addEventListener("click", () => {
         setSection(button.getAttribute("data-section-id"));
+        sidebar.classList.add("is-primary-open");
         if (desktopMq.matches && !pinnedExpanded) {
           sidebar.classList.add("is-hover-expanded");
         }
@@ -167,7 +156,6 @@
         if (!pinnedExpanded) {
           sidebar.classList.remove("is-hover-expanded");
         }
-        storeCollapsed(!pinnedExpanded);
         syncExpandedState();
       });
     }
@@ -198,8 +186,7 @@
 
     function applyResponsiveState() {
       if (desktopMq.matches) {
-        const stored = readStoredCollapsed();
-        pinnedExpanded = stored === "false" ? true : false;
+        pinnedExpanded = false;
         sidebar.classList.toggle("is-expanded", pinnedExpanded);
         sidebar.classList.remove("is-hover-expanded");
         layout.classList.remove("app-layout--mobile-drawer");

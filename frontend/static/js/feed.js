@@ -11,11 +11,11 @@
   const preview = document.getElementById("feedMediaPreview");
   const fileName = document.getElementById("feedFileName");
   const reactionMeta = {
-    like: { label: "Like", icon: "👍" },
-    celebrate: { label: "Celebrate", icon: "👏" },
-    support: { label: "Support", icon: "❤️" },
-    insightful: { label: "Insightful", icon: "💡" },
-    funny: { label: "Funny", icon: "😂" }
+    like: { label: "Like", icon: "L" },
+    celebrate: { label: "Celebrate", icon: "C" },
+    support: { label: "Support", icon: "S" },
+    insightful: { label: "Insightful", icon: "I" },
+    funny: { label: "Funny", icon: "F" }
   };
   let mentionContactsPromise = null;
 

@@ -73,154 +73,242 @@
       </div>
     </section>
 
-    <div class="profile-main-grid">
-      <main class="profile-main-column">
-        <section class="feed-card profile-section-card">
-          <div class="profile-section-card__header">
-            <h2>About</h2>
-          </div>
-          <div class="profile-section-card__body">
-            <p class="profile-about-copy">{{ profile_about }}</p>
-            <dl class="profile-about-list">
+    <section class="feed-card profile-tabs-card" aria-label="Profile sections">
+      <div class="profile-tabs" data-profile-tabs role="tablist" aria-label="Profile tabs">
+        <button class="tab profile-tab active" type="button" data-tab="posts" role="tab" aria-selected="true" aria-controls="tab-posts">Posts</button>
+        <button class="tab profile-tab" type="button" data-tab="about" role="tab" aria-selected="false" aria-controls="tab-about">About</button>
+        <button class="tab profile-tab" type="button" data-tab="activity" role="tab" aria-selected="false" aria-controls="tab-activity">Activity</button>
+      </div>
+    </section>
+
+    <div id="tab-posts" class="tab-content profile-tab-content active" role="tabpanel">
+      <div class="profile-main-grid">
+        <main class="profile-main-column profile-posts-column">
+          {% if is_own_profile and can_create_posts %}
+          {% include "components/post_composer.html" %}
+          {% endif %}
+
+          <section class="feed-card profile-section-card">
+            <div class="profile-section-card__header">
               <div>
-                <dt>Role</dt>
-                <dd>{{ profile_role_label }}</dd>
+                <h2>Posts</h2>
+                <p class="profile-section-card__eyebrow mb-0">{{ profile_stats.recent_activity_label }}</p>
               </div>
-              <div>
-                <dt>Company</dt>
-                <dd>{{ profile_company }}</dd>
+              <span>{{ profile_stats.posts }} post{{ '' if profile_stats.posts == 1 else 's' }}</span>
+            </div>
+            <div class="profile-section-card__body profile-section-card__body--feed">
+              <div class="profile-activity-summary">
+                <strong>{{ profile_stats.posts }}</strong>
+                <span>Total feed posts</span>
               </div>
-              {% if profile_location %}
-              <div>
-                <dt>Location</dt>
-                <dd>{{ profile_location }}</dd>
+              {% if profile_posts %}
+              <div class="feed-stream__list">
+                {% for post in profile_posts %}
+                {% include 'partials/feed_post_card.html' %}
+                {% endfor %}
+              </div>
+              {% else %}
+              <div class="feed-empty-state">
+                <h3>No feed activity yet</h3>
+                <p>This user has not published any feed posts yet.</p>
               </div>
               {% endif %}
-            </dl>
-          </div>
-        </section>
+            </div>
+          </section>
+        </main>
 
-        <section class="feed-card profile-section-card">
-          <div class="profile-section-card__header">
-            <div>
-              <h2>Activity</h2>
-              <p class="profile-section-card__eyebrow mb-0">{{ profile_stats.recent_activity_label }}</p>
+        <aside class="profile-side-column">
+          <section class="feed-card profile-section-card">
+            <div class="profile-section-card__header">
+              <h2>Info</h2>
             </div>
-            <span>{{ profile_stats.posts }} post{{ '' if profile_stats.posts == 1 else 's' }}</span>
-          </div>
-          <div class="profile-section-card__body profile-section-card__body--feed">
-            <div class="profile-activity-summary">
-              <strong>{{ profile_stats.posts }}</strong>
-              <span>Total feed posts</span>
+            <div class="profile-section-card__body">
+              <div class="profile-info-stack">
+                <div class="profile-info-card">
+                  <span>Joined</span>
+                  <strong>{{ profile_stats.joined or 'Recently' }}</strong>
+                </div>
+                <div class="profile-info-card">
+                  <span>Posts</span>
+                  <strong>{{ profile_stats.posts }}</strong>
+                </div>
+                <div class="profile-info-card">
+                  <span>Reports</span>
+                  <strong>{{ profile_stats.reports }}</strong>
+                </div>
+                <div class="profile-info-card">
+                  <span>Followers</span>
+                  <strong data-profile-follower-count>{{ profile_stats.followers }}</strong>
+                </div>
+              </div>
             </div>
-            {% if profile_posts %}
-            <div class="feed-stream__list">
-              {% for post in profile_posts %}
-              {% include 'partials/feed_post_card.html' %}
-              {% endfor %}
-            </div>
-            {% else %}
-            <div class="feed-empty-state">
-              <h3>No feed activity yet</h3>
-              <p>This user has not published any feed posts yet.</p>
-            </div>
-            {% endif %}
-          </div>
-        </section>
+          </section>
 
-        <section class="feed-card profile-section-card" id="reports">
-          <div class="profile-section-card__header">
-            <h2>Reports</h2>
-            <span>{{ profile_stats.reports }} report{{ '' if profile_stats.reports == 1 else 's' }}</span>
-          </div>
-          <div class="profile-section-card__body">
-            {% if profile_reports %}
-            <div class="feed-profile-reports">
-              {% for report in profile_reports %}
-              <article class="feed-report-card feed-report-card--profile">
-                <a class="feed-report-card__link" href="{{ report.file_url }}" target="_blank" rel="noopener noreferrer" aria-label="Open {{ report.title }}">
-                <div class="feed-report-stack" aria-label="Report preview">
-                  {% for preview_url in report.preview_urls %}
-                  <div class="feed-report-stack__page">
-                    <img src="{{ preview_url }}" alt="{{ report.title }} preview page {{ loop.index }}">
+          {% if suggested_users %}
+          <section class="feed-card profile-section-card">
+            <div class="profile-section-card__header">
+              <h2>Suggested users</h2>
+            </div>
+            <div class="profile-section-card__body">
+              <div class="profile-suggestion-list">
+                {% for suggested in suggested_users %}
+                <a href="{{ suggested.profile_url }}" class="profile-suggestion-item">
+                  <img src="{{ suggested.avatar_url }}" alt="{{ suggested.name }}">
+                  <div>
+                    <strong>{{ suggested.name }}</strong>
+                    <span>{{ suggested.title }}</span>
+                    <small>{{ suggested.company }}</small>
                   </div>
-                  {% endfor %}
-                </div>
-                <div class="feed-report-card__meta">
-                  <div class="feed-report-card__meta-copy">
-                    <div class="feed-report-card__label">{{ report.file_type_label }} report</div>
-                    <div class="feed-report-card__filetype">
-                      <span class="feed-report-card__filetype-icon">{{ report.file_type_icon }}</span>
-                      <span>{{ report.created_at_display or report.created_at_label }}</span>
-                    </div>
-                    <strong>{{ report.title }}</strong>
-                  </div>
-                  <span class="btn btn-primary btn-sm">Open Report</span>
-                </div>
                 </a>
-              </article>
-              {% endfor %}
-            </div>
-            {% else %}
-            <p class="mb-0 text-muted">No uploaded reports yet.</p>
-            {% endif %}
-          </div>
-        </section>
-      </main>
-
-      <aside class="profile-side-column">
-        <section class="feed-card profile-section-card">
-          <div class="profile-section-card__header">
-            <h2>Info</h2>
-          </div>
-          <div class="profile-section-card__body">
-            <div class="profile-info-stack">
-              <div class="profile-info-card">
-                <span>Joined</span>
-                <strong>{{ profile_stats.joined or 'Recently' }}</strong>
-              </div>
-              <div class="profile-info-card">
-                <span>Template mode</span>
-                <strong>{{ profile_stats.template_mode|upper }}</strong>
-              </div>
-              <div class="profile-info-card">
-                <span>Posts</span>
-                <strong>{{ profile_stats.posts }}</strong>
-              </div>
-              <div class="profile-info-card">
-                <span>Reports</span>
-                <strong>{{ profile_stats.reports }}</strong>
-              </div>
-              <div class="profile-info-card">
-                <span>Followers</span>
-                <strong data-profile-follower-count>{{ profile_stats.followers }}</strong>
+                {% endfor %}
               </div>
             </div>
-          </div>
-        </section>
+          </section>
+          {% endif %}
+        </aside>
+      </div>
+    </div>
 
-        {% if suggested_users %}
-        <section class="feed-card profile-section-card">
-          <div class="profile-section-card__header">
-            <h2>Suggested users</h2>
-          </div>
-          <div class="profile-section-card__body">
-            <div class="profile-suggestion-list">
-              {% for suggested in suggested_users %}
-              <a href="{{ suggested.profile_url }}" class="profile-suggestion-item">
-                <img src="{{ suggested.avatar_url }}" alt="{{ suggested.name }}">
+    <div id="tab-about" class="tab-content profile-tab-content" role="tabpanel">
+      <div class="profile-main-grid">
+        <main class="profile-main-column">
+          <section class="feed-card profile-section-card profile-about-card">
+            <div class="profile-section-card__header">
+              <h2>About</h2>
+            </div>
+            <div class="profile-section-card__body">
+              <h3>{{ profile_name }}</h3>
+              <p class="profile-about-copy">{{ profile_about or 'No information provided.' }}</p>
+              <dl class="profile-about-list">
                 <div>
-                  <strong>{{ suggested.name }}</strong>
-                  <span>{{ suggested.title }}</span>
-                  <small>{{ suggested.company }}</small>
+                  <dt>Name</dt>
+                  <dd>{{ profile_name }}</dd>
                 </div>
-              </a>
-              {% endfor %}
+                <div>
+                  <dt>Email</dt>
+                  <dd>{{ profile_user.email }}</dd>
+                </div>
+                <div>
+                  <dt>Role</dt>
+                  <dd>{{ profile_role_label }}</dd>
+                </div>
+                <div>
+                  <dt>Company</dt>
+                  <dd>{{ profile_company }}</dd>
+                </div>
+                <div>
+                  <dt>Joined</dt>
+                  <dd>{{ profile_stats.joined or 'Recently' }}</dd>
+                </div>
+                {% if profile_location %}
+                <div>
+                  <dt>Location</dt>
+                  <dd>{{ profile_location }}</dd>
+                </div>
+                {% endif %}
+              </dl>
             </div>
+          </section>
+
+          <section class="feed-card profile-section-card" id="reports">
+            <div class="profile-section-card__header">
+              <h2>Reports</h2>
+              <span>{{ profile_stats.reports }} report{{ '' if profile_stats.reports == 1 else 's' }}</span>
+            </div>
+            <div class="profile-section-card__body">
+              {% if profile_reports %}
+              <div class="feed-profile-reports">
+                {% for report in profile_reports %}
+                <article class="feed-report-card feed-report-card--profile">
+                  <a class="feed-report-card__link" href="{{ report.file_url }}" target="_blank" rel="noopener noreferrer" aria-label="Open {{ report.title }}">
+                  <div class="feed-report-stack" aria-label="Report preview">
+                    {% for preview_url in report.preview_urls %}
+                    <div class="feed-report-stack__page">
+                      <img src="{{ preview_url }}" alt="{{ report.title }} preview page {{ loop.index }}">
+                    </div>
+                    {% endfor %}
+                  </div>
+                  <div class="feed-report-card__meta">
+                    <div class="feed-report-card__meta-copy">
+                      <div class="feed-report-card__label">{{ report.file_type_label }} report</div>
+                      <div class="feed-report-card__filetype">
+                        <span class="feed-report-card__filetype-icon">{{ report.file_type_icon }}</span>
+                        <span>{{ report.created_at_display or report.created_at_label }}</span>
+                      </div>
+                      <strong>{{ report.title }}</strong>
+                    </div>
+                    <span class="btn btn-primary btn-sm">Open Report</span>
+                  </div>
+                  </a>
+                </article>
+                {% endfor %}
+              </div>
+              {% else %}
+              <p class="mb-0 text-muted">No uploaded reports yet.</p>
+              {% endif %}
+            </div>
+          </section>
+        </main>
+
+        <aside class="profile-side-column">
+          <section class="feed-card profile-section-card">
+            <div class="profile-section-card__header">
+              <h2>Info</h2>
+            </div>
+            <div class="profile-section-card__body">
+              <div class="profile-info-stack">
+                <div class="profile-info-card">
+                  <span>Template mode</span>
+                  <strong>{{ profile_stats.template_mode|upper }}</strong>
+                </div>
+                <div class="profile-info-card">
+                  <span>Following</span>
+                  <strong>{{ profile_stats.following }}</strong>
+                </div>
+                <div class="profile-info-card">
+                  <span>Followers</span>
+                  <strong data-profile-follower-count>{{ profile_stats.followers }}</strong>
+                </div>
+              </div>
+            </div>
+          </section>
+        </aside>
+      </div>
+    </div>
+
+    <div id="tab-activity" class="tab-content profile-tab-content" role="tabpanel">
+      <section class="feed-card profile-section-card profile-activity-card">
+        <div class="profile-section-card__header">
+          <div>
+            <h2>Recent Activity</h2>
+            <p class="profile-section-card__eyebrow mb-0">{{ profile_stats.recent_activity_label }}</p>
           </div>
-        </section>
-        {% endif %}
-      </aside>
+          <span>{{ profile_stats.posts }} post{{ '' if profile_stats.posts == 1 else 's' }}</span>
+        </div>
+        <div class="profile-section-card__body">
+          {% if profile_posts %}
+          <div class="profile-activity-list">
+            {% for post in profile_posts[:8] %}
+            <article class="profile-activity-item">
+              <span class="profile-activity-item__badge">{{ post.post_type_label }}</span>
+              <div>
+                <h3>{{ post.content|striptags|truncate(120) if post.content else post.post_type_label ~ ' shared' }}</h3>
+                <p>
+                  <time datetime="{{ post.created_at_iso }}">{{ post.created_at_label }}</time>
+                  {% if post.media_type %}&middot; {{ post.media_type.title() }} attached{% endif %}
+                </p>
+              </div>
+            </article>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="feed-empty-state">
+            <h3>No recent activity</h3>
+            <p>This user has not published any feed posts yet.</p>
+          </div>
+          {% endif %}
+        </div>
+      </section>
     </div>
   </div>
 </section>
@@ -255,4 +343,24 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/feed.js') }}"></script>
+<script>
+  document.querySelectorAll("[data-profile-tabs] .tab").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      document.querySelectorAll("[data-profile-tabs] .tab").forEach(function (tab) {
+        tab.classList.remove("active");
+        tab.setAttribute("aria-selected", "false");
+      });
+      document.querySelectorAll(".profile-tab-content").forEach(function (content) {
+        content.classList.remove("active");
+      });
+
+      btn.classList.add("active");
+      btn.setAttribute("aria-selected", "true");
+      const target = document.getElementById("tab-" + btn.dataset.tab);
+      if (target) {
+        target.classList.add("active");
+      }
+    });
+  });
+</script>
 {% endblock %}

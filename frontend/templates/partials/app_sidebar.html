@@ -40,7 +40,7 @@
 {% endif %}
 
 <aside
-  class="app-sidebar {% if selected_secondary %}is-secondary-open{% endif %}"
+  class="sidebar app-sidebar {% if selected_secondary %}is-secondary-open{% endif %}"
   id="appSidebar"
   aria-label="Main navigation"
   data-sidebar-root
@@ -50,41 +50,51 @@
   <button type="button" class="app-sidebar__backdrop" data-sidebar-mobile-backdrop aria-label="Close navigation menu" tabindex="-1"></button>
   <div class="app-sidebar__shell">
     <div class="app-sidebar__rail" aria-label="Main sections">
-      <button type="button" class="app-sidebar__toggle" data-sidebar-toggle aria-label="Toggle sidebar" title="Toggle sidebar">
-        <svg class="app-sidebar__toggle-icon app-sidebar__toggle-icon--expand" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <svg class="app-sidebar__toggle-icon app-sidebar__toggle-icon--collapse" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 6-6 6 6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <button type="button" class="app-sidebar__toggle" data-sidebar-toggle aria-label="Toggle sidebar">
+        <span class="app-sidebar__toggle-icon app-sidebar__toggle-icon--expand">{{ illu.illu_chevron_right('') }}</span>
+        <span class="app-sidebar__toggle-icon app-sidebar__toggle-icon--collapse">{{ illu.illu_arrow_left('') }}</span>
       </button>
-      <button type="button" class="app-sidebar__rail-item {% if selected_section == 'dashboard' %}is-active{% endif %}" data-sidebar-section-trigger data-section-id="dashboard" title="Dashboard" aria-label="Dashboard">
-        {{ illu.illu_nav_home('app-sidebar__icon') }}
+      <button type="button" class="app-sidebar__rail-item nav-item {% if selected_section == 'dashboard' %}is-active active{% endif %}" data-sidebar-section-trigger data-section-id="dashboard" data-section="dashboard" aria-label="Dashboard">
+        <div class="icon app-sidebar__icon">{{ illu.illu_nav_home('') }}</div>
+        <span class="label app-sidebar__label">Dashboard</span>
       </button>
-      <button type="button" class="app-sidebar__rail-item {% if selected_section == 'feed' %}is-active{% endif %}" data-sidebar-section-trigger data-section-id="feed" title="Feed" aria-label="Feed">
-        {{ illu.illu_nav_file('app-sidebar__icon') }}
+      <button type="button" class="app-sidebar__rail-item nav-item {% if selected_section == 'feed' %}is-active active{% endif %}" data-sidebar-section-trigger data-section-id="feed" data-section="feed" aria-label="Feed">
+        <div class="icon app-sidebar__icon">{{ illu.illu_nav_file('') }}</div>
+        <span class="label app-sidebar__label">Feed</span>
       </button>
-      <button type="button" class="app-sidebar__rail-item {% if selected_section == 'resources' %}is-active{% endif %}" data-sidebar-section-trigger data-section-id="resources" title="Resources" aria-label="Resources">
-        {{ illu.illu_nav_layers('app-sidebar__icon') }}
+      <button type="button" class="app-sidebar__rail-item nav-item {% if selected_section == 'resources' %}is-active active{% endif %}" data-sidebar-section-trigger data-section-id="resources" data-section="resources" aria-label="Resources">
+        <div class="icon app-sidebar__icon">{{ illu.illu_nav_layers('') }}</div>
+        <span class="label app-sidebar__label">Resources</span>
       </button>
-      <button type="button" class="app-sidebar__rail-item {% if selected_section == 'carbon' %}is-active{% endif %}" data-sidebar-section-trigger data-section-id="carbon" title="Carbon Accounting" aria-label="Carbon Accounting">
-        {{ illu.illu_nav_chart('app-sidebar__icon') }}
+      <button type="button" class="app-sidebar__rail-item nav-item {% if selected_section == 'carbon' %}is-active active{% endif %}" data-sidebar-section-trigger data-section-id="carbon" data-section="carbon" aria-label="Carbon Accounting">
+        <div class="icon app-sidebar__icon">{{ illu.illu_nav_chart('') }}</div>
+        <span class="label app-sidebar__label">Carbon</span>
       </button>
-      <button type="button" class="app-sidebar__rail-item {% if selected_section == 'data' %}is-active{% endif %}" data-sidebar-section-trigger data-section-id="data" title="Data" aria-label="Data">
-        {{ illu.illu_nav_pen_entry('app-sidebar__icon') }}
+      <button type="button" class="app-sidebar__rail-item nav-item {% if selected_section == 'data' %}is-active active{% endif %}" data-sidebar-section-trigger data-section-id="data" data-section="data" aria-label="Data">
+        <div class="icon app-sidebar__icon">{{ illu.illu_nav_pen_entry('') }}</div>
+        <span class="label app-sidebar__label">Data</span>
       </button>
-      <button type="button" class="app-sidebar__rail-item {% if selected_section == 'analytics' %}is-active{% endif %}" data-sidebar-section-trigger data-section-id="analytics" title="Analytics" aria-label="Analytics">
-        {{ illu.illu_nav_chart_pie('app-sidebar__icon') }}
+      <button type="button" class="app-sidebar__rail-item nav-item {% if selected_section == 'analytics' %}is-active active{% endif %}" data-sidebar-section-trigger data-section-id="analytics" data-section="analytics" aria-label="Analytics">
+        <div class="icon app-sidebar__icon">{{ illu.illu_nav_chart_pie('') }}</div>
+        <span class="label app-sidebar__label">Analytics</span>
       </button>
-      <button type="button" class="app-sidebar__rail-item {% if selected_section == 'governance' %}is-active{% endif %}" data-sidebar-section-trigger data-section-id="governance" title="Governance" aria-label="Governance">
-        {{ illu.illu_nav_id('app-sidebar__icon') }}
+      <button type="button" class="app-sidebar__rail-item nav-item {% if selected_section == 'governance' %}is-active active{% endif %}" data-sidebar-section-trigger data-section-id="governance" data-section="governance" aria-label="Governance">
+        <div class="icon app-sidebar__icon">{{ illu.illu_nav_id('') }}</div>
+        <span class="label app-sidebar__label">Governance</span>
       </button>
-      <button type="button" class="app-sidebar__rail-item {% if selected_section == 'esg' %}is-active{% endif %}" data-sidebar-section-trigger data-section-id="esg" title="ESG" aria-label="ESG">
-        {{ illu.illu_nav_leaf('app-sidebar__icon') }}
+      <button type="button" class="app-sidebar__rail-item nav-item {% if selected_section == 'esg' %}is-active active{% endif %}" data-sidebar-section-trigger data-section-id="esg" data-section="esg" aria-label="ESG">
+        <div class="icon app-sidebar__icon">{{ illu.illu_nav_leaf('') }}</div>
+        <span class="label app-sidebar__label">ESG</span>
       </button>
       {% if current_user.is_admin %}
-      <button type="button" class="app-sidebar__rail-item {% if selected_section == 'admin' %}is-active{% endif %}" data-sidebar-section-trigger data-section-id="admin" title="Admin" aria-label="Admin">
-        {{ illu.illu_nav_cog('app-sidebar__icon') }}
+      <button type="button" class="app-sidebar__rail-item nav-item {% if selected_section == 'admin' %}is-active active{% endif %}" data-sidebar-section-trigger data-section-id="admin" data-section="admin" aria-label="Admin">
+        <div class="icon app-sidebar__icon">{{ illu.illu_nav_cog('') }}</div>
+        <span class="label app-sidebar__label">Admin</span>
       </button>
       {% endif %}
-      <button type="button" class="app-sidebar__rail-item {% if selected_section == 'settings' %}is-active{% endif %}" data-sidebar-section-trigger data-section-id="settings" title="Settings" aria-label="Settings">
-        {{ illu.illu_nav_cog('app-sidebar__icon') }}
+      <button type="button" class="app-sidebar__rail-item nav-item {% if selected_section == 'settings' %}is-active active{% endif %}" data-sidebar-section-trigger data-section-id="settings" data-section="settings" aria-label="Settings">
+        <div class="icon app-sidebar__icon">{{ illu.illu_nav_cog('') }}</div>
+        <span class="label app-sidebar__label">Settings</span>
       </button>
     </div>
 
@@ -337,7 +347,7 @@
           {% endif %}
         </h3>
         <button type="button" class="app-sidebar__secondary-close" data-sidebar-secondary-close aria-label="Close secondary panel">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          {{ illu.icon("close", 18, "small-icon") }}
         </button>
       </div>
 
