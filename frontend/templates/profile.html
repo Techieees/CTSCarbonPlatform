@@ -179,76 +179,14 @@
                                     {% endfor %}
                                 </select>
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label" for="business_type">Business Type</label>
-                                <select class="form-select" id="business_type" name="business_type" data-business-type-select>
-                                    <option value="">Select business type</option>
-                                    {% for option in business_type_options %}
-                                    <option value="{{ option }}" {% if option == (current_user.business_type or '') %}selected{% endif %}>{{ option }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="col-md-6" data-product-type-wrapper hidden>
-                                <label class="form-label" for="product_type">Product Type</label>
-                                <select class="form-select" id="product_type" name="product_type" data-product-type-select>
-                                    <option value="">Select product type</option>
-                                    <option value="NordicEPOD" {% if (current_user.product_type or '') == 'NordicEPOD' %}selected{% endif %}>NordicEPOD</option>
-                                    <option value="Piping" {% if (current_user.product_type or '') in ('Piping', 'DC Piping', 'Pipe', 'Pipes') %}selected{% endif %}>Piping</option>
-                                </select>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label" for="quantity">Quantity</label>
-                                <input type="text" class="form-control" id="quantity" name="quantity" value="{{ current_user.quantity or '' }}">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label" for="quantity_unit">Quantity Unit</label>
-                                <input type="text" class="form-control" id="quantity_unit" name="quantity_unit" value="{{ current_user.quantity_unit or '' }}">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label" for="number_of_products_in_use">Number of products in use</label>
-                                <input type="text" class="form-control" id="number_of_products_in_use" name="number_of_products_in_use" value="{{ current_user.number_of_products_in_use or '' }}">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label" for="end_use_location">End Use Location</label>
-                                <input type="text" class="form-control" id="end_use_location" name="end_use_location" value="{{ current_user.end_use_location or '' }}">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label" for="heating_source">Heating Source</label>
-                                <select class="form-select" id="heating_source" name="heating_source" data-heating-source-select>
-                                    <option value="">Select heating source</option>
-                                    {% for option in heating_source_options %}
-                                    <option value="{{ option }}" {% if option == (current_user.heating_source or '') %}selected{% endif %}>{{ option }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label" for="travel_provider">Travel provider</label>
-                                <select class="form-select" id="travel_provider" name="travel_provider" data-travel-provider-select>
-                                    {% for value, label in travel_provider_options %}
-                                    <option value="{{ value }}" {% if value == (current_user.travel_provider or '') %}selected{% endif %}>{{ label }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="col-12" data-heating-note hidden>
-                                <div class="profile-page-note">
-                                    Template visibility for heating-related entries is controlled by the backend profile rules in the selected mode.
-                                </div>
-                            </div>
-                            <div class="col-12" data-travel-provider-note hidden>
-                                <div class="profile-page-note">
-                                    Travel provider specific templates will be enabled from backend profile rules when this flag is used.
-                                </div>
-                            </div>
                             <div class="col-12">
-                                <div class="d-flex align-items-center justify-content-between gap-3 profile-page__locations-header">
+                                <div class="profile-page-note d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-3">
                                     <div>
-                                        <label class="form-label mb-1">Operating Locations</label>
-                                        <p class="text-muted mb-0 small">Add each country and site type combination used in operations.</p>
+                                        <strong>Business/product inputs moved.</strong>
+                                        <p class="mb-0 small">Business type, operating locations, product quantities, heating source and travel provider are now managed from the monthly Products Log.</p>
                                     </div>
-                                    <button type="button" class="btn btn-secondary btn-sm" data-add-operating-location>Add location</button>
+                                    <a class="btn btn-secondary btn-sm" href="{{ url_for('products_input_page') }}">Open Products Input</a>
                                 </div>
-                                <input type="hidden" name="operating_locations_json" id="operating_locations_json" value='{{ operating_locations_initial | tojson }}'>
-                                <div class="profile-page-locations mt-3" data-operating-locations></div>
                             </div>
                             <div class="col-12">
                                 <label class="form-label" for="profile_photo">Profile photo</label>

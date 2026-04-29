@@ -9,6 +9,9 @@
 # DATA & FILES
 # ======================
 data/
+!frontend/data/
+frontend/data/*
+!frontend/data/templates_products.json
 *.xlsx
 *.xls
 *.xlsb

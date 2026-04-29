@@ -1,4 +1,3 @@
-{% import 'macros/ui_illustrations.html' as icons %}
 {% set messaging_name = (((current_user.first_name or '') ~ ' ' ~ (current_user.last_name or ''))|trim) or (current_user.email or 'Messaging') %}
 {% set messaging_avatar = nav_profile_photo_url() %}
 {% set messaging_initial = (messaging_name[:1] or 'M')|upper %}
@@ -17,10 +16,10 @@
     </button>
     <div class="chat-widget__bar-actions" aria-label="Messaging quick actions">
       <button class="chat-widget__icon-button" type="button" data-chat-compose aria-label="New message">
-        {{ icons.icon("post", 18, "small-icon") }}
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 17.25V20h2.75L17.8 8.94l-2.75-2.75L4 17.25Zm14.71-9.04a1 1 0 0 0 0-1.42l-1.5-1.5a1 1 0 0 0-1.42 0l-1.17 1.17 2.75 2.75 1.34-1Z" fill="currentColor"/></svg>
       </button>
       <button class="chat-widget__icon-button" type="button" data-chat-toggle aria-label="Expand messaging">
-        {{ icons.icon("comment", 18, "small-icon") }}
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
     </div>
   </div>
@@ -39,10 +38,10 @@
       </div>
       <div class="chat-widget__panel-actions">
         <button class="chat-widget__icon-button" type="button" data-chat-compose aria-label="Compose message">
-          {{ icons.icon("post", 18, "small-icon") }}
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 17.25V20h2.75L17.8 8.94l-2.75-2.75L4 17.25Zm14.71-9.04a1 1 0 0 0 0-1.42l-1.5-1.5a1 1 0 0 0-1.42 0l-1.17 1.17 2.75 2.75 1.34-1Z" fill="currentColor"/></svg>
         </button>
         <button class="chat-widget__icon-button" type="button" data-chat-close aria-label="Collapse messaging">
-          {{ icons.icon("close", 18, "small-icon") }}
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 15 6-6 6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
       </div>
     </div>
@@ -50,11 +49,11 @@
     <div class="chat-widget__search-row">
       <label class="chat-widget__search" aria-label="Search messages">
         <span class="chat-widget__search-icon" aria-hidden="true">
-          {{ icons.icon("search", 16, "small-icon") }}
+          <svg viewBox="0 0 24 24" fill="none"><path d="m21 21-4.35-4.35m1.85-5.15a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
         </span>
         <input type="search" placeholder="Search messages" data-chat-search>
         <span class="chat-widget__search-filter" aria-hidden="true">
-          {{ icons.illu_btn_filter("") }}
+          <svg viewBox="0 0 24 24" fill="none"><path d="M4 6h16M7 12h10m-7 6h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
         </span>
       </label>
     </div>
@@ -83,10 +82,10 @@
       <div class="chat-thread-window__identity" data-chat-thread-title>Select a conversation</div>
       <div class="chat-thread-window__actions">
         <button class="chat-widget__icon-button" type="button" data-chat-thread-minimize aria-label="Minimize chat">
-          {{ icons.illu_nav_file("") }}
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 12h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         </button>
         <button class="chat-widget__icon-button" type="button" data-chat-thread-close aria-label="Close chat">
-          {{ icons.icon("close", 18, "small-icon") }}
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         </button>
       </div>
     </header>
@@ -104,24 +103,24 @@
       <div class="chat-thread-window__composer-footer">
         <div class="chat-thread-window__composer-tools" aria-label="Message tools">
           <button class="chat-widget__icon-button" type="button" data-chat-image-trigger aria-label="Add image">
-            {{ icons.icon("image", 18, "small-icon") }}
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5v9A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-9Z" stroke="currentColor" stroke-width="1.6"/><path d="m8 14 2.5-2.5L14 15l2-2 2 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="9" r="1.25" fill="currentColor"/></svg>
           </button>
           <button class="chat-widget__icon-button" type="button" data-chat-file-trigger aria-label="Attach file">
-            {{ icons.icon("attachment", 18, "small-icon") }}
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8.5 12.5 6.3-6.3a3 3 0 0 1 4.2 4.2l-7.8 7.8a5 5 0 1 1-7.1-7.1l7.4-7.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
           <div class="chat-thread-window__emoji-wrap">
             <button class="chat-widget__icon-button" type="button" data-chat-emoji-toggle aria-label="Emoji">
-              {{ icons.icon("user", 18, "small-icon") }}
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M9 10h.01M15 10h.01" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M8.5 14.5c.8 1.17 2.07 1.75 3.5 1.75s2.7-.58 3.5-1.75" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
             </button>
             <div class="chat-thread-window__emoji-picker" data-chat-emoji-picker hidden>
-              <button type="button" data-chat-emoji-token="like" aria-label="Like">{{ icons.icon("user", 16, "small-icon") }}</button>
-              <button type="button" data-chat-emoji-token="celebrate" aria-label="Celebrate">{{ icons.icon("energy", 16, "small-icon") }}</button>
-              <button type="button" data-chat-emoji-token="support" aria-label="Support">{{ icons.icon("water", 16, "small-icon") }}</button>
-              <button type="button" data-chat-emoji-token="positive" aria-label="Positive">{{ icons.icon("waste", 16, "small-icon") }}</button>
-              <button type="button" data-chat-emoji-token="party" aria-label="Celebrate">{{ icons.icon("chart", 16, "small-icon") }}</button>
-              <button type="button" data-chat-emoji-token="important" aria-label="Important">{{ icons.icon("co2", 16, "small-icon") }}</button>
-              <button type="button" data-chat-emoji-token="done" aria-label="Done">{{ icons.icon("dashboard", 16, "small-icon") }}</button>
-              <button type="button" data-chat-emoji-token="attachment" aria-label="Attachment">{{ icons.icon("attachment", 16, "small-icon") }}</button>
+              <button type="button" data-chat-emoji>👍</button>
+              <button type="button" data-chat-emoji>👏</button>
+              <button type="button" data-chat-emoji>❤️</button>
+              <button type="button" data-chat-emoji>😊</button>
+              <button type="button" data-chat-emoji>🎉</button>
+              <button type="button" data-chat-emoji>🔥</button>
+              <button type="button" data-chat-emoji>✅</button>
+              <button type="button" data-chat-emoji>📎</button>
             </div>
           </div>
         </div>

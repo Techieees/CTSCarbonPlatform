@@ -1,9 +1,11 @@
-{% import 'macros/ui_illustrations.html' as icons %}
 <form class="collab-search {% if request.endpoint == 'search_page' %}is-open is-persistent{% endif %}" action="{{ url_for('search_page') }}" method="get" role="search" data-collab-search>
   <label class="visually-hidden" for="globalSearchInput">Search</label>
   <button class="collab-search__toggle" type="button" aria-label="Open search" aria-expanded="{{ 'true' if request.endpoint == 'search_page' else 'false' }}" aria-controls="globalSearchInput">
     <span class="collab-search__icon" aria-hidden="true">
-      {{ icons.icon("search", 20, "default-icon") }}
+      <svg viewBox="0 0 24 24" fill="none">
+        <circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.6"></circle>
+        <path d="M16 16l4.5 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path>
+      </svg>
     </span>
   </button>
   <input

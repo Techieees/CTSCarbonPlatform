@@ -1,98 +1,150 @@
-{# Premium sustainability icon system — every macro resolves to real SVG assets. #}
-{% macro icon(name, size=20, className='') -%}
-<img
-  src="{{ url_for('static', filename='icons/' ~ name ~ '.svg') }}"
-  class="icon {{ className }}"
-  width="{{ size }}"
-  height="{{ size }}"
-  alt=""
-  aria-hidden="true"
-  loading="lazy"
->
+{# Minimal line illustrations — stroke geometric, neutral (use with dash-admin-illu + size class) #}
+{% macro _wrap(class_extra, size_mod, svg_inner) -%}
+<span class="dash-admin-illu {{ size_mod }} {{ class_extra }}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">{{ svg_inner|safe }}</svg></span>
 {%- endmacro %}
 
-{% macro _asset(name, extra_class='', size_mod='dash-admin-illu--nav', size=20) -%}
-<span class="dash-admin-illu {{ size_mod }} {{ extra_class }}" aria-hidden="true">{{ icon(name, size, 'default-icon') }}</span>
-{%- endmacro %}
+{% macro illu_nav_home(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--nav', '<path d="M4 10.5L12 4l8 6.5V20a1 1 0 01-1 1h-5v-6H10v6H5a1 1 0 01-1-1v-9.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" fill="currentColor" fill-opacity="0.04"/>') }}{% endmacro %}
 
-{% macro illu_nav_home(extra_class='') %}{{ _asset('dashboard', extra_class) }}{% endmacro %}
-{% macro illu_nav_data(extra_class='') %}{{ _asset('data', extra_class) }}{% endmacro %}
-{% macro illu_nav_pen_entry(extra_class='') %}{{ _asset('upload', extra_class) }}{% endmacro %}
-{% macro illu_nav_bolt(extra_class='') %}{{ _asset('energy', extra_class) }}{% endmacro %}
-{% macro illu_nav_file(extra_class='') %}{{ _asset('file', extra_class) }}{% endmacro %}
-{% macro illu_nav_chart(extra_class='') %}{{ _asset('chart', extra_class) }}{% endmacro %}
-{% macro illu_nav_user(extra_class='') %}{{ _asset('user', extra_class) }}{% endmacro %}
-{% macro illu_nav_id(extra_class='') %}{{ _asset('governance', extra_class) }}{% endmacro %}
-{% macro illu_nav_sliders(extra_class='') %}{{ _asset('api', extra_class) }}{% endmacro %}
-{% macro illu_nav_cog(extra_class='') %}{{ _asset('settings', extra_class) }}{% endmacro %}
-{% macro illu_nav_signout(extra_class='') %}{{ _asset('close', extra_class) }}{% endmacro %}
-{% macro illu_nav_signin(extra_class='') %}{{ _asset('user', extra_class) }}{% endmacro %}
-{% macro illu_nav_layers(extra_class='') %}{{ _asset('mapping', extra_class) }}{% endmacro %}
-{% macro illu_nav_leaf(extra_class='') %}{{ _asset('co2', extra_class) }}{% endmacro %}
-{% macro illu_nav_speed(extra_class='') %}{{ _asset('average', extra_class) }}{% endmacro %}
-{% macro illu_nav_chart_pie(extra_class='') %}{{ _asset('scenario', extra_class) }}{% endmacro %}
+{% macro illu_nav_data(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--nav', '<ellipse cx="12" cy="6.5" rx="7" ry="2.5" stroke="currentColor" stroke-width="1.2"/><path d="M5 6.5v4c0 1.1 3.1 2.5 7 2.5s7-1.4 7-2.5v-4M5 10.5v4c0 1.1 3.1 2.5 7 2.5s7-1.4 7-2.5v-4" stroke="currentColor" stroke-width="1.2"/>') }}{% endmacro %}
 
-{% macro illu_input_envelope() %}{{ _asset('notification', '', 'dash-admin-illu--input', 20) }}{% endmacro %}
-{% macro illu_input_lock() %}{{ _asset('governance', '', 'dash-admin-illu--input', 20) }}{% endmacro %}
-{% macro illu_input_building() %}{{ _asset('company', '', 'dash-admin-illu--input', 20) }}{% endmacro %}
+{% macro illu_nav_pen_entry(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--nav', '<rect x="4" y="5" width="13" height="14" rx="1.5" stroke="currentColor" stroke-width="1.2" fill="currentColor" fill-opacity="0.04"/><path d="M14 4l6 6-8 8H7v-5l8-8z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" fill="currentColor" fill-opacity="0.06"/>') }}{% endmacro %}
 
-{% macro illu_hero_login(extra_class='') %}{{ _asset('user', extra_class, 'dash-admin-illu--hero', 48) }}{% endmacro %}
-{% macro illu_hero_register(extra_class='') %}{{ _asset('company', extra_class, 'dash-admin-illu--hero', 48) }}{% endmacro %}
-{% macro illu_hero_key(extra_class='') %}{{ _asset('governance', extra_class, 'dash-admin-illu--hero', 48) }}{% endmacro %}
-{% macro illu_hero_lock(extra_class='') %}{{ _asset('governance', extra_class, 'dash-admin-illu--hero', 48) }}{% endmacro %}
-{% macro illu_hero_profile(extra_class='') %}{{ _asset('user', extra_class, 'dash-admin-illu--hero', 48) }}{% endmacro %}
-{% macro illu_hero_id(extra_class='') %}{{ _asset('governance', extra_class, 'dash-admin-illu--hero', 48) }}{% endmacro %}
+{% macro illu_nav_bolt(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--nav', '<path d="M13 3L6 14h5l-1 7 8-13h-5l1-5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" fill="currentColor" fill-opacity="0.05"/>') }}{% endmacro %}
 
-{% macro illu_btn_bolt(extra_class='') %}{{ _asset('energy', extra_class, 'dash-admin-illu--btn', 20) }}{% endmacro %}
-{% macro illu_btn_download(extra_class='') %}{{ _asset('upload', extra_class, 'dash-admin-illu--btn', 20) }}{% endmacro %}
-{% macro illu_btn_expand(extra_class='') %}{{ _asset('dashboard', extra_class, 'dash-admin-illu--btn', 20) }}{% endmacro %}
-{% macro illu_btn_compress(extra_class='') %}{{ _asset('dashboard', extra_class, 'dash-admin-illu--btn', 20) }}{% endmacro %}
-{% macro illu_btn_plus(extra_class='') %}{{ _asset('upload', extra_class, 'dash-admin-illu--btn', 20) }}{% endmacro %}
-{% macro illu_btn_clear(extra_class='') %}{{ _asset('close', extra_class, 'dash-admin-illu--btn', 20) }}{% endmacro %}
-{% macro illu_btn_save(extra_class='') %}{{ _asset('file', extra_class, 'dash-admin-illu--btn', 20) }}{% endmacro %}
-{% macro illu_btn_check(extra_class='') %}{{ _asset('dashboard', extra_class, 'dash-admin-illu--btn', 20) }}{% endmacro %}
-{% macro illu_btn_rotate(extra_class='') %}{{ _asset('mapping', extra_class, 'dash-admin-illu--btn', 20) }}{% endmacro %}
-{% macro illu_btn_filter(extra_class='') %}{{ _asset('data', extra_class, 'dash-admin-illu--btn', 20) }}{% endmacro %}
-{% macro illu_btn_trash(extra_class='') %}{{ _asset('waste', extra_class, 'dash-admin-illu--btn', 20) }}{% endmacro %}
-{% macro illu_btn_import(extra_class='') %}{{ _asset('upload', extra_class, 'dash-admin-illu--btn', 20) }}{% endmacro %}
-{% macro illu_btn_view() %}{{ _asset('search', '', 'dash-admin-illu--btn', 20) }}{% endmacro %}
-{% macro illu_btn_edit() %}{{ _asset('post', '', 'dash-admin-illu--btn', 20) }}{% endmacro %}
-{% macro illu_btn_user_plus(extra_class='') %}{{ _asset('user', extra_class, 'dash-admin-illu--btn', 20) }}{% endmacro %}
+{% macro illu_nav_file(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--nav', '<path d="M7 3h7l4 4v14a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" fill="currentColor" fill-opacity="0.04"/><path d="M8 11h8M8 15h6" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-opacity="0.5"/>') }}{% endmacro %}
 
-{% macro illu_toolbar_columns() %}{{ _asset('data', '', 'dash-admin-illu--toolbar', 20) }}{% endmacro %}
-{% macro illu_toolbar_arrows() %}{{ _asset('mapping', '', 'dash-admin-illu--toolbar', 20) }}{% endmacro %}
-{% macro illu_toolbar_keyboard() %}{{ _asset('data', '', 'dash-admin-illu--toolbar', 20) }}{% endmacro %}
-{% macro illu_chevron_right(extra_class='') %}{{ _asset('menu', extra_class, 'dash-admin-illu--toolbar', 20) }}{% endmacro %}
-{% macro illu_times(extra_class='') %}{{ _asset('close', extra_class, 'dash-admin-illu--toolbar', 20) }}{% endmacro %}
-{% macro illu_pen_small(extra_class='') %}{{ _asset('post', extra_class, 'dash-admin-illu--toolbar', 20) }}{% endmacro %}
-{% macro illu_lock_small(extra_class='') %}{{ _asset('governance', extra_class, 'dash-admin-illu--toolbar', 20) }}{% endmacro %}
-{% macro illu_arrow_left(extra_class='') %}{{ _asset('menu', extra_class, 'dash-admin-illu--btn', 20) }}{% endmacro %}
-{% macro illu_play(extra_class='') %}{{ _asset('energy', extra_class, 'dash-admin-illu--btn', 20) }}{% endmacro %}
-{% macro illu_list(extra_class='') %}{{ _asset('data', extra_class, 'dash-admin-illu--btn', 20) }}{% endmacro %}
-{% macro illu_paper_plane(extra_class='') %}{{ _asset('share', extra_class, 'dash-admin-illu--btn', 20) }}{% endmacro %}
+{% macro illu_nav_chart(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--nav', '<path d="M4 19V5M4 19h16" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-opacity="0.35"/><rect x="6" y="13" width="3" height="5" rx="0.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.06"/><rect x="11" y="9" width="3" height="9" rx="0.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.08"/><rect x="16" y="11" width="3" height="7" rx="0.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.05"/>') }}{% endmacro %}
 
-{% macro illu_empty_bolt() %}{{ _asset('energy', '', 'dash-admin-illu--empty', 48) }}{% endmacro %}
-{% macro illu_inbox_empty() %}{{ _asset('file', '', 'dash-admin-illu--empty', 48) }}{% endmacro %}
-{% macro illu_spinner() %}{{ _asset('mapping', '', 'dash-admin-illu--card-stat dash-admin-illu--spin', 32) }}{% endmacro %}
-{% macro illu_check_tiny() %}{{ _asset('dashboard', '', 'dash-admin-illu--check-tiny', 12) }}{% endmacro %}
+{% macro illu_nav_user(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--nav', '<circle cx="12" cy="9" r="3.25" stroke="currentColor" stroke-width="1.2" fill="currentColor" fill-opacity="0.05"/><path d="M5.5 20.5c0-3.6 2.9-5.5 6.5-5.5s6.5 1.9 6.5 5.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" fill="none"/>') }}{% endmacro %}
 
-{% macro illu_card_users() %}{{ _asset('user', '', 'dash-admin-illu--card-stat', 32) }}{% endmacro %}
-{% macro illu_card_grid() %}{{ _asset('dashboard', '', 'dash-admin-illu--card-stat', 32) }}{% endmacro %}
-{% macro illu_card_building() %}{{ _asset('company', '', 'dash-admin-illu--card-stat', 32) }}{% endmacro %}
-{% macro illu_title_building() %}{{ _asset('company', '', 'dash-admin-illu--title', 32) }}{% endmacro %}
-{% macro illu_card_calendar() %}{{ _asset('scenario', '', 'dash-admin-illu--card-stat', 32) }}{% endmacro %}
-{% macro illu_card_check() %}{{ _asset('dashboard', '', 'dash-admin-illu--card-stat', 32) }}{% endmacro %}
-{% macro illu_card_report() %}{{ _asset('file', '', 'dash-admin-illu--card-stat', 32) }}{% endmacro %}
-{% macro illu_card_table() %}{{ _asset('data', '', 'dash-admin-illu--card-stat', 32) }}{% endmacro %}
+{% macro illu_nav_id(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--nav', '<rect x="4" y="5" width="16" height="14" rx="1.5" stroke="currentColor" stroke-width="1.2" fill="currentColor" fill-opacity="0.04"/><circle cx="9" cy="11" r="1.8" stroke="currentColor" stroke-width="1"/><path d="M13 10h5M13 14h5" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-opacity="0.5"/>') }}{% endmacro %}
 
-{% macro illu_header_chart(extra_class='') %}{{ _asset('chart', extra_class, 'dash-admin-illu--title', 32) }}{% endmacro %}
-{% macro illu_header_area(id_suffix='') %}{{ _asset('chart', '', 'dash-admin-illu--title', 40) }}{% endmacro %}
-{% macro illu_layer_header(extra_class='') %}{{ _asset('mapping', extra_class, 'dash-admin-illu--title', 32) }}{% endmacro %}
-{% macro illu_header_cog(extra_class='') %}{{ _asset('settings', extra_class, 'dash-admin-illu--title', 32) }}{% endmacro %}
-{% macro illu_table_building() %}{{ _asset('company', '', 'dash-admin-illu--btn', 20) }}{% endmacro %}
-{% macro illu_table_file() %}{{ _asset('file', '', 'dash-admin-illu--btn', 20) }}{% endmacro %}
+{% macro illu_nav_sliders(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--nav', '<path d="M4 7h4M10 7h10M4 12h10M16 12h4M8 17h12M4 17h2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-opacity="0.45"/><circle cx="8" cy="7" r="1.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.06"/><circle cx="14" cy="12" r="1.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.06"/><circle cx="6" cy="17" r="1.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.06"/>') }}{% endmacro %}
 
-{% macro illu_lp_shield() %}{{ _asset('governance', '', 'dash-admin-illu--lp-icon', 24) }}{% endmacro %}
-{% macro illu_lp_grid() %}{{ _asset('dashboard', '', 'dash-admin-illu--lp-icon', 24) }}{% endmacro %}
-{% macro illu_lp_chart() %}{{ _asset('chart', '', 'dash-admin-illu--lp-icon', 24) }}{% endmacro %}
-{% macro illu_lp_spreadsheet() %}{{ _asset('data', '', 'dash-admin-illu--lp-icon', 24) }}{% endmacro %}
+{% macro illu_nav_cog(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--nav', '<circle cx="12" cy="12" r="2.8" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.05"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M4.6 19.4l1.4-1.4M18 6l1.4-1.4" stroke="currentColor" stroke-width="1.05" stroke-linecap="round" stroke-opacity="0.55"/>') }}{% endmacro %}
+
+{% macro illu_nav_signout(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--nav', '<path d="M10 5H5v14h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M14 12H4M11 9l3 3-3 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>') }}{% endmacro %}
+
+{% macro illu_nav_signin(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--nav', '<path d="M14 5h5v14h-5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M10 12H21M14 9l-3 3 3 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>') }}{% endmacro %}
+
+{% macro illu_input_envelope() %}{{ _wrap('', 'dash-admin-illu--input', '<rect x="3" y="5" width="18" height="14" rx="1.5" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.03"/><path d="M3 7l9 6 9-6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.55"/>') }}{% endmacro %}
+
+{% macro illu_input_lock() %}{{ _wrap('', 'dash-admin-illu--input', '<rect x="7" y="11" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.04"/><path d="M8.5 11V8.5a3.5 3.5 0 017 0V11" stroke="currentColor" stroke-width="1.15" stroke-linecap="round"/>') }}{% endmacro %}
+
+{% macro illu_hero_login(extra_class='') %}<span class="dash-admin-illu dash-admin-illu--hero {{ extra_class }}" style="color: var(--muted-2);" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="8" width="11" height="18" rx="1.5" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.04"/><path d="M17 16h9M20 13l3 3-3 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="11.5" cy="14" r="2.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.05"/></svg></span>{% endmacro %}
+
+{% macro illu_hero_register(extra_class='') %}<span class="dash-admin-illu dash-admin-illu--hero {{ extra_class }}" style="color: var(--muted-2);" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="13" cy="12" r="3.5" stroke="currentColor" stroke-width="1.2" fill="currentColor" fill-opacity="0.05"/><path d="M6 27c0-4 3.2-6 7-6s7 2 7 6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" fill="none"/><path d="M23 7v5M20.5 9.5h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></span>{% endmacro %}
+
+{% macro illu_hero_key(extra_class='') %}<span class="dash-admin-illu dash-admin-illu--hero {{ extra_class }}" style="color: var(--muted-2);" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="14" r="5" stroke="currentColor" stroke-width="1.2" fill="currentColor" fill-opacity="0.04"/><path d="M14.5 17.5L26 26M22 23l4 4-1.5 1.5-2-2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>{% endmacro %}
+
+{% macro illu_hero_lock(extra_class='') %}<span class="dash-admin-illu dash-admin-illu--hero {{ extra_class }}" style="color: var(--muted-2);" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="9" y="14" width="14" height="14" rx="2" stroke="currentColor" stroke-width="1.2" fill="currentColor" fill-opacity="0.05"/><path d="M11 14V11a5 5 0 0110 0v3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></span>{% endmacro %}
+
+{% macro illu_hero_profile(extra_class='') %}<span class="dash-admin-illu dash-admin-illu--hero {{ extra_class }}" style="color: var(--muted-2);" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="5" width="20" height="22" rx="2" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.03"/><circle cx="16" cy="13" r="4" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.05"/><path d="M10 26c0-3.5 2.7-5 6-5s6 1.5 6 5" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" fill="none"/></svg></span>{% endmacro %}
+
+{% macro illu_hero_id(extra_class='') %}<span class="dash-admin-illu dash-admin-illu--hero {{ extra_class }}" style="color: var(--muted-2);" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="7" width="22" height="18" rx="2" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.04"/><circle cx="12" cy="15" r="2.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.06"/><path d="M18 13h7M18 17h5" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-opacity="0.45"/></svg></span>{% endmacro %}
+
+{% macro illu_btn_bolt(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--btn', '<path d="M12 2L6 12h5l-1 9 8-12h-5l1-7z" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round" fill="currentColor" fill-opacity="0.05"/>') }}{% endmacro %}
+
+{% macro illu_btn_download(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--btn', '<path d="M16 4v11M12 12l4 4 4-4M5 20h22" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>') }}{% endmacro %}
+
+{% macro illu_btn_expand(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--btn', '<path d="M9 3H3v6M15 21h6v-6M3 15v6h6M21 9V3h-6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>') }}{% endmacro %}
+
+{% macro illu_btn_compress(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--btn', '<path d="M9 9H3V3M15 15h6v6M9 15v6H3M15 9V3h6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>') }}{% endmacro %}
+
+{% macro illu_btn_plus(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--btn', '<path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>') }}{% endmacro %}
+
+{% macro illu_btn_clear(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--btn', '<path d="M7 8h12l-1 12H8L7 8z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="currentColor" fill-opacity="0.04"/><path d="M10 11l8 8M18 11l-8 8" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-opacity="0.55"/>') }}{% endmacro %}
+
+{% macro illu_btn_save(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--btn', '<path d="M5 4h12l4 4v14H5V4z" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round" fill="currentColor" fill-opacity="0.04"/><path d="M9 4v5h6V4" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round" fill="currentColor" fill-opacity="0.06"/><rect x="8" y="13" width="8" height="7" rx="0.5" stroke="currentColor" stroke-width="1" stroke-opacity="0.4" fill="none"/>') }}{% endmacro %}
+
+{% macro illu_btn_check(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--btn', '<path d="M5 12l5 5L19 7" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/>') }}{% endmacro %}
+
+{% macro illu_toolbar_columns() %}{{ _wrap('', 'dash-admin-illu--toolbar', '<rect x="5" y="4" width="3" height="16" rx="0.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.05"/><rect x="10.5" y="4" width="3" height="16" rx="0.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.07"/><rect x="16" y="4" width="3" height="16" rx="0.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.05"/>') }}{% endmacro %}
+
+{% macro illu_toolbar_arrows() %}{{ _wrap('', 'dash-admin-illu--toolbar', '<path d="M4 12h16M8 8L4 12l4 4M20 8l4 4-4 4" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round" fill="none"/>') }}{% endmacro %}
+
+{% macro illu_toolbar_keyboard() %}{{ _wrap('', 'dash-admin-illu--toolbar', '<rect x="3" y="6" width="18" height="12" rx="1.5" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.03"/><path d="M7 10h2M11 10h2M15 10h2M7 14h10" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-opacity="0.45"/>') }}{% endmacro %}
+
+{% macro illu_chevron_right(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--toolbar', '<path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>') }}{% endmacro %}
+
+{% macro illu_times(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--toolbar', '<path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>') }}{% endmacro %}
+
+{% macro illu_pen_small(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--toolbar', '<path d="M4 20l8-12 4 4-8 12H4v-4z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="currentColor" fill-opacity="0.06"/>') }}{% endmacro %}
+
+{% macro illu_lock_small(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--toolbar', '<rect x="7" y="11" width="10" height="9" rx="1" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.04"/><path d="M9 11V8a3 3 0 016 0v3" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>') }}{% endmacro %}
+
+{% macro illu_empty_bolt() %}<span class="dash-admin-illu dash-admin-illu--empty" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M17 4L8 18h7l-1 10 10-16h-6l1-8z" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round" fill="currentColor" fill-opacity="0.04"/></svg></span>{% endmacro %}
+
+{% macro illu_arrow_left(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--btn', '<path d="M14 6L6 14l8 8M6 14h14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>') }}{% endmacro %}
+
+{% macro illu_play(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--btn', '<path d="M8 5v14l11-7-11-7z" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round" fill="currentColor" fill-opacity="0.06"/>') }}{% endmacro %}
+
+{% macro illu_list(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--btn', '<path d="M9 6H6M9 12H6M9 18H6M13 7h7M13 13h7M13 19h5" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-opacity="0.55"/>') }}{% endmacro %}
+
+{% macro illu_inbox_empty() %}<span class="dash-admin-illu dash-admin-illu--empty" style="opacity:0.55;" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 12l4-6h16l4 6v12H4V12z" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round" fill="currentColor" fill-opacity="0.03"/><path d="M4 12h8l2 3h4l2-3h8" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" stroke-opacity="0.45" fill="none"/></svg></span>{% endmacro %}
+
+{% macro illu_card_users() %}<span class="dash-admin-illu dash-admin-illu--card-stat" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="12" r="3" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.05"/><circle cx="21" cy="11" r="2.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.04"/><path d="M5 26c0-3 2.5-4 6-4s6 1 6 4M17 24c.5-2 2.2-3 4-3s3.5 1 4 3" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" fill="none"/></svg></span>{% endmacro %}
+
+{% macro illu_card_grid() %}<span class="dash-admin-illu dash-admin-illu--card-stat" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="5" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.05"/><rect x="17" y="5" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.07"/><rect x="5" y="17" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.06"/><rect x="17" y="17" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.04"/></svg></span>{% endmacro %}
+
+{% macro illu_card_building() %}<span class="dash-admin-illu dash-admin-illu--card-stat" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="8" y="8" width="16" height="20" rx="1" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.04"/><path d="M12 14h2M18 14h2M12 18h2M18 18h2M12 22h8" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-opacity="0.45"/></svg></span>{% endmacro %}
+
+{% macro illu_title_building() %}<span class="dash-admin-illu dash-admin-illu--title" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="8" y="8" width="16" height="20" rx="1" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.04"/><path d="M12 14h2M18 14h2M12 18h2M18 18h2M12 22h8" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-opacity="0.45"/></svg></span>{% endmacro %}
+
+{% macro illu_card_calendar() %}<span class="dash-admin-illu dash-admin-illu--card-stat" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="9" width="20" height="18" rx="2" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.03"/><path d="M6 14h20M11 7v5M21 7v5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-opacity="0.45"/><circle cx="16" cy="21" r="2" stroke="currentColor" stroke-width="1" fill="currentColor" fill-opacity="0.06"/></svg></span>{% endmacro %}
+
+{% macro illu_card_check() %}<span class="dash-admin-illu dash-admin-illu--card-stat" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="16" r="10" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.04"/><path d="M10 16l4 4 8-8" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg></span>{% endmacro %}
+
+{% macro illu_card_report() %}<span class="dash-admin-illu dash-admin-illu--card-stat" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 6h10l4 4v16a1 1 0 01-1 1H8a1 1 0 01-1-1V7a1 1 0 011-1z" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round" fill="currentColor" fill-opacity="0.04"/><path d="M11 14h10M11 19h8M11 24h6" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-opacity="0.45"/></svg></span>{% endmacro %}
+
+{% macro illu_header_chart(extra_class='') %}<span class="dash-admin-illu dash-admin-illu--title {{ extra_class }}" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 24V8M5 24h22" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-opacity="0.35"/><rect x="8" y="16" width="4" height="6" rx="0.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.06"/><rect x="14" y="12" width="4" height="10" rx="0.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.08"/><rect x="20" y="14" width="4" height="8" rx="0.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.05"/></svg></span>{% endmacro %}
+
+{% macro illu_header_area(id_suffix='') %}{% set _gid = 'illuGradArea' ~ id_suffix %}<span class="dash-admin-illu" style="width:2.5rem;height:2.5rem;display:inline-flex;" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="{{ _gid }}" x1="4" y1="26" x2="28" y2="8" gradientUnits="userSpaceOnUse"><stop stop-color="currentColor" stop-opacity="0.08"/><stop offset="1" stop-color="currentColor" stop-opacity="0.02"/></linearGradient></defs><path d="M4 22c4-8 8-4 12-10s8-2 12-8v18H4v-10z" fill="url(#{{ _gid }})"/><path d="M4 22c4-8 8-4 12-10s8-2 12-8" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></span>{% endmacro %}
+
+{% macro illu_layer_header(extra_class='') %}<span class="dash-admin-illu dash-admin-illu--title {{ extra_class }}" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 14l10-5 10 5-10 5-10-5z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="currentColor" fill-opacity="0.05"/><path d="M6 19l10-5 10 5-10 5-10-5z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="currentColor" fill-opacity="0.04"/></svg></span>{% endmacro %}
+
+{% macro illu_header_cog(extra_class='') %}<span class="dash-admin-illu dash-admin-illu--title {{ extra_class }}" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="16" r="4" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.05"/><path d="M16 4v3M16 25v3M4 16h3M25 16h3M7 7l2 2M23 23l2 2M7 25l2-2M23 9l2-2" stroke="currentColor" stroke-width="1.05" stroke-linecap="round" stroke-opacity="0.5"/></svg></span>{% endmacro %}
+
+{% macro illu_table_building() %}{{ _wrap('', 'dash-admin-illu--btn', '<rect x="4" y="4" width="10" height="14" rx="1" stroke="currentColor" stroke-width="1.05" fill="currentColor" fill-opacity="0.04"/><path d="M6 8h2M9 8h2M6 11h2M9 11h2" stroke="currentColor" stroke-width="0.9" stroke-linecap="round" stroke-opacity="0.45"/>') }}{% endmacro %}
+
+{% macro illu_table_file() %}{{ _wrap('', 'dash-admin-illu--btn', '<path d="M6 3h7l3 3v14H6V3z" stroke="currentColor" stroke-width="1.05" stroke-linejoin="round" fill="currentColor" fill-opacity="0.04"/><path d="M9 10h6M9 14h5" stroke="currentColor" stroke-width="0.9" stroke-linecap="round" stroke-opacity="0.45"/>') }}{% endmacro %}
+
+{% macro illu_btn_view() %}{{ _wrap('', 'dash-admin-illu--btn', '<ellipse cx="12" cy="12" rx="7" ry="4" stroke="currentColor" stroke-width="1.1" stroke-opacity="0.55" fill="none"/><circle cx="12" cy="12" r="2" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.08"/>') }}{% endmacro %}
+
+{% macro illu_btn_edit() %}{{ _wrap('', 'dash-admin-illu--btn', '<path d="M4 20l9-13 5 5-9 13H4v-5z" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round" fill="currentColor" fill-opacity="0.06"/><path d="M13 7l4 4" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>') }}{% endmacro %}
+
+{% macro illu_spinner() %}<span class="dash-admin-illu dash-admin-illu--card-stat dash-admin-illu--spin" aria-hidden="true" role="status"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="16" r="12" stroke="currentColor" stroke-width="1.25" stroke-opacity="0.2" fill="none"/><path d="M16 4a12 12 0 0112 12" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" fill="none"/></svg></span>{% endmacro %}
+
+{% macro illu_check_tiny() %}<span class="dash-admin-illu dash-admin-illu--check-tiny" aria-hidden="true"><svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.5 6l2.5 2.5L9.5 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>{% endmacro %}
+
+{% macro illu_lp_shield() %}<span class="dash-admin-illu dash-admin-illu--lp-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3l8 3v7c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-3z" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round" fill="currentColor" fill-opacity="0.04"/></svg></span>{% endmacro %}
+
+{% macro illu_lp_grid() %}<span class="dash-admin-illu dash-admin-illu--lp-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="4" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.05"/><rect x="13" y="4" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.07"/><rect x="4" y="13" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.06"/><rect x="13" y="13" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.04"/></svg></span>{% endmacro %}
+
+{% macro illu_lp_chart() %}<span class="dash-admin-illu dash-admin-illu--lp-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 19V5M4 19h16" stroke="currentColor" stroke-width="1.05" stroke-linecap="round" stroke-opacity="0.35"/><rect x="6" y="12" width="3" height="5" rx="0.5" stroke="currentColor" stroke-width="1.05" fill="currentColor" fill-opacity="0.06"/><rect x="11" y="9" width="3" height="8" rx="0.5" stroke="currentColor" stroke-width="1.05" fill="currentColor" fill-opacity="0.08"/><rect x="16" y="11" width="3" height="6" rx="0.5" stroke="currentColor" stroke-width="1.05" fill="currentColor" fill-opacity="0.05"/></svg></span>{% endmacro %}
+
+{% macro illu_input_building() %}{{ _wrap('', 'dash-admin-illu--input', '<rect x="5" y="4" width="10" height="14" rx="1" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.04"/><path d="M8 8h1.5M11.5 8H13M8 11h1.5M11.5 11H13" stroke="currentColor" stroke-width="0.9" stroke-linecap="round" stroke-opacity="0.45"/>') }}{% endmacro %}
+
+{% macro illu_paper_plane(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--btn', '<path d="M4 12l18-8-8 18-2-7-8-3z" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round" fill="currentColor" fill-opacity="0.05"/>') }}{% endmacro %}
+
+{% macro illu_nav_layers(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--nav', '<path d="M4 10l8-4 8 4-8 4-8-4z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="currentColor" fill-opacity="0.05"/><path d="M4 15l8-4 8 4-8 4-8-4z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="currentColor" fill-opacity="0.04"/>') }}{% endmacro %}
+
+{% macro illu_lp_spreadsheet() %}<span class="dash-admin-illu dash-admin-illu--lp-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 3h12a1 1 0 011 1v16a1 1 0 01-1 1H6a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="currentColor" fill-opacity="0.04"/><path d="M9 3v18M15 3v18M6 9h12M6 15h12" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-opacity="0.4"/></svg></span>{% endmacro %}
+
+{% macro illu_btn_rotate(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--btn', '<path d="M12 4a8 8 0 108 8" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" fill="none"/><path d="M20 4v4h-4" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round" fill="none"/>') }}{% endmacro %}
+
+{% macro illu_btn_filter(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--btn', '<path d="M4 6h16l-5.5 7.5V19l-5-2.5v-3.5L4 6z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="currentColor" fill-opacity="0.04"/>') }}{% endmacro %}
+
+{% macro illu_btn_trash(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--btn', '<path d="M9 4h6l1 2h5v2H4V6h5l1-2z" stroke="currentColor" stroke-width="1.05" stroke-linejoin="round" fill="currentColor" fill-opacity="0.04"/><path d="M8 10v9h8v-9" stroke="currentColor" stroke-width="1.05" stroke-linejoin="round" fill="none"/><path d="M10 14h4" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-opacity="0.45"/>') }}{% endmacro %}
+
+{% macro illu_btn_import(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--btn', '<path d="M12 4v10M8 10l4-4 4 4" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round" fill="none"/><rect x="5" y="16" width="14" height="5" rx="1" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.04"/>') }}{% endmacro %}
+
+{% macro illu_nav_leaf(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--nav', '<path d="M18.5 4.5C12 4 6 9.5 6 16c0 2.5 4 2.5 4 0 0-4 3.5-8.5 8.5-11.5 3-1 5.5-1 8.5 0 4-3 7-7.5 7.5z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="currentColor" fill-opacity="0.04"/><path d="M12 20c2-3 5-5 9-6" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-opacity="0.4" fill="none"/>') }}{% endmacro %}
+
+{% macro illu_nav_speed(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--nav', '<path d="M4 14a8 8 0 0116 0" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" fill="none"/><path d="M12 14l3-6" stroke="currentColor" stroke-width="1.15" stroke-linecap="round"/><circle cx="12" cy="14" r="1.6" fill="currentColor" fill-opacity="0.12"/>') }}{% endmacro %}
+
+{% macro illu_nav_chart_pie(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--nav', '<circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.04"/><path d="M12 12V4a8 8 0 018 8h-8z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="currentColor" fill-opacity="0.07"/>') }}{% endmacro %}
+
+{% macro illu_card_table() %}<span class="dash-admin-illu dash-admin-illu--card-stat" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="6" width="22" height="20" rx="1.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.03"/><path d="M5 12h22M12 6v20" stroke="currentColor" stroke-width="1" stroke-opacity="0.4"/><path d="M8 16h3M8 20h3M16 16h8M16 20h6" stroke="currentColor" stroke-width="0.9" stroke-linecap="round" stroke-opacity="0.45"/></svg></span>{% endmacro %}
+
+{% macro illu_btn_user_plus(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--btn', '<circle cx="10" cy="9" r="3.2" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.05"/><path d="M4 19c0-2.5 2.2-3.8 6-3.8S16 16.5 16 19" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" fill="none"/><path d="M18 6v4M16 8h4" stroke="currentColor" stroke-width="1.15" stroke-linecap="round"/>') }}{% endmacro %}

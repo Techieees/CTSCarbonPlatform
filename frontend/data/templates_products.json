@@ -1,0 +1,110 @@
+{
+  "name": "Business Data Input - Products Log",
+  "version": 1,
+  "description": "Monthly product-level source data for Scope 3 Category 9, 11 and 12 preparation.",
+  "columns": [
+    "Reporting period (month, year)",
+    "Product Type",
+    "Quantity",
+    "Quantity Unit",
+    "End Use Location",
+    "Product Weight",
+    "Product Unit"
+  ],
+  "dropdowns": {
+    "business_types": [
+      "Service provider",
+      "Manufacturer",
+      "Construction",
+      "Execution"
+    ],
+    "product_types": [
+      "NordicEPOD",
+      "Piping",
+      "DC Piping",
+      "Other"
+    ],
+    "quantity_units": [
+      "pieces",
+      "units",
+      "sets",
+      "kg",
+      "tonnes"
+    ],
+    "product_units": [
+      "kg",
+      "tonnes"
+    ],
+    "heating_sources": [
+      "District heating",
+      "Electricity",
+      "Gas",
+      "Fuel"
+    ],
+    "travel_providers": [
+      "yes",
+      "no"
+    ],
+    "site_types": [
+      "office",
+      "factory",
+      "warehouse",
+      "other"
+    ]
+  },
+  "validation": {
+    "required": [
+      "Reporting period (month, year)",
+      "Product Type",
+      "Quantity",
+      "Quantity Unit",
+      "End Use Location",
+      "Product Weight",
+      "Product Unit"
+    ],
+    "numeric": [
+      "Quantity",
+      "Product Weight"
+    ],
+    "positive_numeric": [
+      "Quantity",
+      "Product Weight"
+    ]
+  },
+  "generated_categories": {
+    "Scope 3 Category 9 Downstream Transport": {
+      "source_columns": [
+        "Reporting period (month, year)",
+        "Product Type",
+        "Quantity",
+        "Quantity Unit",
+        "End Use Location"
+      ],
+      "fixed_emission_factors": {
+        "road": 0.000059,
+        "sea": 0.000016
+      },
+      "formula": "(Product Weight * Quantity * (road_km * 0.000059)) + (Product Weight * Quantity * (sea_km * 0.000016))"
+    },
+    "Scope 3 Category 11 Use of Sold Products": {
+      "source_columns": [
+        "Reporting period (month, year)",
+        "Product Type",
+        "Quantity",
+        "Quantity Unit",
+        "End Use Location"
+      ],
+      "calculation_status": "structured_for_downstream_calculation"
+    },
+    "Scope 3 Category 12 End of Life": {
+      "source_columns": [
+        "Reporting period (month, year)",
+        "Product Type",
+        "Quantity",
+        "Quantity Unit",
+        "End Use Location"
+      ],
+      "calculation_status": "structured_for_downstream_calculation"
+    }
+  }
+}

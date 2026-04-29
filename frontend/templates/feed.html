@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% import 'macros/ui_illustrations.html' as icons %}
 
 {% block title %}Feed{% endblock %}
 
@@ -100,7 +99,7 @@
           </div>
           {% else %}
           <div class="feed-card feed-empty-state">
-            <p class="feed-empty-state__icon">{{ icons.icon("post", 40, "hero-icon") }}</p>
+            <p class="feed-empty-state__icon" aria-hidden="true">&#9998;</p>
             <h3>No posts yet</h3>
             <p>No posts yet. Be the first to share an update.</p>
             <button

@@ -15,7 +15,7 @@ import subprocess
 import uuid
 import shutil
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 import hashlib
 import json
@@ -107,6 +107,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = str(FRONTEND_UPLOAD_DIR)
 
 TEMPLATES_2026_PATH = APP_DIR / "data" / "templates2026.json"
+PRODUCTS_TEMPLATE_PATH = APP_DIR / "data" / "templates_products.json"
 ISO_COUNTRIES_PATH = APP_DIR / "data" / "iso_countries.json"
 EMPLOYEE_COMMUTING_DATA_DIR = STAGE2_MAPPING_DIR / "Employee Commuting National Averages"
 EMPLOYEE_COMMUTING_NATIONAL_AVERAGES_XLSX = (
@@ -146,11 +147,11 @@ REPORT_DOCUMENT_EXT = frozenset({".doc", ".docx"})
 REPORT_PREVIEW_PAGE_COUNT = 3
 FEED_REFERENCE_TYPES = frozenset({"report", "newsletter", "event", "award", "challenge", "challenge_response"})
 FEED_REACTION_OPTIONS: tuple[dict[str, str], ...] = (
-    {"type": "like", "label": "Like", "icon": "L"},
-    {"type": "celebrate", "label": "Celebrate", "icon": "C"},
-    {"type": "support", "label": "Support", "icon": "S"},
-    {"type": "insightful", "label": "Insightful", "icon": "I"},
-    {"type": "funny", "label": "Funny", "icon": "F"},
+    {"type": "like", "label": "Like", "icon": "👍"},
+    {"type": "celebrate", "label": "Celebrate", "icon": "👏"},
+    {"type": "support", "label": "Support", "icon": "❤️"},
+    {"type": "insightful", "label": "Insightful", "icon": "💡"},
+    {"type": "funny", "label": "Funny", "icon": "😂"},
 )
 FEED_REACTION_META: dict[str, dict[str, str]] = {
     item["type"]: item for item in FEED_REACTION_OPTIONS
@@ -659,6 +660,39 @@ def _require_complete_profile_for_app():
     if request.path.startswith("/api/"):
         return jsonify({"error": "Complete profile setup before using this feature."}), 403
     return redirect(url_for("profile_setup"))
+
+
+@app.before_request
+def _require_current_month_products_input():
+    # Temporarily disabled while the Products Log flow is being tested.
+    # Keep the page/API available, but do not block navigation across the app.
+    return
+    if not current_user.is_authenticated:
+        return
+    if not _user_profile_complete(current_user) or _is_readonly_user(current_user):
+        return
+    endpoint = str(request.endpoint or "").strip()
+    if not endpoint or endpoint == "static" or request.path.startswith("/static/"):
+        return
+    allowed_endpoints = {
+        "products_input_page",
+        "api_products_input_save",
+        "api_products_input_export",
+        "profile_setup",
+        "logout",
+        "mouse_symbol_image",
+    }
+    if endpoint in allowed_endpoints:
+        return
+    if endpoint.startswith("api_"):
+        return jsonify({"error": "Submit this month's product data before using this feature."}), 403
+    try:
+        if _products_current_month_has_entry(current_user):
+            return
+    except Exception:
+        return
+    flash("Please submit this month's Products Log before continuing.", "warning")
+    return redirect(url_for("products_input_page"))
 
 
 @app.before_request
@@ -1253,6 +1287,29 @@ class DataEntry(db.Model):
     column_name = db.Column(db.String(200), nullable=False)
     value = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class ProductMonthlyEntry(db.Model):
+    __tablename__ = "product_monthly_entry"
+    __table_args__ = (
+        db.Index("ix_product_monthly_company_period", "company_name", "reporting_period_key"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    company_name = db.Column(db.String(200), nullable=False, index=True)
+    reporting_period_key = db.Column(db.String(7), nullable=False, index=True)  # YYYY-MM
+    reporting_period_label = db.Column(db.String(40), nullable=False)
+    row_index = db.Column(db.Integer, nullable=False, default=1)
+    product_type = db.Column(db.String(200), nullable=False)
+    quantity = db.Column(db.Float, nullable=False)
+    quantity_unit = db.Column(db.String(80), nullable=False)
+    end_use_location = db.Column(db.String(200), nullable=False)
+    product_weight = db.Column(db.Float, nullable=False)
+    product_unit = db.Column(db.String(80), nullable=False)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    creator = db.relationship("User", lazy="joined")
 
 
 class CsrdPolicy(db.Model):
@@ -2279,7 +2336,7 @@ def _feed_reaction_button_state(current_reaction: object | None) -> dict[str, ob
     return {
         "type": normalized,
         "label": str(meta.get("label") or "Like"),
-        "icon": str(meta.get("icon") or "L"),
+        "icon": str(meta.get("icon") or "👍"),
         "is_active": bool(normalized),
     }
 
@@ -3601,7 +3658,7 @@ def _feed_post_payload(
         "reaction_total": sum(int(item.get("count") or 0) for item in summary),
         "current_reaction": str(reaction_state.get("type") or ""),
         "current_reaction_label": str(reaction_state.get("label") or "Like"),
-        "current_reaction_icon": str(reaction_state.get("icon") or "L"),
+        "current_reaction_icon": str(reaction_state.get("icon") or "👍"),
     }
 
 
@@ -7028,34 +7085,312 @@ def _parse_operating_locations_form(raw: object) -> tuple[list[dict[str, str]], 
 def _apply_profile_form_fields(user: User, form) -> str | None:
     mode_raw = str(form.get("template_mode") or "").strip()
     mode = normalize_template_mode(mode_raw) if mode_raw in VALID_TEMPLATE_MODES else TEMPLATE_MODE_LEGACY
-    business_type = _normalize_profile_select(form.get("business_type"), BUSINESS_TYPE_OPTIONS)
-    product_type = (form.get("product_type") or "").strip() or None
-    quantity = (form.get("quantity") or "").strip() or None
-    quantity_unit = (form.get("quantity_unit") or "").strip() or None
-    number_of_products_in_use = (form.get("number_of_products_in_use") or "").strip() or None
-    end_use_location = (form.get("end_use_location") or "").strip() or None
-    heating_source = _normalize_profile_select(form.get("heating_source"), HEATING_SOURCE_OPTIONS)
-    travel_provider = _normalize_yes_no(form.get("travel_provider"))
-    operating_locations, operating_error = _parse_operating_locations_form(form.get("operating_locations_json"))
-    if operating_error:
-        return operating_error
-    if business_type != "Manufacturer":
-        product_type = None
-    if travel_provider is None and str(form.get("travel_provider") or "").strip():
-        return "Travel provider must be Yes or No."
-
     user.template_mode = mode
-    user.business_type = business_type
-    user.product_type = product_type
-    user.quantity = quantity
-    user.quantity_unit = quantity_unit
-    user.number_of_products_in_use = number_of_products_in_use
-    user.end_use_location = end_use_location
-    user.heating_source = heating_source
-    user.travel_provider = travel_provider
-    user.operating_locations_json = json.dumps(operating_locations, ensure_ascii=True)
+
+    product_profile_keys = {
+        "business_type",
+        "product_type",
+        "quantity",
+        "quantity_unit",
+        "number_of_products_in_use",
+        "end_use_location",
+        "heating_source",
+        "travel_provider",
+        "operating_locations_json",
+    }
+    if any(key in form for key in product_profile_keys):
+        business_type = _normalize_profile_select(form.get("business_type"), BUSINESS_TYPE_OPTIONS)
+        product_type = (form.get("product_type") or "").strip() or None
+        quantity = (form.get("quantity") or "").strip() or None
+        quantity_unit = (form.get("quantity_unit") or "").strip() or None
+        number_of_products_in_use = (form.get("number_of_products_in_use") or "").strip() or None
+        end_use_location = (form.get("end_use_location") or "").strip() or None
+        heating_source = _normalize_profile_select(form.get("heating_source"), HEATING_SOURCE_OPTIONS)
+        travel_provider = _normalize_yes_no(form.get("travel_provider"))
+        operating_locations, operating_error = _parse_operating_locations_form(form.get("operating_locations_json"))
+        if operating_error:
+            return operating_error
+        if business_type != "Manufacturer":
+            product_type = None
+        if travel_provider is None and str(form.get("travel_provider") or "").strip():
+            return "Travel provider must be Yes or No."
+
+        user.business_type = business_type
+        user.product_type = product_type
+        user.quantity = quantity
+        user.quantity_unit = quantity_unit
+        user.number_of_products_in_use = number_of_products_in_use
+        user.end_use_location = end_use_location
+        user.heating_source = heating_source
+        user.travel_provider = travel_provider
+        user.operating_locations_json = json.dumps(operating_locations, ensure_ascii=True)
     _persist_template_mode(mode)
     return None
+
+
+PRODUCTS_INPUT_COLUMNS: tuple[str, ...] = (
+    "Reporting period (month, year)",
+    "Product Type",
+    "Quantity",
+    "Quantity Unit",
+    "End Use Location",
+    "Product Weight",
+    "Product Unit",
+)
+
+
+def _products_current_period(today: date | None = None) -> tuple[str, str]:
+    value = today or date.today()
+    return value.strftime("%Y-%m"), value.strftime("%B %Y")
+
+
+def _load_products_template_config() -> dict[str, object]:
+    try:
+        with PRODUCTS_TEMPLATE_PATH.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    data.setdefault("columns", list(PRODUCTS_INPUT_COLUMNS))
+    data.setdefault("dropdowns", {})
+    data.setdefault("validation", {})
+    return data
+
+
+def _products_company_name(user: object) -> str:
+    return str(getattr(user, "company_name", None) or "").strip()
+
+
+def _products_current_month_has_entry(user: object) -> bool:
+    _ensure_db_tables()
+    company_name = _products_company_name(user)
+    if not company_name:
+        return False
+    period_key, _period_label = _products_current_period()
+    return (
+        ProductMonthlyEntry.query.filter_by(
+            company_name=company_name,
+            reporting_period_key=period_key,
+        )
+        .limit(1)
+        .first()
+        is not None
+    )
+
+
+def _product_entry_payload(row: ProductMonthlyEntry) -> dict[str, object]:
+    return {
+        "id": int(row.id),
+        "Reporting period (month, year)": row.reporting_period_label,
+        "Product Type": row.product_type,
+        "Quantity": row.quantity,
+        "Quantity Unit": row.quantity_unit,
+        "End Use Location": row.end_use_location,
+        "Product Weight": row.product_weight,
+        "Product Unit": row.product_unit,
+    }
+
+
+def _products_profile_payload(user: object) -> dict[str, object]:
+    return {
+        "business_type": str(getattr(user, "business_type", None) or "").strip(),
+        "product_type": str(getattr(user, "product_type", None) or "").strip(),
+        "quantity": str(getattr(user, "quantity", None) or "").strip(),
+        "quantity_unit": str(getattr(user, "quantity_unit", None) or "").strip(),
+        "number_of_products_in_use": str(getattr(user, "number_of_products_in_use", None) or "").strip(),
+        "end_use_location": str(getattr(user, "end_use_location", None) or "").strip(),
+        "heating_source": str(getattr(user, "heating_source", None) or "").strip(),
+        "travel_provider": str(getattr(user, "travel_provider", None) or "").strip(),
+        "operating_locations": _operating_locations_for_user(user),
+    }
+
+
+def _float_from_payload(value: object) -> float | None:
+    raw = str(value if value is not None else "").strip().replace(",", ".")
+    if not raw:
+        return None
+    try:
+        parsed = float(raw)
+    except Exception:
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _country_code_from_location(value: object) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    upper = raw.upper()
+    if upper in ISO_COUNTRY_NAME_BY_CODE:
+        return upper
+    match = re.search(r"\(([A-Z]{2})\)", raw)
+    if match and match.group(1) in ISO_COUNTRY_NAME_BY_CODE:
+        return match.group(1)
+    return ISO_COUNTRY_CODE_BY_NAME.get(raw.casefold(), "")
+
+
+def _products_distance_for_location(end_use_location: object, company_country: object) -> tuple[float, float]:
+    target_code = _country_code_from_location(end_use_location)
+    origin_code = _country_code_from_location(company_country)
+    if target_code and origin_code and target_code == origin_code:
+        return 300.0, 0.0
+    european_codes = {
+        "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU",
+        "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES",
+        "SE", "NO", "IS", "CH", "GB",
+    }
+    if target_code in european_codes:
+        return 1500.0, 300.0
+    return 250.0, 8000.0
+
+
+def _normalize_products_profile_payload(profile: dict[str, object]) -> tuple[dict[str, object], list[str]]:
+    errors: list[str] = []
+    business_type = _normalize_profile_select(profile.get("business_type"), BUSINESS_TYPE_OPTIONS)
+    if not business_type:
+        errors.append("Business Type is required.")
+    heating_source = _normalize_profile_select(profile.get("heating_source"), HEATING_SOURCE_OPTIONS)
+    travel_provider = _normalize_yes_no(profile.get("travel_provider"))
+    if str(profile.get("travel_provider") or "").strip() and travel_provider is None:
+        errors.append("Travel Provider must be Yes or No.")
+
+    locations_raw = profile.get("operating_locations")
+    if isinstance(locations_raw, list):
+        locations_json = json.dumps(locations_raw, ensure_ascii=True)
+    else:
+        locations_json = str(profile.get("operating_locations_json") or "[]")
+    operating_locations, operating_error = _parse_operating_locations_form(locations_json)
+    if operating_error:
+        errors.append(operating_error)
+    if not operating_locations:
+        errors.append("At least one Operating Location is required.")
+
+    number_of_products = str(profile.get("number_of_products_in_use") or "").strip()
+    if business_type == "Manufacturer" and not number_of_products:
+        errors.append("Number of products in use is required for manufacturers.")
+
+    return (
+        {
+            "business_type": business_type or "",
+            "number_of_products_in_use": number_of_products,
+            "heating_source": heating_source or "",
+            "travel_provider": travel_provider or "",
+            "operating_locations": operating_locations,
+        },
+        errors,
+    )
+
+
+def _normalize_products_rows(rows: object, period_key: str, period_label: str) -> tuple[list[dict[str, object]], list[str]]:
+    config = _load_products_template_config()
+    dropdowns = config.get("dropdowns") if isinstance(config.get("dropdowns"), dict) else {}
+    quantity_units = set(dropdowns.get("quantity_units") or ())
+    product_units = set(dropdowns.get("product_units") or ())
+    normalized: list[dict[str, object]] = []
+    errors: list[str] = []
+    if not isinstance(rows, list):
+        return [], ["Rows must be a list."]
+    for idx, row in enumerate(rows, start=1):
+        if not isinstance(row, dict):
+            errors.append(f"Row {idx} is invalid.")
+            continue
+        product_type = str(row.get("Product Type") or row.get("product_type") or "").strip()
+        quantity = _float_from_payload(row.get("Quantity") or row.get("quantity"))
+        quantity_unit = str(row.get("Quantity Unit") or row.get("quantity_unit") or "").strip()
+        end_use_location = str(row.get("End Use Location") or row.get("end_use_location") or "").strip()
+        product_weight = _float_from_payload(row.get("Product Weight") or row.get("product_weight"))
+        product_unit = str(row.get("Product Unit") or row.get("product_unit") or "").strip()
+
+        if not product_type:
+            errors.append(f"Row {idx}: Product Type is required.")
+        if quantity is None:
+            errors.append(f"Row {idx}: Quantity must be greater than 0.")
+        if not quantity_unit:
+            errors.append(f"Row {idx}: Quantity Unit is required.")
+        elif quantity_units and quantity_unit not in quantity_units:
+            errors.append(f"Row {idx}: Quantity Unit is invalid.")
+        if not end_use_location:
+            errors.append(f"Row {idx}: End Use Location is required.")
+        if product_weight is None:
+            errors.append(f"Row {idx}: Product Weight must be greater than 0.")
+        if not product_unit:
+            errors.append(f"Row {idx}: Product Unit is required.")
+        elif product_units and product_unit not in product_units:
+            errors.append(f"Row {idx}: Product Unit is invalid.")
+
+        normalized.append(
+            {
+                "reporting_period_key": period_key,
+                "reporting_period_label": period_label,
+                "product_type": product_type,
+                "quantity": float(quantity or 0),
+                "quantity_unit": quantity_unit,
+                "end_use_location": end_use_location,
+                "product_weight": float(product_weight or 0),
+                "product_unit": product_unit,
+            }
+        )
+    if not normalized:
+        errors.append("Add at least one product row for the current month.")
+    return normalized, errors
+
+
+def _generated_products_category_datasets(user: object, rows: list[dict[str, object]]) -> dict[str, list[dict[str, object]]]:
+    category9: list[dict[str, object]] = []
+    category11: list[dict[str, object]] = []
+    category12: list[dict[str, object]] = []
+    for row in rows:
+        total_weight = float(row["product_weight"]) * float(row["quantity"])
+        road_km, sea_km = _products_distance_for_location(row["end_use_location"], getattr(user, "company_country", None))
+        base = {
+            "Reporting period (month, year)": row["reporting_period_label"],
+            "Product Type": row["product_type"],
+            "Quantity": row["quantity"],
+            "Quantity Unit": row["quantity_unit"],
+            "End Use Location": row["end_use_location"],
+        }
+        category9.append(
+            {
+                **base,
+                "Product Weight": row["product_weight"],
+                "Product Unit": row["product_unit"],
+                "Total Weight": total_weight,
+                "Road km": road_km,
+                "Sea km": sea_km,
+                "Road emission factor": 0.000059,
+                "Sea emission factor": 0.000016,
+                "Calculated emissions": (total_weight * (road_km * 0.000059)) + (total_weight * (sea_km * 0.000016)),
+            }
+        )
+        category11.append(dict(base))
+        category12.append(dict(base))
+    return {
+        "Scope 3 Category 9 Downstream Transport": category9,
+        "Scope 3 Category 11 Use of Sold Products": category11,
+        "Scope 3 Category 12 End of Life": category12,
+    }
+
+
+def _publish_products_structured_input(user: object, period_key: str, period_label: str, rows: list[dict[str, object]]) -> Path | None:
+    try:
+        out_dir = DATA_DIR / "products_input"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        company_name = _products_company_name(user)
+        out_path = out_dir / f"{company_slug(company_name)}_{period_key}.json"
+        payload = {
+            "company_name": company_name,
+            "reporting_period_key": period_key,
+            "reporting_period_label": period_label,
+            "source": "Business Data Input - Products Log",
+            "columns": list(PRODUCTS_INPUT_COLUMNS),
+            "rows": rows,
+            "generated_categories": _generated_products_category_datasets(user, rows),
+        }
+        out_path.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
+        return out_path
+    except Exception:
+        return None
 
 
 @app.route("/profile/setup", methods=["GET", "POST"])
@@ -7183,6 +7518,145 @@ def profile_page():
         company_display=(current_user.company_name or ""),
         country_readonly_label=country_readonly_label,
         **_profile_template_context(),
+    )
+
+
+@app.route("/data-input/products", methods=["GET"], endpoint="products_input_page")
+@login_required
+def products_input_page():
+    _ensure_db_tables()
+    period_key, period_label = _products_current_period()
+    company_name = _products_company_name(current_user)
+    rows = (
+        ProductMonthlyEntry.query.filter_by(
+            company_name=company_name,
+            reporting_period_key=period_key,
+        )
+        .order_by(ProductMonthlyEntry.row_index.asc(), ProductMonthlyEntry.id.asc())
+        .all()
+    )
+    return render_template(
+        "products_input.html",
+        config=_load_products_template_config(),
+        period_key=period_key,
+        period_label=period_label,
+        company_name=company_name,
+        product_rows=[_product_entry_payload(row) for row in rows],
+        product_profile=_products_profile_payload(current_user),
+        business_type_options=BUSINESS_TYPE_OPTIONS,
+        heating_source_options=HEATING_SOURCE_OPTIONS,
+        travel_provider_options=TRAVEL_PROVIDER_OPTIONS,
+        operating_site_type_options=OPERATING_SITE_TYPE_OPTIONS,
+        iso_countries=ISO_COUNTRIES,
+    )
+
+
+@app.route("/api/products-input/save", methods=["POST"], endpoint="api_products_input_save")
+@login_required
+def api_products_input_save():
+    _ensure_db_tables()
+    if _is_readonly_user(current_user):
+        return jsonify({"error": "Auditor accounts cannot submit product data."}), 403
+    payload = request.get_json(silent=True) or {}
+    period_key, period_label = _products_current_period()
+    profile_payload, profile_errors = _normalize_products_profile_payload(payload.get("profile") if isinstance(payload.get("profile"), dict) else {})
+    rows, row_errors = _normalize_products_rows(payload.get("rows"), period_key, period_label)
+    errors = profile_errors + row_errors
+    if errors:
+        return jsonify({"error": errors[0], "validation_errors": errors[:30]}), 400
+
+    company_name = _products_company_name(current_user)
+    if not company_name:
+        return jsonify({"error": "Company name is required before saving product data."}), 400
+
+    try:
+        ProductMonthlyEntry.query.filter_by(
+            company_name=company_name,
+            reporting_period_key=period_key,
+        ).delete()
+        for idx, row in enumerate(rows, start=1):
+            db.session.add(
+                ProductMonthlyEntry(
+                    company_name=company_name,
+                    reporting_period_key=period_key,
+                    reporting_period_label=period_label,
+                    row_index=idx,
+                    product_type=str(row["product_type"]),
+                    quantity=float(row["quantity"]),
+                    quantity_unit=str(row["quantity_unit"]),
+                    end_use_location=str(row["end_use_location"]),
+                    product_weight=float(row["product_weight"]),
+                    product_unit=str(row["product_unit"]),
+                    created_by_user_id=int(current_user.id),
+                )
+            )
+
+        current_user.business_type = str(profile_payload["business_type"] or "") or None
+        current_user.number_of_products_in_use = str(profile_payload["number_of_products_in_use"] or "") or None
+        current_user.heating_source = str(profile_payload["heating_source"] or "") or None
+        current_user.travel_provider = str(profile_payload["travel_provider"] or "") or None
+        current_user.operating_locations_json = json.dumps(profile_payload["operating_locations"], ensure_ascii=True)
+        if rows:
+            first = rows[0]
+            current_user.product_type = str(first["product_type"] or "") or None
+            current_user.quantity = str(first["quantity"] or "") or None
+            current_user.quantity_unit = str(first["quantity_unit"] or "") or None
+            current_user.end_use_location = str(first["end_use_location"] or "") or None
+
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({"error": f"Save failed: {exc}"}), 500
+
+    out_path = _publish_products_structured_input(current_user, period_key, period_label, rows)
+    return jsonify(
+        {
+            "ok": True,
+            "message": f"{len(rows)} product row(s) saved for {period_label}.",
+            "reporting_period_key": period_key,
+            "reporting_period_label": period_label,
+            "structured_input_path": str(out_path) if out_path else "",
+            "generated_categories": _generated_products_category_datasets(current_user, rows),
+        }
+    )
+
+
+@app.route("/api/products-input/export", methods=["GET"], endpoint="api_products_input_export")
+@login_required
+def api_products_input_export():
+    _ensure_db_tables()
+    period_key = str(request.args.get("period") or _products_current_period()[0]).strip()
+    if not re.fullmatch(r"\d{4}-\d{2}", period_key):
+        period_key = _products_current_period()[0]
+    company_name = _products_company_name(current_user)
+    rows = (
+        ProductMonthlyEntry.query.filter_by(
+            company_name=company_name,
+            reporting_period_key=period_key,
+        )
+        .order_by(ProductMonthlyEntry.row_index.asc(), ProductMonthlyEntry.id.asc())
+        .all()
+    )
+    normalized_rows = [
+        {
+            "reporting_period_key": row.reporting_period_key,
+            "reporting_period_label": row.reporting_period_label,
+            "product_type": row.product_type,
+            "quantity": float(row.quantity),
+            "quantity_unit": row.quantity_unit,
+            "end_use_location": row.end_use_location,
+            "product_weight": float(row.product_weight),
+            "product_unit": row.product_unit,
+        }
+        for row in rows
+    ]
+    return jsonify(
+        {
+            "company_name": company_name,
+            "reporting_period_key": period_key,
+            "rows": [_product_entry_payload(row) for row in rows],
+            "generated_categories": _generated_products_category_datasets(current_user, normalized_rows),
+        }
     )
 
 
@@ -12413,7 +12887,7 @@ def api_feed_post_reaction(post_id: int):
             "reaction_total": sum(int(item.get("count") or 0) for item in summary),
             "current_reaction": str(button_state.get("type") or ""),
             "current_reaction_label": str(button_state.get("label") or "Like"),
-            "current_reaction_icon": str(button_state.get("icon") or "L"),
+            "current_reaction_icon": str(button_state.get("icon") or "👍"),
         }
     )
 

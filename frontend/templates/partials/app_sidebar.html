@@ -4,7 +4,7 @@
 {% set carbon_active = ep in ('carbon_accounting', 'scope1_detail', 'scope2_detail', 'scope3_detail') %}
 {% set data_sources_active = ep in ('data_sources_ccc_api', 'data_sources_employee_commuting_headcount', 'data_sources_employee_commuting_national_averages', 'data_sources_averages', 'data_sources_scenarios', 'admin') %}
 {% set data_outputs_active = ep in ('analytics_mapped_window_output', 'analytics_emissions_totals', 'analytics_share_analysis') %}
-{% set data_active = ep in ('dashboard', 'mapping_runs', 'admin_mapping_runs') or data_sources_active or data_outputs_active %}
+{% set data_active = ep in ('dashboard', 'products_input_page', 'mapping_runs', 'admin_mapping_runs') or data_sources_active or data_outputs_active %}
 {% set analytics_active = ep in ('analytics_forecasting', 'analytics_decarbonization', 'analytics_emissions_map', 'governance_double_counting_check') %}
 {% set governance_active = ep in ('governance_audit_ready_output',) %}
 {% set esg_active = ep in ('csrd', 'csrd_policies', 'lca', 'lca_tool') %}
@@ -180,6 +180,10 @@
           <h2>Data</h2>
         </div>
         <nav class="app-sidebar__panel-menu">
+          <a href="{{ url_for('products_input_page') }}" class="app-sidebar__menu-item {% if ep == 'products_input_page' %}is-active{% endif %}" {% if ep == 'products_input_page' %}aria-current="page"{% endif %}>
+            {{ illu.illu_nav_file('app-sidebar__icon') }}
+            <span>Products Input</span>
+          </a>
           <a href="{{ url_for('dashboard') }}" class="app-sidebar__menu-item {% if ep == 'dashboard' %}is-active{% endif %}" {% if ep == 'dashboard' %}aria-current="page"{% endif %}>
             {{ illu.illu_nav_pen_entry('app-sidebar__icon') }}
             <span>Uploads</span>
@@ -347,7 +351,7 @@
           {% endif %}
         </h3>
         <button type="button" class="app-sidebar__secondary-close" data-sidebar-secondary-close aria-label="Close secondary panel">
-          {{ illu.icon("close", 18, "small-icon") }}
+          {{ illu.illu_times('') }}
         </button>
       </div>
 

@@ -193,7 +193,7 @@
       "calculation_fields": ["Water Consumption"]
     },
 
-    "Scope 3 Category 11 Upstream Transportation"
+    "Scope 3 Category 11 Use of Sold Product": {
       "columns": [
         "Reporting period (month, year)",
         "Product",
@@ -203,16 +203,15 @@
         "Waste Stream",
         "Treatment Method",
         "Country",
-        "Data Source"
+        "Data Source",
+        "Site Tag"
       ],
       "mapping_keys": ["Waste Stream"],
       "calculation_type": "weight_based",
       "calculation_fields": ["Weight"]
-    },
+    }}
 
 
 
 
 
-  ]
-    }

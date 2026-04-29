@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% import 'macros/ui_illustrations.html' as icons %}
 
 {% block title %}Averages{% endblock %}
 
@@ -186,7 +185,7 @@
           <div class="card averages-card">
             <div class="card-body p-4">
               <div class="d-flex align-items-center gap-3 mb-3">
-                <div class="averages-card__icon">{{ icons.icon("energy", 32, "large-icon") }}</div>
+                <div class="averages-card__icon" aria-hidden="true">&#9889;</div>
                 <div>
                   <h2 class="averages-card__title mb-1">Electricity</h2>
                   <p class="averages-card__meta mb-0">Track kWh, country, and optional emission factor override.</p>
@@ -219,7 +218,7 @@
           <div class="card averages-card">
             <div class="card-body p-4">
               <div class="d-flex align-items-center gap-3 mb-3">
-                <div class="averages-card__icon">{{ icons.icon("co2", 32, "large-icon") }}</div>
+                <div class="averages-card__icon" aria-hidden="true">&#9832;</div>
                 <div>
                   <h2 class="averages-card__title mb-1">District Heating</h2>
                   <p class="averages-card__meta mb-0">Capture heating volume and optional supplier reference.</p>
@@ -243,7 +242,7 @@
           <div class="card averages-card">
             <div class="card-body p-4">
               <div class="d-flex align-items-center gap-3 mb-3">
-                <div class="averages-card__icon">{{ icons.icon("waste", 32, "large-icon") }}</div>
+                <div class="averages-card__icon" aria-hidden="true">&#9851;</div>
                 <div>
                   <h2 class="averages-card__title mb-1">Waste</h2>
                   <p class="averages-card__meta mb-0">Record waste type, weight, and the reporting unit.</p>
@@ -281,7 +280,7 @@
           <div class="card averages-card">
             <div class="card-body p-4">
               <div class="d-flex align-items-center gap-3 mb-3">
-                <div class="averages-card__icon">{{ icons.icon("water", 32, "large-icon") }}</div>
+                <div class="averages-card__icon" aria-hidden="true">&#8776;</div>
                 <div>
                   <h2 class="averages-card__title mb-1">Water</h2>
                   <p class="averages-card__meta mb-0">Calculate water intensity with total water and building size.</p>
