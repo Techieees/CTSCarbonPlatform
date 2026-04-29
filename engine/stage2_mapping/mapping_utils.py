@@ -60,6 +60,7 @@ def _is_2026_cat1_sheet(sheet_name: str) -> bool:
 # Paste the final mapping provided by the Sustainability Data Analyst to replace the empty dict below.
 sheet_mapping: Dict[str, Union[str, List[str]]] = {
     # Scope 1
+    "Scope 1 Fuel Usage": "Scope 1 Fuel Distance, Scope 1 Fuel Activity, Scope 1 Fuel Spend",
     "Scope 1 Fuel Usage Spend": "Scope 1 Fuel Spend",
     "Scope 1 Fuel Usage Activity": "Scope 1 Fuel Distance, Scope 1 Fuel Activity",
     "Scope 1 Fuel Activity": "Scope 1 Fuel Activity",
@@ -523,6 +524,7 @@ def map_emission_factor(
     # If Fuel consumption value is 0 or 1 → mark status and skip mapping (EF Value = 0)
     spend_sheet_low_early = str(spend_sheet).strip().lower() if spend_sheet is not None else ""
     if spend_sheet_low_early in {
+        "scope 1 fuel usage",
         "scope 1 fuel usage activity",
         "scope 3 cat 8 fuel usage activi",
         "scope 3 cat 8 fuel usage activit",
@@ -566,9 +568,9 @@ def map_emission_factor(
     # Build a case-insensitive lookup for available EF sheet names
     ef_lookup: Dict[str, str] = {str(k).lower(): str(k) for k in ef_data_dict.keys()}
 
-    # Scope 1 Fuel Usage Activity: use distance-based EF ONLY when Distance travelled is numeric
+    # Scope 1 Fuel Usage / Activity: use distance-based EF ONLY when Distance travelled is numeric
     spend_sheet_low_guard = str(_get_first_present(row, ["Sheet", "sheet", "Spend Sheet", "Spend_Sheet"])) .strip().lower() if _get_first_present(row, ["Sheet", "sheet", "Spend Sheet", "Spend_Sheet"]) is not None else ""
-    if spend_sheet_low_guard == "scope 1 fuel usage activity" and ef_sheet_names:
+    if spend_sheet_low_guard in {"scope 1 fuel usage", "scope 1 fuel usage activity"} and ef_sheet_names:
         # Try to detect distance value
         dist_raw = _get_first_present(
             row,
@@ -634,6 +636,10 @@ def map_emission_factor(
         [
             "Product type",
             "Product Type",
+            "Vehicle Type",
+            "Vehicle type",
+            "Fuel Type",
+            "Fuel type",
             "Description",
             "Item Description",
             "Item",
@@ -655,6 +661,7 @@ def map_emission_factor(
     # Special handling: Scope 1 electric rows should use Scope 2 Electricity EF by country
     # -----------------------------
     if spend_sheet_low in {
+        "scope 1 fuel usage",
         "scope 1 fuel usage spend",
         "scope 1 fuel usage activity",
         "scope 1 fuel activity",
@@ -1478,6 +1485,7 @@ def map_emission_factor(
 
         # Vehicle-type driven sheets
         if spend_sheet_low in {
+            "scope 1 fuel usage",
             "scope 1 fuel usage spend",
             "scope 1 fuel usage activity",
             "scope 1 fuel activity",
