@@ -979,7 +979,30 @@ body.dark-mode .lp-feed-preview{
   color: var(--lp-feed-text-primary);
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   padding: 18px;
-  transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+  transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease, opacity 0.65s ease-out, transform 0.65s ease-out;
+}
+
+.lp-feed-card.hidden-left:not(.visible){
+  transform: translateX(-40px);
+  opacity: 0;
+}
+
+.lp-feed-card.hidden-right:not(.visible){
+  transform: translateX(40px);
+  opacity: 0;
+}
+
+.lp-feed-card.visible{
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.lp-feed-card.visible:nth-child(1){ transition-delay: 0s; }
+.lp-feed-card.visible:nth-child(2){ transition-delay: 0.1s; }
+.lp-feed-card.visible:nth-child(3){ transition-delay: 0.2s; }
+
+.lp-feed-card:hover{
+  transform: none;
 }
 
 .lp-feed-card__meta{

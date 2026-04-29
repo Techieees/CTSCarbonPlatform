@@ -144,6 +144,34 @@
     }
   }
 
+  // Landing feed preview cards use the same lightweight side entrance as the feature cards.
+  const feedPreview = document.getElementById("lp-feed-preview");
+  if (feedPreview) {
+    const feedCards = Array.from(feedPreview.querySelectorAll(".lp-feed-card")).slice(0, 3);
+    const revealFeed = () => {
+      for (const card of feedCards) {
+        card.classList.add("visible");
+      }
+    };
+    if (prefersReduced || !("IntersectionObserver" in window)) {
+      revealFeed();
+    } else {
+      const ioFeed = new IntersectionObserver(
+        (entries) => {
+          for (const e of entries) {
+            if (e.isIntersecting) {
+              revealFeed();
+              ioFeed.unobserve(e.target);
+              break;
+            }
+          }
+        },
+        { threshold: 0.12, rootMargin: "0px 0px -8% 0px" }
+      );
+      ioFeed.observe(feedPreview);
+    }
+  }
+
   // Kick off marquee after DOM is ready
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initMarquees, { once: true });

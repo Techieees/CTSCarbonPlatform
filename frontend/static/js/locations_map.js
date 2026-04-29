@@ -75,6 +75,65 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
     return response.json();
   }
 
+  function getSearchZoom(result) {
+    const placeTypes = Array.isArray(result && result.place_type) ? result.place_type : [];
+    if (placeTypes.indexOf("country") !== -1) return 4;
+    if (placeTypes.indexOf("region") !== -1) return 6;
+    if (placeTypes.indexOf("place") !== -1 || placeTypes.indexOf("locality") !== -1) return 10;
+    return 8;
+  }
+
+  function addLocationSearchControl(mapInstance) {
+    if (!window.MapboxGeocoder || !mapInstance) {
+      return;
+    }
+
+    const geocoder = new MapboxGeocoder({
+      accessToken: mapboxgl.accessToken,
+      mapboxgl: mapboxgl,
+      marker: false,
+      placeholder: "Search city or country",
+      types: "country,region,place,locality,district",
+      language: "en",
+      flyTo: false
+    });
+
+    geocoder.on("result", function (event) {
+      const result = event && event.result;
+      if (!result) {
+        return;
+      }
+
+      const zoom = getSearchZoom(result);
+      if (Array.isArray(result.bbox) && result.bbox.length === 4) {
+        mapInstance.fitBounds(
+          [
+            [result.bbox[0], result.bbox[1]],
+            [result.bbox[2], result.bbox[3]]
+          ],
+          {
+            padding: 80,
+            maxZoom: zoom,
+            duration: 1200,
+            essential: true
+          }
+        );
+        return;
+      }
+
+      if (Array.isArray(result.center) && result.center.length >= 2) {
+        mapInstance.flyTo({
+          center: result.center,
+          zoom: zoom,
+          duration: 1200,
+          essential: true
+        });
+      }
+    });
+
+    mapInstance.addControl(geocoder, "top-left");
+  }
+
   function popupHtml(item) {
     const officeImage = item.type === "Office" || item.type === "HQ" ? getOfficeImage(item.name) : null;
     const projectImage = item.type === "Production" ? getProjectImage(item.country, item.name) : null;
@@ -598,6 +657,26 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
     return sanitizeYearRange(yearRange) === "1970-2000";
   }
 
+  function scenarioIntensity(scenario) {
+    const values = {
+      "SSP1-2.6": 0.55,
+      "SSP2-4.5": 0.78,
+      "SSP3-7.0": 1,
+      "SSP5-8.5": 1.24
+    };
+    return values[sanitizeScenario(scenario)] || values["SSP2-4.5"];
+  }
+
+  function modelOffset(model) {
+    const values = {
+      ensemble: 0,
+      "ACCESS-CM2": 0.35,
+      "EC-Earth3": -0.22,
+      "GFDL-ESM4": 0.18
+    };
+    return values[sanitizeModel(model)] || 0;
+  }
+
   function buildFutureClimateTileUrl(layerKey, month, yearRange, scenario, model) {
     const template = String(
       config.climateFutureTileTemplate ||
@@ -811,11 +890,19 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
       const seasonalAmplitude = Math.max(4, 12 - latitudeAbs * 0.08);
       const nightOffset = 5 + latitudeAbs * 0.06;
       const tropicalMoisture = clamp(1 - latitudeAbs / 55, 0.15, 1);
+      const futureRangeIndex = Math.max(0, CLIMATE_YEAR_RANGES.indexOf(state.yearRange));
+      const projectionStep = isHistoricalRange(state.yearRange) ? 0 : futureRangeIndex;
+      const scenarioFactor = scenarioIntensity(state.scenario);
+      const modelAdjustment = modelOffset(state.model);
+      const warming = projectionStep * scenarioFactor * 0.85 + modelAdjustment;
+      const precipFactor = isHistoricalRange(state.yearRange)
+        ? 1
+        : clamp(0.88 + projectionStep * 0.06 * scenarioFactor + modelAdjustment * 0.035, 0.72, 1.42);
 
       const temperatureDay = CLIMATE_MONTH_LABELS.map(function (_, index) {
         const angle = (index / 12) * Math.PI * 2 + phaseShift;
         const noise = (climateNoise(latitude * 3.1 + longitude * 1.7 + index) - 0.5) * 1.8;
-        return Math.round((baseDay + Math.sin(angle) * seasonalAmplitude + noise) * 10) / 10;
+        return Math.round((baseDay + warming + Math.sin(angle) * seasonalAmplitude + noise) * 10) / 10;
       });
 
       const temperatureNight = temperatureDay.map(function (value, index) {
@@ -828,7 +915,7 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
         const seasonality = (Math.cos(angle) + 1) / 2;
         const basePrecip = 18 + tropicalMoisture * 82 + seasonality * (12 + tropicalMoisture * 48);
         const noise = climateNoise(latitude * 1.9 + longitude * 4.7 + index * 2.1) * 18;
-        return Math.round(clamp(basePrecip + noise - latitudeAbs * 0.12, 4, 220));
+        return Math.round(clamp((basePrecip + noise - latitudeAbs * 0.12) * precipFactor, 4, 260));
       });
 
       return {
@@ -964,7 +1051,7 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
         }
 
         const isDarkMode = document.body.classList.contains("dark-mode");
-        const textColor = isDarkMode ? "#e2e8f0" : "#334155";
+        const textColor = isDarkMode ? "#f8fafc" : "#0f172a";
         const gridColor = isDarkMode ? "rgba(148, 163, 184, 0.18)" : "rgba(148, 163, 184, 0.22)";
         const tempContext = tempCanvas.getContext("2d");
         const precipContext = precipCanvas.getContext("2d");
@@ -1046,14 +1133,20 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
                   boxHeight: 10,
                   usePointStyle: true,
                   pointStyle: "circle",
-                  color: textColor
+                  color: textColor,
+                  font: {
+                    weight: "700"
+                  }
                 }
               }
             },
             scales: {
               x: {
                 ticks: {
-                  color: textColor
+                  color: textColor,
+                  font: {
+                    weight: "700"
+                  }
                 },
                 grid: {
                   display: false
@@ -1061,7 +1154,10 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
               },
               y: {
                 ticks: {
-                  color: textColor
+                  color: textColor,
+                  font: {
+                    weight: "700"
+                  }
                 },
                 grid: {
                   color: gridColor
@@ -1069,7 +1165,10 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
                 title: {
                   display: true,
                   text: "Temperature (°C)",
-                  color: textColor
+                  color: textColor,
+                  font: {
+                    weight: "700"
+                  }
                 }
               }
             }
@@ -1103,7 +1202,10 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
             scales: {
               x: {
                 ticks: {
-                  color: textColor
+                  color: textColor,
+                  font: {
+                    weight: "700"
+                  }
                 },
                 grid: {
                   display: false
@@ -1112,7 +1214,10 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
               y: {
                 beginAtZero: true,
                 ticks: {
-                  color: textColor
+                  color: textColor,
+                  font: {
+                    weight: "700"
+                  }
                 },
                 grid: {
                   color: gridColor
@@ -1120,7 +1225,10 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
                 title: {
                   display: true,
                   text: "mm",
-                  color: textColor
+                  color: textColor,
+                  font: {
+                    weight: "700"
+                  }
                 }
               }
             }
@@ -1138,6 +1246,8 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
       const coordsNode = document.getElementById(CLIMATE_PANEL_COORDS_ID);
       const metaNode = document.getElementById(CLIMATE_PANEL_META_ID);
       const data = generateClimateData(lat, lng);
+      state.lastPanelLat = lat;
+      state.lastPanelLng = lng;
 
       if (coordsNode) {
         coordsNode.textContent = formatCoordinate(lat, "N", "S") + " , " + formatCoordinate(lng, "E", "W");
@@ -1157,6 +1267,13 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
           metaNode.textContent = "Climate charts are unavailable right now.";
         }
       });
+    }
+
+    function refreshOpenDataPanel() {
+      if (!state.panelOpen || state.lastPanelLat == null || state.lastPanelLng == null) {
+        return;
+      }
+      openDataPanel(state.lastPanelLat, state.lastPanelLng);
     }
 
     function getInsertBeforeLayerId() {
@@ -1308,6 +1425,15 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
       const layerId = climateLayerId(layerKey);
       const tileUrl = layerConfig.getTileUrl(state.month, state.yearRange, state.scenario, state.model);
       const beforeLayerId = getInsertBeforeLayerId();
+      const climatePaint = {
+        "raster-opacity": 0.95,
+        "raster-contrast": isHistoricalRange(state.yearRange) ? 0.6 : 0.35 + scenarioIntensity(state.scenario) * 0.42,
+        "raster-saturation": isHistoricalRange(state.yearRange) ? 0.4 : 0.15 + scenarioIntensity(state.scenario) * 0.45,
+        "raster-hue-rotate": isHistoricalRange(state.yearRange) ? 0 : Math.round(modelOffset(state.model) * 90),
+        "raster-brightness-min": 0.1,
+        "raster-brightness-max": isHistoricalRange(state.yearRange) ? 1 : 0.92 + Math.min(0.18, scenarioIntensity(state.scenario) * 0.08),
+        "raster-fade-duration": 150
+      };
 
       if (!tileUrl) {
         setStatus("Climate tiles are unavailable because the weather API key is missing.", true);
@@ -1336,14 +1462,7 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
             layout: {
               visibility: state.visible ? "visible" : "none"
             },
-            paint: {
-              "raster-opacity": 0.95,
-              "raster-contrast": 0.6,
-              "raster-saturation": 0.4,
-              "raster-brightness-min": 0.1,
-              "raster-brightness-max": 1,
-              "raster-fade-duration": 150
-            }
+            paint: climatePaint
           }, beforeLayerId);
         }
 
@@ -1445,6 +1564,7 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
             state.yearRange = sanitizeYearRange(event.target.value);
             syncFormControls();
             reloadActiveLayer();
+            refreshOpenDataPanel();
           });
         }
 
@@ -1454,6 +1574,7 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
             state.scenario = sanitizeScenario(event.target.value);
             syncFormControls();
             reloadActiveLayer();
+            refreshOpenDataPanel();
           });
         }
 
@@ -1463,6 +1584,7 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
             state.model = sanitizeModel(event.target.value);
             syncFormControls();
             reloadActiveLayer();
+            refreshOpenDataPanel();
           });
         }
 
@@ -1510,6 +1632,7 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
             state.month = normalizeMonth(event.target.value);
             syncFormControls();
             reloadActiveLayer();
+          refreshOpenDataPanel();
           });
         }
       }
@@ -1578,6 +1701,7 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
   });
 
   map.scrollZoom.disable();
+  addLocationSearchControl(map);
   map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
 
   function bindLayerInteractions(layerId, popupLabel) {

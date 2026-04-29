@@ -395,3 +395,31 @@ body.dark-mode .admin-upload-notification-meta {
   }
 
 }
+
+/* Lightweight mode: keep the UI static and avoid expensive cursor glow / lift effects. */
+.cursor-light,
+:is(button, .btn, a.button):not(.btn-close):not(.navbar-toggler)::before,
+:is(button, .btn, a.button):not(.btn-close):not(.navbar-toggler)::after,
+:is(.card, .mock, .list-group-item, .lp-kicker, .lp-stat)::before,
+:is(.card, .mock, .list-group-item, .lp-kicker, .lp-stat)::after {
+  display: none !important;
+}
+
+.hero-logo-background,
+.hero-logo-grid,
+:is(button, .btn, a.button):not(.btn-close):not(.navbar-toggler),
+:is(button, .btn, a.button):not(.btn-close):not(.navbar-toggler):is(:hover, :focus-visible, .is-premium-lit),
+:is(.card, .glass-card, .mock, .lp-cta, .logo-marquee, .list-group-item, .lp-kicker, .lp-stat),
+:is(.card, .glass-card, .mock, .lp-cta, .logo-marquee, .list-group-item, .lp-kicker, .lp-stat):is(:hover, :focus-within, .is-premium-lit),
+:is(.prod-dash, .prod-kpi-card, .prod-table-wrap, .prod-chart-panel, .prod-week-strip, .prod-flow-step, .prod-day, .prod-dash__kpi, .prod-dash__bar, .prod-chart-bars .b, .cts-scope-card-link),
+:is(.prod-dash, .prod-kpi-card, .prod-table-wrap, .prod-chart-panel, .prod-week-strip, .prod-flow-step, .prod-day, .prod-dash__kpi, .prod-dash__bar, .prod-chart-bars .b, .cts-scope-card-link):hover {
+  transform: none !important;
+  animation: none !important;
+}
+
+:is(button, .btn, a.button):not(.btn-close):not(.navbar-toggler),
+:is(.card, .glass-card, .mock, .lp-cta, .logo-marquee, .list-group-item, .lp-kicker, .lp-stat) {
+  will-change: auto !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}

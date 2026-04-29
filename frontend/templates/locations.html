@@ -4,6 +4,7 @@
 
 {% block extra_head %}
 <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.css">
+<link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.0.3/mapbox-gl-geocoder.css">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/locations.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/map.css') }}">
 {% endblock %}
@@ -50,5 +51,6 @@
   };
 </script>
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.js"></script>
+<script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.0.3/mapbox-gl-geocoder.min.js"></script>
 <script src="{{ url_for('static', filename='js/locations_map.js') }}"></script>
 {% endblock %}

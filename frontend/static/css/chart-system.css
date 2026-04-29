@@ -2,46 +2,37 @@
   position: relative;
   border: 1px solid rgba(148, 163, 184, 0.14);
   border-radius: 24px;
-  background:
-    linear-gradient(180deg, var(--chart-surface-start), var(--chart-surface-end)),
-    radial-gradient(circle at top right, var(--chart-surface-glow), transparent 42%);
-  box-shadow:
-    0 18px 42px var(--shadow-color),
-    inset 0 1px 0 var(--chart-highlight);
+  background: linear-gradient(180deg, var(--chart-surface-start), var(--chart-surface-end));
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
   overflow: hidden;
 }
 
 .chart-surface::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(180deg, var(--chart-highlight), transparent 28%);
-  opacity: 0.9;
+  display: none;
 }
 
 .chart-host {
   position: relative;
   z-index: 1;
   width: 100%;
-  height: 280px;
+  height: 560px;
   padding: 12px 10px 2px;
 }
 
 .chart-host--sm {
-  height: 260px;
+  height: 520px;
 }
 
 .chart-host--md {
-  height: 320px;
+  height: 640px;
 }
 
 .chart-host--lg {
-  height: 380px;
+  height: 760px;
 }
 
 .chart-host--xl {
-  height: 440px;
+  height: 880px;
 }
 
 .chart-stack {
@@ -115,12 +106,8 @@
   padding: 20px 22px;
   border-radius: 24px;
   border: 1px solid var(--border);
-  background:
-    linear-gradient(180deg, var(--chart-surface-start), var(--chart-surface-end)),
-    radial-gradient(circle at top right, var(--chart-surface-glow), transparent 40%);
-  box-shadow:
-    0 18px 42px var(--shadow-color),
-    inset 0 1px 0 var(--chart-highlight);
+  background: linear-gradient(180deg, var(--chart-surface-start), var(--chart-surface-end));
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
 }
 
 .report-kpi-card__label {
@@ -160,12 +147,8 @@
   padding: 18px 20px;
   border-radius: 22px;
   border: 1px solid var(--border);
-  background:
-    linear-gradient(180deg, var(--chart-surface-start), var(--chart-surface-end)),
-    radial-gradient(circle at top right, var(--chart-surface-glow), transparent 36%);
-  box-shadow:
-    0 14px 36px var(--shadow-color),
-    inset 0 1px 0 var(--chart-highlight);
+  background: linear-gradient(180deg, var(--chart-surface-start), var(--chart-surface-end));
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
 }
 
 .report-summary-card__eyebrow {

@@ -87,11 +87,6 @@
                     </div>
                 </div>
             </div>
-            <div class="lp-hero-visual" aria-hidden="true">
-                <div class="hero-premium-orb">
-                    <img src="{{ url_for('mouse_symbol_image') }}" alt="" loading="eager" decoding="async">
-                </div>
-            </div>
         </div>
     </div>
 </section>
@@ -108,8 +103,8 @@
             </div>
 
             <div class="lp-right" aria-label="Product preview" data-reveal>
-                <div class="lp-feed-preview">
-                    <article class="lp-feed-card" role="group" aria-label="ESG update">
+                <div class="lp-feed-preview" id="lp-feed-preview">
+                    <article class="lp-feed-card hidden-left" role="group" aria-label="ESG update">
                         <div class="lp-feed-card__meta">
                             <div>
                                 <h4>Sean Higgins</h4>
@@ -122,7 +117,7 @@
                         </p>
                     </article>
 
-                    <article class="lp-feed-card" role="group" aria-label="Platform update">
+                    <article class="lp-feed-card hidden-right" role="group" aria-label="Platform update">
                         <div class="lp-feed-card__meta">
                             <div>
                                 <h4>Florian Demir</h4>
@@ -135,7 +130,7 @@
                         </p>
                     </article>
 
-                    <article class="lp-feed-card" role="group" aria-label="KPI update">
+                    <article class="lp-feed-card hidden-left" role="group" aria-label="KPI update">
                         <div class="lp-feed-card__meta">
                             <div>
                                 <h4>Marta Gulman</h4>

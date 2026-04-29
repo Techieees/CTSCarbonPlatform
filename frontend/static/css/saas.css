@@ -35,7 +35,7 @@
   --toggle-track: rgba(148,163,184,.28);
   --toggle-thumb: #ffffff;
   --toggle-track-active: linear-gradient(135deg, var(--primary), var(--primary-hover));
-  --chart-axis-color: #94a3b8;
+  --chart-axis-color: #0f172a;
   --chart-axis-line: rgba(148,163,184,.20);
   --chart-grid-color: rgba(148,163,184,.10);
   --chart-tooltip-bg: rgba(8, 28, 43, 0.94);
@@ -123,7 +123,7 @@ body.dark-mode{
   --nav-link-hover: #ffffff;
   --toggle-track: rgba(71,85,105,.72);
   --toggle-thumb: #f8fafc;
-  --chart-axis-color: #b7c5db;
+  --chart-axis-color: #f8fafc;
   --chart-axis-line: rgba(148,163,184,.28);
   --chart-grid-color: rgba(148,163,184,.16);
   --chart-tooltip-bg: rgba(2,6,23,.96);
@@ -265,6 +265,24 @@ main{ flex: 1 0 auto; }
 .saas-nav .dropdown-item:focus-visible{
   outline: 2px solid var(--interaction-green-focus);
   outline-offset: -2px;
+}
+.saas-nav .navbar-nav,
+.saas-nav .nav-item {
+  overflow: visible;
+}
+
+.saas-nav .app-account-dropdown .dropdown-toggle::after {
+  margin-left: 0.45rem;
+}
+
+.saas-nav .app-account-dropdown:hover > .dropdown-menu,
+.saas-nav .app-account-dropdown:focus-within > .dropdown-menu {
+  display: block;
+}
+
+.saas-nav .app-account-dropdown .dropdown-menu {
+  margin-top: 0.35rem;
+  min-width: 14rem;
 }
 @media (min-width: 992px){
   .saas-nav .navbar-nav{

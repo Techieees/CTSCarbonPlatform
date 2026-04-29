@@ -4,6 +4,7 @@
   const BUTTON_EXCLUDE_SELECTOR = ".btn-close, .navbar-toggler";
   const INTERACTIVE_SELECTOR = ".card, .glass-card, .lp-feature, .mock, .lp-cta, .logo-marquee, .list-group-item, .lp-kicker, .lp-stat, .prod-kpi-card, .prod-dash, .prod-table-wrap, .prod-chart-panel, .prod-week-strip, .prod-flow-step, [data-spotlight-host]";
   const PARALLAX_SELECTOR = "[data-parallax-scope]";
+  const ENABLE_PREMIUM_POINTER_EFFECTS = false;
 
   const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
   const heavyEffectsQuery = window.matchMedia("(max-width: 767.98px), (pointer: coarse)");
@@ -316,6 +317,10 @@
   };
 
   const init = () => {
+    if (!ENABLE_PREMIUM_POINTER_EFFECTS) {
+      return;
+    }
+
     ensureCursorLight();
     centerGlobalPointer();
     initInteractiveTracking();

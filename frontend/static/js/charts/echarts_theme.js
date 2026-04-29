@@ -1,4 +1,5 @@
 const THEME_NAME = "cts-enterprise-saas";
+const CHART_HEIGHT_SCALE = 2;
 let themeRegistered = false;
 let resizeBindingReady = false;
 
@@ -28,16 +29,16 @@ const themeDefinition = {
     axisLine: { lineStyle: { color: "rgba(148, 163, 184, 0.22)" } },
     axisTick: { show: false },
     splitLine: { show: false },
-    axisLabel: { color: "#94a3b8", fontSize: 12, fontWeight: 500 }
+    axisLabel: { color: "#0f172a", fontSize: 12, fontWeight: 700 }
   },
   valueAxis: {
     axisLine: { show: false },
     axisTick: { show: false },
     splitLine: { lineStyle: { color: "rgba(148, 163, 184, 0.10)" } },
-    axisLabel: { color: "#94a3b8", fontSize: 12, fontWeight: 500 }
+    axisLabel: { color: "#0f172a", fontSize: 12, fontWeight: 700 }
   },
   legend: {
-    textStyle: { color: "#64748b", fontSize: 12, fontWeight: 600 }
+    textStyle: { color: "#0f172a", fontSize: 12, fontWeight: 700 }
   }
 };
 
@@ -145,9 +146,9 @@ export function getGrid(horizontal = false, withLegend = false) {
 
 export function getAxisLabel(formatter) {
   return {
-    color: getCssVar("--chart-axis-color", "#94a3b8"),
+    color: getCssVar("--chart-axis-color", "#0f172a"),
     fontSize: 12,
-    fontWeight: 500,
+    fontWeight: 700,
     formatter
   };
 }
@@ -273,6 +274,14 @@ export function initChart(container) {
     renderer: "canvas",
     useDirtyRect: true
   });
+  const nativeResize = chart.resize.bind(chart);
+  chart.resize = (options) => {
+    if (options && typeof options === "object" && typeof options.height === "number") {
+      nativeResize({ ...options, height: options.height * CHART_HEIGHT_SCALE });
+      return;
+    }
+    nativeResize(options);
+  };
 
   chartRegistry.add(chart);
   bindResizeObserver(element, chart);

@@ -4,6 +4,11 @@
   gap: 1.25rem;
 }
 
+.container.owner-analytics-page {
+  width: min(98vw, 1900px);
+  max-width: none;
+}
+
 .owner-analytics-hero,
 .owner-analytics-panel,
 .owner-analytics-chart-panel,
@@ -110,12 +115,13 @@
 
 .owner-analytics-charts {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 42rem), 1fr));
+  gap: 1.25rem;
 }
 
 .owner-analytics-chart-panel {
-  padding: 1rem;
+  padding: 1.15rem;
+  min-width: 0;
 }
 
 .owner-analytics-table-panel {
@@ -134,7 +140,7 @@
 
 .owner-analytics-chart {
   width: 100%;
-  min-height: 19rem;
+  min-height: 34rem;
 }
 
 body.dark-mode .owner-analytics-hero,

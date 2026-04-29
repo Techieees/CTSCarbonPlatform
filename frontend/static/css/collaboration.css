@@ -95,7 +95,7 @@
   padding: 0;
   border-radius: 999px;
   color: var(--text-primary, #0f172a);
-  overflow: visible;
+  overflow: visible !important;
 }
 
 .collab-icon-button:hover,
@@ -149,11 +149,15 @@
 }
 
 .collab-icon-button--notification .collab-badge {
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 10px;
+  top: 0;
+  right: 0;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
   font-size: 10px;
+  z-index: 3;
+  transform: translate(35%, -35%);
 }
 
 .collab-notification {
@@ -167,17 +171,19 @@
 
 .notification-badge {
   position: absolute;
-  top: -6px;
-  right: -6px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 10px;
+  top: 0;
+  right: 0;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
   font-size: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   white-space: nowrap;
+  z-index: 5;
+  transform: translate(35%, -35%);
 }
 
 .collab-dropdown-panel {

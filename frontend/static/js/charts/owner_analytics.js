@@ -9,21 +9,64 @@
     payload = {};
   }
 
+  const axisLabel = {
+    color: "#0f172a",
+    fontSize: 12,
+    fontWeight: 700,
+  };
+
+  function chartHeight(rows, minimum) {
+    return Math.max(minimum || 520, rows.length * 42 + 120);
+  }
+
   function barOption(title, rows) {
+    const useHorizontalBars = rows.length > 4 || rows.some((item) => String(item.name || "").length > 14);
+    if (useHorizontalBars) {
+      return {
+        ownerHeight: chartHeight(rows, 560),
+        animationDuration: 250,
+        tooltip: { trigger: "axis" },
+        grid: { left: 190, right: 28, top: 28, bottom: 28, containLabel: false },
+        xAxis: {
+          type: "value",
+          axisLabel,
+        },
+        yAxis: {
+          type: "category",
+          inverse: true,
+          data: rows.map((item) => item.name),
+          axisLabel: {
+            ...axisLabel,
+            width: 170,
+            overflow: "truncate",
+          },
+        },
+        series: [{
+          type: "bar",
+          data: rows.map((item) => item.value),
+          itemStyle: { color: "#2f5fb3", borderRadius: [0, 6, 6, 0] },
+          barMaxWidth: 28,
+        }],
+        title: { text: title, show: false },
+      };
+    }
+
     return {
-      animationDuration: 400,
+      ownerHeight: 520,
+      animationDuration: 250,
       tooltip: { trigger: "axis" },
-      grid: { left: 42, right: 16, top: 28, bottom: 42, containLabel: true },
+      grid: { left: 52, right: 24, top: 28, bottom: 72, containLabel: true },
       xAxis: {
         type: "category",
         data: rows.map((item) => item.name),
-        axisLabel: { interval: 0, rotate: rows.length > 5 ? 28 : 0 },
+        axisLabel: { ...axisLabel, interval: 0, rotate: rows.length > 3 ? 35 : 0 },
       },
-      yAxis: { type: "value" },
+      yAxis: { type: "value", axisLabel },
       series: [{
         type: "bar",
         data: rows.map((item) => item.value),
         itemStyle: { color: "#2f5fb3", borderRadius: [6, 6, 0, 0] },
+        barMaxWidth: 34,
       }],
       title: { text: title, show: false },
     };
@@ -31,11 +74,12 @@
 
   function lineOption(rows) {
     return {
-      animationDuration: 400,
+      ownerHeight: 520,
+      animationDuration: 250,
       tooltip: { trigger: "axis" },
-      grid: { left: 42, right: 16, top: 28, bottom: 42, containLabel: true },
-      xAxis: { type: "category", data: rows.map((item) => item.name) },
-      yAxis: { type: "value" },
+      grid: { left: 52, right: 24, top: 28, bottom: 72, containLabel: true },
+      xAxis: { type: "category", data: rows.map((item) => item.name), axisLabel: { ...axisLabel, interval: 0, rotate: rows.length > 7 ? 35 : 0 } },
+      yAxis: { type: "value", axisLabel },
       series: [{
         type: "line",
         smooth: true,
@@ -49,9 +93,15 @@
 
   function pieOption(rows) {
     return {
-      animationDuration: 400,
+      ownerHeight: 520,
+      animationDuration: 250,
       tooltip: { trigger: "item" },
-      legend: { bottom: 0, left: "center" },
+      legend: {
+        bottom: 0,
+        left: "center",
+        type: "scroll",
+        textStyle: axisLabel,
+      },
       series: [{
         type: "pie",
         radius: ["42%", "72%"],
@@ -82,7 +132,15 @@
     const node = document.getElementById(id);
     if (!node) return null;
     const chart = echarts.init(node);
-    chart.setOption(option);
+    const { ownerHeight, ...echartsOption } = option;
+    if (ownerHeight) {
+      node.style.minHeight = ownerHeight + "px";
+      node.style.height = ownerHeight + "px";
+    }
+    chart.setOption(echartsOption);
+    if (ownerHeight) {
+      chart.resize({ height: ownerHeight });
+    }
     return chart;
   }).filter(Boolean);
 
