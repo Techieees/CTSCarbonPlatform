@@ -23,6 +23,10 @@
         <strong>{{ activity_rows }}</strong>
       </div>
       <div class="owner-analytics-meta-chip">
+        <span>Open No match rows</span>
+        <strong>{{ metrics.unmapped_open_count }}</strong>
+      </div>
+      <div class="owner-analytics-meta-chip">
         <span>Most used dataset</span>
         <strong>{{ metrics.most_used_dataset }}</strong>
       </div>
@@ -33,13 +37,22 @@
     <article class="owner-analytics-kpi-card"><span>Total users</span><strong>{{ metrics.total_users }}</strong></article>
     <article class="owner-analytics-kpi-card"><span>Active users (24h)</span><strong>{{ metrics.active_users_24h }}</strong></article>
     <article class="owner-analytics-kpi-card"><span>Active users (7d)</span><strong>{{ metrics.active_users_7d }}</strong></article>
+    <article class="owner-analytics-kpi-card"><span>Active users (30d)</span><strong>{{ metrics.active_users_30d }}</strong></article>
+    <article class="owner-analytics-kpi-card"><span>Unique sessions</span><strong>{{ metrics.unique_sessions }}</strong></article>
     <article class="owner-analytics-kpi-card"><span>Total logins</span><strong>{{ metrics.total_logins }}</strong></article>
     <article class="owner-analytics-kpi-card"><span>Total page views</span><strong>{{ metrics.total_page_views }}</strong></article>
+    <article class="owner-analytics-kpi-card"><span>API requests</span><strong>{{ metrics.total_api_requests }}</strong></article>
+    <article class="owner-analytics-kpi-card"><span>Uploads</span><strong>{{ metrics.total_uploads }}</strong></article>
+    <article class="owner-analytics-kpi-card"><span>Searches</span><strong>{{ metrics.total_searches }}</strong></article>
     <article class="owner-analytics-kpi-card"><span>CCC API usage</span><strong>{{ metrics.ccc_api_usage_count }}</strong></article>
     <article class="owner-analytics-kpi-card"><span>Mapping runs</span><strong>{{ metrics.mapping_runs_count }}</strong></article>
+    <article class="owner-analytics-kpi-card"><span>Open No match rows</span><strong>{{ metrics.unmapped_open_count }}</strong></article>
     <article class="owner-analytics-kpi-card"><span>Forecast runs</span><strong>{{ metrics.forecast_runs_count }}</strong></article>
     <article class="owner-analytics-kpi-card"><span>Audit dataset runs</span><strong>{{ metrics.audit_dataset_runs }}</strong></article>
     <article class="owner-analytics-kpi-card"><span>Avg session duration</span><strong>{{ metrics.avg_session_duration_minutes }} min</strong></article>
+    <article class="owner-analytics-kpi-card"><span>Pages / session</span><strong>{{ metrics.pages_per_session }}</strong></article>
+    <article class="owner-analytics-kpi-card"><span>Bounce rate</span><strong>{{ metrics.bounce_rate }}%</strong></article>
+    <article class="owner-analytics-kpi-card"><span>Peak activity hour</span><strong>{{ metrics.peak_activity_hour }}</strong></article>
     <article class="owner-analytics-kpi-card"><span>Feature adoption rate</span><strong>{{ metrics.feature_adoption_rate }}%</strong></article>
     <article class="owner-analytics-kpi-card"><span>Top engagement score</span><strong>{{ metrics.top_company_engagement_score }}</strong></article>
   </section>
@@ -90,6 +103,54 @@
         <div class="owner-analytics-list__row"><span>{{ item.name }}</span><strong>{{ item.value }}</strong></div>
         {% else %}
         <p class="text-muted mb-0">No browser data available yet.</p>
+        {% endfor %}
+      </div>
+    </article>
+    <article class="owner-analytics-panel">
+      <div class="owner-analytics-panel__header">
+        <h2>Top cities</h2>
+      </div>
+      <div class="owner-analytics-list">
+        {% for item in metrics.top_cities %}
+        <div class="owner-analytics-list__row"><span>{{ item.name }}</span><strong>{{ item.value }}</strong></div>
+        {% else %}
+        <p class="text-muted mb-0">City lookups are still empty.</p>
+        {% endfor %}
+      </div>
+    </article>
+    <article class="owner-analytics-panel">
+      <div class="owner-analytics-panel__header">
+        <h2>Operating systems</h2>
+      </div>
+      <div class="owner-analytics-list">
+        {% for item in metrics.top_operating_systems %}
+        <div class="owner-analytics-list__row"><span>{{ item.name }}</span><strong>{{ item.value }}</strong></div>
+        {% else %}
+        <p class="text-muted mb-0">No OS data available yet.</p>
+        {% endfor %}
+      </div>
+    </article>
+    <article class="owner-analytics-panel">
+      <div class="owner-analytics-panel__header">
+        <h2>Top referrers</h2>
+      </div>
+      <div class="owner-analytics-list">
+        {% for item in metrics.top_referrers %}
+        <div class="owner-analytics-list__row"><span>{{ item.name }}</span><strong>{{ item.value }}</strong></div>
+        {% else %}
+        <p class="text-muted mb-0">No referrer data available yet.</p>
+        {% endfor %}
+      </div>
+    </article>
+    <article class="owner-analytics-panel">
+      <div class="owner-analytics-panel__header">
+        <h2>Action distribution</h2>
+      </div>
+      <div class="owner-analytics-list">
+        {% for item in metrics.action_distribution %}
+        <div class="owner-analytics-list__row"><span>{{ item.name }}</span><strong>{{ item.value }}</strong></div>
+        {% else %}
+        <p class="text-muted mb-0">No actions logged yet.</p>
         {% endfor %}
       </div>
     </article>
@@ -148,11 +209,67 @@
     <article class="owner-analytics-chart-panel"><h3>User activity by hour</h3><div id="ownerChartHour" class="owner-analytics-chart"></div></article>
     <article class="owner-analytics-chart-panel"><h3>Top visited pages</h3><div id="ownerChartPages" class="owner-analytics-chart"></div></article>
     <article class="owner-analytics-chart-panel"><h3>Country distribution</h3><div id="ownerChartCountries" class="owner-analytics-chart"></div></article>
+    <article class="owner-analytics-chart-panel"><h3>City distribution</h3><div id="ownerChartCities" class="owner-analytics-chart"></div></article>
     <article class="owner-analytics-chart-panel"><h3>Browser distribution</h3><div id="ownerChartBrowsers" class="owner-analytics-chart"></div></article>
+    <article class="owner-analytics-chart-panel"><h3>Device distribution</h3><div id="ownerChartDevices" class="owner-analytics-chart"></div></article>
+    <article class="owner-analytics-chart-panel"><h3>OS distribution</h3><div id="ownerChartOS" class="owner-analytics-chart"></div></article>
     <article class="owner-analytics-chart-panel"><h3>Company activity distribution</h3><div id="ownerChartCompanies" class="owner-analytics-chart"></div></article>
     <article class="owner-analytics-chart-panel"><h3>Feature usage frequency</h3><div id="ownerChartFeatures" class="owner-analytics-chart"></div></article>
+    <article class="owner-analytics-chart-panel"><h3>Action distribution</h3><div id="ownerChartActions" class="owner-analytics-chart"></div></article>
+    <article class="owner-analytics-chart-panel"><h3>Referrers</h3><div id="ownerChartReferrers" class="owner-analytics-chart"></div></article>
     <article class="owner-analytics-chart-panel"><h3>Dataset usage frequency</h3><div id="ownerChartDatasets" class="owner-analytics-chart"></div></article>
     <article class="owner-analytics-chart-panel"><h3>Session duration distribution</h3><div id="ownerChartSessions" class="owner-analytics-chart"></div></article>
+  </section>
+
+  <section class="owner-analytics-table-panel">
+    <div class="owner-analytics-panel__header">
+      <h2>Recent visits</h2>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Page</th><th>IP / Location</th><th>Device</th></tr></thead>
+        <tbody>
+          {% for visit in metrics.recent_visits %}
+          <tr>
+            <td class="text-muted text-nowrap">{{ visit.created_at }}</td>
+            <td><div>{{ visit.email }}</div><div class="small text-muted">{{ visit.company_name }}</div></td>
+            <td><span class="badge text-bg-light border">{{ visit.action }}</span></td>
+            <td class="small">{{ visit.page }}</td>
+            <td class="small"><div class="font-monospace">{{ visit.ip_address }}</div><div class="text-muted">{{ visit.location }}</div></td>
+            <td class="small">{{ visit.device }} / {{ visit.browser }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-center text-muted py-4">No visits logged yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="owner-analytics-table-panel">
+    <div class="owner-analytics-panel__header">
+      <h2>User last seen</h2>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead><tr><th>User</th><th>Company</th><th>First seen</th><th>Last seen</th><th>Visits</th><th>Last page</th><th>Last location/device</th></tr></thead>
+        <tbody>
+          {% for seen in metrics.user_last_seen %}
+          <tr>
+            <td>{{ seen.email }}</td>
+            <td>{{ seen.company_name }}</td>
+            <td class="text-muted text-nowrap">{{ seen.first_seen }}</td>
+            <td class="text-muted text-nowrap">{{ seen.last_seen }}</td>
+            <td class="font-monospace">{{ seen.visits }}</td>
+            <td class="small">{{ seen.last_page }}</td>
+            <td class="small">{{ seen.location }} / {{ seen.device }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center text-muted py-4">No user activity logged yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </section>
 </div>
 

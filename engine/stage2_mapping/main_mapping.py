@@ -359,6 +359,63 @@ def _compute_emissions_tco2e(spend_eur: Optional[float], ef_value: Optional[floa
     return spend_f * ef_f
 
 
+def _to_float_or_none(value: object) -> Optional[float]:
+    if value is None:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    try:
+        return float(raw.replace("\u00A0", " ").replace(" ", "").replace(",", "."))
+    except Exception:
+        return None
+
+
+def _first_numeric_value(row: pd.Series, candidates: List[str]) -> Optional[float]:
+    for col in candidates:
+        try:
+            if col in row.index:
+                parsed = _to_float_or_none(row.get(col))
+                if parsed is not None:
+                    return parsed
+        except Exception:
+            continue
+    return None
+
+
+def _compute_activity_emissions_tco2e(row: pd.Series, ef_value: object, ef_unit: object, sheet_name: str) -> Optional[float]:
+    sheet_low = str(sheet_name or "").strip().lower()
+    if sheet_low not in {
+        "scope 1 fuel usage",
+        "scope 1 fuel usage activity",
+        "scope 1 fuel activity",
+    }:
+        return None
+
+    ef_f = _to_float_or_none(ef_value)
+    if ef_f is None:
+        return None
+    unit_low = str(ef_unit or "").strip().lower().replace("co₂", "co2")
+    if not unit_low:
+        return None
+
+    if any(token in unit_low for token in ["/p-km", "/pkm", "/km", "per km"]):
+        activity = _first_numeric_value(row, ["Distance travelled", "Distance Travelled", "Distance", "km travelled", "km"])
+    elif any(token in unit_low for token in ["/kwh", "per kwh"]):
+        activity = _first_numeric_value(row, ["Fuel consumption", "Fuel Consumption", "Consumption", "kWh", "KWH"])
+    elif any(token in unit_low for token in ["/l", "/litre", "/liter", "per litre", "per liter", "kg/l"]):
+        activity = _first_numeric_value(row, ["Fuel consumption", "Fuel Consumption", "Litres", "Liters", "Litre", "Liter"])
+    else:
+        return None
+
+    if activity is None:
+        return None
+    emissions = activity * ef_f
+    if "kg" in unit_low and "t co2" not in unit_low and "tco2" not in unit_low:
+        emissions = emissions / 1000.0
+    return emissions
+
+
 def _load_input_workbook(base_dir: Path) -> Dict[str, pd.DataFrame]:
     """Load input workbook. If the configured file is missing, fallback to latest matching file."""
     search_roots = [STAGE2_INPUT_DIR, DATA_DIR, base_dir]
@@ -1562,11 +1619,19 @@ def process_all_sheets() -> None:
             ef_unit_series = results_df["ef_unit"].astype(str)
 
             emissions_vals: List[Optional[float]] = []
-            for spend, ef_val, ef_unit in zip(spend_series.tolist(), ef_val_series.tolist(), ef_unit_series.tolist()):
-                emissions_vals.append(_compute_emissions_tco2e(spend, ef_val, ef_unit))
+            for row_idx, (spend, ef_val, ef_unit) in enumerate(zip(spend_series.tolist(), ef_val_series.tolist(), ef_unit_series.tolist())):
+                emissions = _compute_emissions_tco2e(spend, ef_val, ef_unit)
+                if emissions is None and row_idx < len(df_proc):
+                    emissions = _compute_activity_emissions_tco2e(df_proc.iloc[row_idx], ef_val, ef_unit, sheet_name)
+                emissions_vals.append(emissions)
             results_df["emissions_tco2e"] = emissions_vals
         else:
-            results_df["emissions_tco2e"] = None
+            emissions_vals = []
+            for row_idx, row in df_proc.reset_index(drop=True).iterrows():
+                ef_val = results_df["ef_value"].iloc[row_idx] if row_idx < len(results_df) and "ef_value" in results_df.columns else None
+                ef_unit = results_df["ef_unit"].iloc[row_idx] if row_idx < len(results_df) and "ef_unit" in results_df.columns else None
+                emissions_vals.append(_compute_activity_emissions_tco2e(row, ef_val, ef_unit, sheet_name))
+            results_df["emissions_tco2e"] = emissions_vals if emissions_vals else None
 
         # Attach outputs to original data (remove any pre-existing result columns to avoid duplicates like ef_name.1)
         for col in out_cols:

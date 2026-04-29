@@ -7,6 +7,7 @@
 .owner-analytics-hero,
 .owner-analytics-panel,
 .owner-analytics-chart-panel,
+.owner-analytics-table-panel,
 .owner-analytics-kpi-card {
   border: 1px solid var(--border-subtle, rgba(15, 23, 42, 0.12));
   background: var(--surface-elevated, #fff);
@@ -117,6 +118,20 @@
   padding: 1rem;
 }
 
+.owner-analytics-table-panel {
+  padding: 1rem;
+  overflow: hidden;
+}
+
+.owner-analytics-table-panel table {
+  color: var(--text-primary, #0f172a);
+}
+
+.owner-analytics-table-panel td,
+.owner-analytics-table-panel th {
+  vertical-align: top;
+}
+
 .owner-analytics-chart {
   width: 100%;
   min-height: 19rem;
@@ -125,6 +140,7 @@
 body.dark-mode .owner-analytics-hero,
 body.dark-mode .owner-analytics-panel,
 body.dark-mode .owner-analytics-chart-panel,
+body.dark-mode .owner-analytics-table-panel,
 body.dark-mode .owner-analytics-kpi-card {
   background: var(--surface-elevated);
   border-color: var(--border-subtle);

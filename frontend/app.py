@@ -4,6 +4,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file, send_from_directory, Response, session, abort, g
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from sqlalchemy import or_
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from openpyxl import load_workbook, Workbook
@@ -1277,6 +1278,35 @@ class MappingRunSummary(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
+class MappingUnmappedRow(db.Model):
+    """
+    Rows that completed a mapping run but still have status == "No match".
+    Kept separate so mapped rows can continue into dashboards while owners review gaps.
+    """
+    __tablename__ = "mapping_unmapped_row"
+    __table_args__ = (
+        db.Index("ix_unmapped_company_sheet_status", "company_name", "sheet_name", "review_status"),
+        db.Index("ix_unmapped_run_row", "run_id", "row_number"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    run_id = db.Column(db.String(32), db.ForeignKey("mapping_run.id"), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    company_name = db.Column(db.String(200), nullable=False, index=True)
+    sheet_name = db.Column(db.String(200), nullable=False, index=True)
+    source_entry_group = db.Column(db.String(40), nullable=True, index=True)
+    row_number = db.Column(db.Integer, nullable=False, default=0)
+    row_label = db.Column(db.String(500), nullable=True)
+    status_value = db.Column(db.String(120), nullable=False, default="No match")
+    row_payload = db.Column(db.Text, nullable=False, default="{}")
+    review_status = db.Column(db.String(32), nullable=False, default="open", index=True)
+    assigned_ef_id = db.Column(db.String(120), nullable=True, index=True)
+    owner_notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    resolved_at = db.Column(db.DateTime, nullable=True)
+    resolved_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+
+
 class DataEntry(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     company_name = db.Column(db.String(200), nullable=False)
@@ -1716,6 +1746,7 @@ def _ensure_db_tables() -> None:
         _ensure_feed_post_reference_columns()
         _ensure_report_category_columns()
         _ensure_awards_form_columns()
+        _ensure_mapping_unmapped_row_columns()
     except Exception:
         pass
 
@@ -1913,25 +1944,40 @@ def _owner_analytics_context() -> dict[str, object]:
             "total_users": total_users,
             "active_users_24h": 0,
             "active_users_7d": 0,
+            "active_users_30d": 0,
+            "unique_sessions": 0,
             "total_logins": 0,
             "total_page_views": 0,
+            "total_api_requests": 0,
+            "total_uploads": 0,
+            "total_searches": 0,
             "ccc_api_usage_count": 0,
             "mapping_runs_count": 0,
+            "unmapped_open_count": 0,
             "forecast_runs_count": 0,
             "audit_dataset_runs": 0,
             "avg_session_duration_minutes": 0.0,
+            "pages_per_session": 0.0,
+            "bounce_rate": 0.0,
             "feature_adoption_rate": 0.0,
             "top_company_engagement_score": 0.0,
             "most_used_dataset": "None yet",
+            "peak_activity_hour": "None yet",
             "most_visited_pages": [],
             "most_active_companies": [],
             "top_countries": [],
+            "top_cities": [],
+            "top_referrers": [],
             "top_browsers": [],
             "top_devices": [],
+            "top_operating_systems": [],
             "most_active_hours": [],
             "feature_usage_frequency": [],
+            "action_distribution": [],
             "dataset_usage_frequency": [],
             "company_engagement": [],
+            "recent_visits": [],
+            "user_last_seen": [],
         }
         return {"metrics": empty_metrics, "chart_data": empty_metrics, "activity_rows": 0}
 
@@ -1946,6 +1992,7 @@ def _owner_analytics_context() -> dict[str, object]:
                 "page": row.page or "",
                 "endpoint": row.endpoint or "",
                 "method": row.method or "",
+                "ip_address": row.ip_address or "Unknown",
                 "country": row.country or "Unknown",
                 "city": row.city or "Unknown",
                 "device": row.device or "Unknown",
@@ -1964,8 +2011,10 @@ def _owner_analytics_context() -> dict[str, object]:
 
     last_24h = frame[frame["created_at"] >= (now - timedelta(hours=24))]
     last_7d = frame[frame["created_at"] >= (now - timedelta(days=7))]
+    last_30d = frame[frame["created_at"] >= (now - timedelta(days=30))]
     active_users_24h = int(last_24h["user_id"].dropna().nunique())
     active_users_7d = int(last_7d["user_id"].dropna().nunique())
+    active_users_30d = int(last_30d["user_id"].dropna().nunique())
 
     def _top_pairs(series: pd.Series, *, limit: int = 8, exclude_unknown: bool = False) -> list[dict[str, object]]:
         cleaned = series.fillna("").astype(str).str.strip()
@@ -1977,20 +2026,38 @@ def _owner_analytics_context() -> dict[str, object]:
 
     total_logins = int((frame["action"] == "login").sum())
     total_page_views = int(frame["action"].isin(["page_visit", "search_usage"]).sum())
+    total_api_requests = int((frame["action"] == "api_request").sum())
+    total_uploads = int((frame["action"] == "data_upload").sum())
+    total_searches = int((frame["action"] == "search_usage").sum())
     ccc_api_usage_count = int((frame["action"] == "ccc_api_sync").sum())
     mapping_runs_count = int((frame["action"] == "mapping_run").sum())
     forecast_runs_count = int((frame["action"] == "forecasting_run").sum())
     audit_dataset_runs = int((frame["action"] == "audit_dataset_generation").sum())
+    try:
+        unmapped_open_count = int(MappingUnmappedRow.query.filter_by(review_status="open").count())
+    except Exception:
+        unmapped_open_count = 0
 
     session_frame = frame[frame["session_id"].astype(str).str.strip() != ""].copy()
     session_durations: list[float] = []
+    session_page_counts: list[int] = []
     if not session_frame.empty:
         grouped_sessions = session_frame.groupby("session_id")["created_at"].agg(["min", "max"])
         session_durations = [
             max(0.0, float((row["max"] - row["min"]).total_seconds() / 60.0))
             for _, row in grouped_sessions.iterrows()
         ]
+        session_page_counts = [
+            int(value)
+            for value in session_frame[session_frame["action"].isin(["page_visit", "search_usage"])]
+            .groupby("session_id")
+            .size()
+            .tolist()
+        ]
+    unique_sessions = int(session_frame["session_id"].nunique()) if not session_frame.empty else 0
     avg_session_duration_minutes = round(sum(session_durations) / len(session_durations), 1) if session_durations else 0.0
+    pages_per_session = round(total_page_views / unique_sessions, 2) if unique_sessions else 0.0
+    bounce_rate = round((sum(1 for value in session_page_counts if value <= 1) / len(session_page_counts)) * 100.0, 1) if session_page_counts else 0.0
 
     feature_user_sets = {
         "mapping": set(frame.loc[frame["action"] == "mapping_run", "user_id"].dropna().astype(int).tolist()),
@@ -2047,6 +2114,7 @@ def _owner_analytics_context() -> dict[str, object]:
             "Login": total_logins,
             "Search": int((frame["action"] == "search_usage").sum()),
             "Mapping": mapping_runs_count,
+            "Open No Match Rows": unmapped_open_count,
             "CCC API": ccc_api_usage_count,
             "Forecasting": forecast_runs_count,
             "Audit Export": audit_dataset_runs,
@@ -2058,9 +2126,45 @@ def _owner_analytics_context() -> dict[str, object]:
     most_visited_pages = _top_pairs(frame["page"], limit=8)
     most_active_companies = _top_pairs(frame["company_name"], limit=8, exclude_unknown=True)
     top_countries = _top_pairs(frame["country"], limit=8, exclude_unknown=True)
+    top_cities = _top_pairs(frame["city"], limit=8, exclude_unknown=True)
+    top_referrers = _top_pairs(frame["referrer"], limit=8, exclude_unknown=True)
     top_browsers = _top_pairs(frame["browser"], limit=8, exclude_unknown=True)
     top_devices = _top_pairs(frame["device"], limit=8, exclude_unknown=True)
+    top_operating_systems = _top_pairs(frame["os"], limit=8, exclude_unknown=True)
     most_active_hours = [{"name": f"{int(idx):02d}:00", "value": int(val)} for idx, val in frame["hour"].value_counts().sort_index().items()]
+    peak_activity_hour = max(most_active_hours, key=lambda item: int(item["value"]))["name"] if most_active_hours else "None yet"
+    action_distribution = _top_pairs(frame["action"], limit=12)
+    recent_visits = [
+        {
+            "email": str(row.get("email") or "Unknown"),
+            "company_name": str(row.get("company_name") or "Unknown"),
+            "action": str(row.get("action") or ""),
+            "page": str(row.get("page") or ""),
+            "ip_address": str(row.get("ip_address") or "Unknown"),
+            "location": ", ".join([v for v in [str(row.get("city") or ""), str(row.get("country") or "")] if v and v != "Unknown"]) or "Unknown",
+            "device": str(row.get("device") or "Unknown"),
+            "browser": str(row.get("browser") or "Unknown"),
+            "created_at": row.get("created_at").strftime("%Y-%m-%d %H:%M") if hasattr(row.get("created_at"), "strftime") else "",
+        }
+        for row in frame.sort_values("created_at", ascending=False).head(30).to_dict(orient="records")
+    ]
+    user_last_seen = []
+    for email, group in frame[frame["email"].astype(str).str.strip() != ""].groupby("email"):
+        latest = group.sort_values("created_at", ascending=False).iloc[0]
+        first_seen = group["created_at"].min()
+        user_last_seen.append(
+            {
+                "email": str(email),
+                "company_name": str(latest.get("company_name") or "Unknown"),
+                "last_seen": latest["created_at"].strftime("%Y-%m-%d %H:%M"),
+                "first_seen": first_seen.strftime("%Y-%m-%d %H:%M") if hasattr(first_seen, "strftime") else "",
+                "visits": int(len(group.index)),
+                "last_page": str(latest.get("page") or ""),
+                "location": ", ".join([v for v in [str(latest.get("city") or ""), str(latest.get("country") or "")] if v and v != "Unknown"]) or "Unknown",
+                "device": str(latest.get("device") or "Unknown"),
+            }
+        )
+    user_last_seen.sort(key=lambda item: str(item["last_seen"]), reverse=True)
 
     daily_active_users = (
         frame.groupby("date")["user_id"].nunique().sort_index()
@@ -2077,34 +2181,54 @@ def _owner_analytics_context() -> dict[str, object]:
         "total_users": total_users,
         "active_users_24h": active_users_24h,
         "active_users_7d": active_users_7d,
+        "active_users_30d": active_users_30d,
+        "unique_sessions": unique_sessions,
         "total_logins": total_logins,
         "total_page_views": total_page_views,
+        "total_api_requests": total_api_requests,
+        "total_uploads": total_uploads,
+        "total_searches": total_searches,
         "ccc_api_usage_count": ccc_api_usage_count,
         "mapping_runs_count": mapping_runs_count,
+        "unmapped_open_count": unmapped_open_count,
         "forecast_runs_count": forecast_runs_count,
         "audit_dataset_runs": audit_dataset_runs,
         "avg_session_duration_minutes": avg_session_duration_minutes,
+        "pages_per_session": pages_per_session,
+        "bounce_rate": bounce_rate,
         "feature_adoption_rate": feature_adoption_rate,
         "top_company_engagement_score": top_company_engagement_score,
         "most_used_dataset": most_used_dataset,
+        "peak_activity_hour": peak_activity_hour,
         "most_visited_pages": most_visited_pages,
         "most_active_companies": most_active_companies,
         "top_countries": top_countries,
+        "top_cities": top_cities,
+        "top_referrers": top_referrers,
         "top_browsers": top_browsers,
         "top_devices": top_devices,
+        "top_operating_systems": top_operating_systems,
         "most_active_hours": most_active_hours,
         "feature_usage_frequency": feature_usage_frequency,
+        "action_distribution": action_distribution,
         "dataset_usage_frequency": dataset_usage_frequency,
         "company_engagement": company_engagement[:8],
+        "recent_visits": recent_visits,
+        "user_last_seen": user_last_seen[:30],
     }
     chart_data = {
         "daily_active_users": [{"name": str(idx), "value": int(val)} for idx, val in daily_active_users.items()],
         "activity_by_hour": most_active_hours,
         "top_pages": most_visited_pages,
         "country_distribution": top_countries,
+        "city_distribution": top_cities,
         "browser_distribution": top_browsers,
+        "device_distribution": top_devices,
+        "os_distribution": top_operating_systems,
         "company_distribution": most_active_companies,
         "feature_usage": feature_usage_frequency,
+        "action_distribution": action_distribution,
+        "referrer_distribution": top_referrers,
         "dataset_usage": dataset_usage_frequency,
         "session_duration_distribution": session_duration_distribution,
     }
@@ -2879,6 +3003,14 @@ def _run_mapping_for_virtual_sheet(user_id: int, company_name: str, sheet_name: 
             sheet_name=sheet_name,
             mapped_df=mapped_df,
             output_path=out_path,
+        )
+        _sync_unmapped_rows_for_mapping_run(
+            run_id=run_id,
+            user_id=int(user_id),
+            company_name=company_name,
+            sheet_name=sheet_name,
+            source_entry_group="averages",
+            mapped_df=mapped_df,
         )
         db.session.commit()
     except Exception:
@@ -3778,6 +3910,40 @@ def _ensure_awards_form_columns() -> None:
             return
         with db.engine.begin() as conn:
             conn.execute(text("ALTER TABLE awards_forms ADD COLUMN header_image VARCHAR(500)"))
+    except Exception:
+        pass
+
+
+def _ensure_mapping_unmapped_row_columns() -> None:
+    try:
+        from sqlalchemy import inspect, text
+
+        inspector = inspect(db.engine)
+        if not inspector.has_table("mapping_unmapped_row"):
+            return
+        existing = {col["name"] for col in inspector.get_columns("mapping_unmapped_row")}
+        alters: list[str] = []
+        if "source_entry_group" not in existing:
+            alters.append("ALTER TABLE mapping_unmapped_row ADD COLUMN source_entry_group VARCHAR(40)")
+        if "row_label" not in existing:
+            alters.append("ALTER TABLE mapping_unmapped_row ADD COLUMN row_label VARCHAR(500)")
+        if "status_value" not in existing:
+            alters.append("ALTER TABLE mapping_unmapped_row ADD COLUMN status_value VARCHAR(120) DEFAULT 'No match'")
+        if "review_status" not in existing:
+            alters.append("ALTER TABLE mapping_unmapped_row ADD COLUMN review_status VARCHAR(32) DEFAULT 'open'")
+        if "assigned_ef_id" not in existing:
+            alters.append("ALTER TABLE mapping_unmapped_row ADD COLUMN assigned_ef_id VARCHAR(120)")
+        if "owner_notes" not in existing:
+            alters.append("ALTER TABLE mapping_unmapped_row ADD COLUMN owner_notes TEXT")
+        if "resolved_at" not in existing:
+            alters.append("ALTER TABLE mapping_unmapped_row ADD COLUMN resolved_at DATETIME")
+        if "resolved_by_user_id" not in existing:
+            alters.append("ALTER TABLE mapping_unmapped_row ADD COLUMN resolved_by_user_id INTEGER")
+        if not alters:
+            return
+        with db.engine.begin() as conn:
+            for stmt in alters:
+                conn.execute(text(stmt))
     except Exception:
         pass
 
@@ -4758,6 +4924,173 @@ def _upsert_mapping_run_summary(
     summ.total_categories = int(total_categories or 0)
     summ.coverage_pct = float(coverage_pct or 0.0)
     summ.created_at = datetime.now()
+
+
+def _df_find_column_casefold(df: "pd.DataFrame", candidates: tuple[str, ...]) -> str | None:
+    if df is None or getattr(df, "columns", None) is None:
+        return None
+    lowered = {str(c).strip().lower(): str(c) for c in df.columns}
+    for candidate in candidates:
+        hit = lowered.get(str(candidate).strip().lower())
+        if hit:
+            return hit
+    return None
+
+
+def _json_safe_value(value: object) -> object:
+    try:
+        if pd.isna(value):
+            return ""
+    except Exception:
+        pass
+    if isinstance(value, (datetime, pd.Timestamp)):
+        return value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    try:
+        if hasattr(value, "item"):
+            return value.item()
+    except Exception:
+        pass
+    return value
+
+
+def _unmapped_row_label(row: "pd.Series") -> str:
+    candidates = (
+        "Product Type",
+        "Product type",
+        "Service Provided",
+        "Service provided",
+        "Purchased Goods and Services",
+        "Spend Category",
+        "Description",
+        "Supplier",
+        "Vendor",
+        "BillOfQuantity",
+        "Bill of Quantity",
+        "Activity",
+    )
+    parts: list[str] = []
+    for col in candidates:
+        if col not in row.index:
+            continue
+        value = str(row.get(col) or "").strip()
+        if value and value.lower() not in {"nan", "none"} and value not in parts:
+            parts.append(value)
+        if len(parts) >= 3:
+            break
+    return " / ".join(parts)[:500] if parts else "Unmapped row"
+
+
+def _mapping_unmapped_context_value(row: "pd.Series", candidates: tuple[str, ...]) -> str:
+    for col in candidates:
+        if col in row.index:
+            value = str(row.get(col) or "").strip()
+            if value and value.lower() not in {"nan", "none"}:
+                return value
+    return ""
+
+
+def _sync_unmapped_rows_for_mapping_run(
+    *,
+    run_id: str,
+    user_id: int | None,
+    company_name: str,
+    sheet_name: str,
+    source_entry_group: str | None,
+    mapped_df: "pd.DataFrame",
+) -> int:
+    if mapped_df is None or mapped_df.empty:
+        return 0
+    status_col = _df_find_column_casefold(mapped_df, ("status", "Status", "mapping_status", "Mapping Status"))
+    if not status_col:
+        return 0
+    status_series = mapped_df[status_col].fillna("").astype(str).str.strip().str.lower()
+    no_match_mask = status_series == "no match"
+    if not bool(getattr(no_match_mask, "any", lambda: False)()):
+        return 0
+
+    entry_group = str(source_entry_group or "").strip() or None
+    previous_query = MappingUnmappedRow.query.filter(
+        MappingUnmappedRow.company_name == company_name,
+        MappingUnmappedRow.sheet_name == sheet_name,
+        MappingUnmappedRow.review_status == "open",
+    )
+    if entry_group:
+        previous_query = previous_query.filter(MappingUnmappedRow.source_entry_group == entry_group)
+    for previous in previous_query.all():
+        previous.review_status = "superseded"
+        previous.resolved_at = datetime.utcnow()
+
+    MappingUnmappedRow.query.filter_by(run_id=run_id).delete()
+    inserted = 0
+    for idx in mapped_df[no_match_mask].index.tolist():
+        row = mapped_df.loc[idx]
+        payload = {str(col): _json_safe_value(row.get(col)) for col in mapped_df.columns}
+        db.session.add(
+            MappingUnmappedRow(
+                run_id=run_id,
+                user_id=user_id,
+                company_name=company_name,
+                sheet_name=sheet_name,
+                source_entry_group=entry_group,
+                row_number=int(idx) + 2,
+                row_label=_unmapped_row_label(row),
+                status_value=str(row.get(status_col) or "No match").strip() or "No match",
+                row_payload=json.dumps(payload, ensure_ascii=True, default=str),
+                review_status="open",
+            )
+        )
+        inserted += 1
+    return inserted
+
+
+def _unmapped_row_preview(row: MappingUnmappedRow) -> dict[str, object]:
+    try:
+        payload = json.loads(row.row_payload or "{}")
+    except Exception:
+        payload = {}
+    visible_keys = [
+        "Product Type",
+        "Service Provided",
+        "Supplier",
+        "Vendor",
+        "Description",
+        "Spend Category",
+        "BillOfQuantity",
+        "Bill of Quantity",
+        "Spend_Euro",
+        "Spend",
+        "Quantity",
+        "Unit",
+    ]
+    details = [
+        {"name": key, "value": str(payload.get(key) or "")}
+        for key in visible_keys
+        if str(payload.get(key) or "").strip()
+    ]
+    if not details:
+        details = [
+            {"name": str(key), "value": str(value)}
+            for key, value in list(payload.items())[:8]
+            if str(value or "").strip()
+        ]
+    return {
+        "id": row.id,
+        "run_id": row.run_id,
+        "company_name": row.company_name,
+        "sheet_name": row.sheet_name,
+        "source_entry_group": row.source_entry_group or "",
+        "row_number": row.row_number,
+        "row_label": row.row_label or "Unmapped row",
+        "status_value": row.status_value or "No match",
+        "review_status": row.review_status or "open",
+        "assigned_ef_id": row.assigned_ef_id or "",
+        "owner_notes": row.owner_notes or "",
+        "created_at": row.created_at,
+        "details": details[:10],
+        "ef_search": row.row_label or _mapping_unmapped_context_value(pd.Series(payload), ("Product Type", "Service Provided", "Description")),
+    }
 
 
 def _find_tco2e_column(df: "pd.DataFrame") -> str | None:
@@ -8919,8 +9252,17 @@ def api_mapping_run():
             mapped_df=mapped_df,
             output_path=out_path,
         )
+        unmapped_count = _sync_unmapped_rows_for_mapping_run(
+            run_id=run_id,
+            user_id=int(current_user.id),
+            company_name=resolved_company,
+            sheet_name=resolved_sheet,
+            source_entry_group=entry_group_filter or None,
+            mapped_df=mapped_df,
+        )
         db.session.commit()
     except Exception:
+        unmapped_count = 0
         pass
 
     _create_user_notification(
@@ -8945,6 +9287,7 @@ def api_mapping_run():
         "preview_rows": len(preview),
         "mapped_at": mr.created_at.isoformat() + "Z" if getattr(mr, "created_at", None) else "",
         "mapped_by": str(getattr(current_user, "email", "") or ""),
+        "unmapped_count": int(unmapped_count or 0),
     }
     if entry_group_filter:
         resp["entry_group"] = entry_group_filter
@@ -10076,6 +10419,165 @@ def admin_mapping_runs():
         .all()
     )
     return render_template("mapping_runs_admin.html", user=current_user, rows=rows)
+
+
+@app.route("/admin/mapping/unmapped", methods=["GET"])
+@login_required
+def admin_unmapped_mappings():
+    _ensure_db_tables()
+    if not bool(getattr(current_user, "is_admin", False)):
+        flash("Access denied")
+        return redirect(url_for("dashboard"))
+
+    status_filter = (request.args.get("status") or "open").strip().lower()
+    company_filter = (request.args.get("company") or "").strip()
+    sheet_filter = (request.args.get("sheet") or "").strip()
+    search = (request.args.get("search") or "").strip()
+
+    query = MappingUnmappedRow.query
+    if status_filter and status_filter != "all":
+        query = query.filter(MappingUnmappedRow.review_status == status_filter)
+    if company_filter:
+        query = query.filter(MappingUnmappedRow.company_name.ilike(f"%{company_filter}%"))
+    if sheet_filter:
+        query = query.filter(MappingUnmappedRow.sheet_name.ilike(f"%{sheet_filter}%"))
+    if search:
+        like = f"%{search}%"
+        query = query.filter(
+            or_(
+                MappingUnmappedRow.row_label.ilike(like),
+                MappingUnmappedRow.row_payload.ilike(like),
+                MappingUnmappedRow.assigned_ef_id.ilike(like),
+                MappingUnmappedRow.owner_notes.ilike(like),
+            )
+        )
+
+    rows = query.order_by(MappingUnmappedRow.created_at.desc(), MappingUnmappedRow.id.desc()).limit(500).all()
+    previews = [_unmapped_row_preview(row) for row in rows]
+    counts = {
+        "open": int(MappingUnmappedRow.query.filter_by(review_status="open").count()),
+        "resolved": int(MappingUnmappedRow.query.filter_by(review_status="resolved").count()),
+        "ignored": int(MappingUnmappedRow.query.filter_by(review_status="ignored").count()),
+        "superseded": int(MappingUnmappedRow.query.filter_by(review_status="superseded").count()),
+        "all": int(MappingUnmappedRow.query.count()),
+    }
+    companies = [
+        item[0]
+        for item in db.session.query(MappingUnmappedRow.company_name)
+        .distinct()
+        .order_by(MappingUnmappedRow.company_name.asc())
+        .all()
+        if item[0]
+    ]
+    sheets = [
+        item[0]
+        for item in db.session.query(MappingUnmappedRow.sheet_name)
+        .distinct()
+        .order_by(MappingUnmappedRow.sheet_name.asc())
+        .all()
+        if item[0]
+    ]
+    return render_template(
+        "admin_unmapped_mappings.html",
+        user=current_user,
+        rows=previews,
+        counts=counts,
+        status_filter=status_filter,
+        company_filter=company_filter,
+        sheet_filter=sheet_filter,
+        search=search,
+        companies=companies,
+        sheets=sheets,
+    )
+
+
+@app.route("/admin/mapping/unmapped/<int:row_id>/update", methods=["POST"])
+@login_required
+def admin_unmapped_mapping_update(row_id: int):
+    _ensure_db_tables()
+    if not bool(getattr(current_user, "is_admin", False)):
+        flash("Access denied")
+        return redirect(url_for("dashboard"))
+
+    row = MappingUnmappedRow.query.get_or_404(row_id)
+    review_status = (request.form.get("review_status") or "open").strip().lower()
+    if review_status not in {"open", "resolved", "ignored"}:
+        review_status = "open"
+    row.review_status = review_status
+    row.assigned_ef_id = (request.form.get("assigned_ef_id") or "").strip() or None
+    row.owner_notes = (request.form.get("owner_notes") or "").strip() or None
+    if review_status in {"resolved", "ignored"}:
+        row.resolved_at = datetime.utcnow()
+        row.resolved_by_user_id = int(getattr(current_user, "id", 0) or 0) or None
+    else:
+        row.resolved_at = None
+        row.resolved_by_user_id = None
+    db.session.commit()
+    flash("Unmapped row review status updated.")
+    return redirect(
+        url_for(
+            "admin_unmapped_mappings",
+            status=request.args.get("status", "open"),
+            company=request.args.get("company", ""),
+            sheet=request.args.get("sheet", ""),
+            search=request.args.get("search", ""),
+        )
+    )
+
+
+@app.route("/admin/mapping/unmapped/export", methods=["GET"])
+@login_required
+def admin_unmapped_mappings_export():
+    _ensure_db_tables()
+    if not bool(getattr(current_user, "is_admin", False)):
+        flash("Access denied")
+        return redirect(url_for("dashboard"))
+
+    rows = MappingUnmappedRow.query.order_by(MappingUnmappedRow.created_at.desc()).all()
+    export_rows: list[dict[str, object]] = []
+    for row in rows:
+        preview = _unmapped_row_preview(row)
+        export_rows.append(
+            {
+                "id": row.id,
+                "review_status": row.review_status,
+                "company_name": row.company_name,
+                "sheet_name": row.sheet_name,
+                "source_entry_group": row.source_entry_group or "",
+                "run_id": row.run_id,
+                "row_number": row.row_number,
+                "row_label": row.row_label or "",
+                "status_value": row.status_value or "",
+                "assigned_ef_id": row.assigned_ef_id or "",
+                "owner_notes": row.owner_notes or "",
+                "created_at": row.created_at.isoformat() if row.created_at else "",
+                "details": "; ".join(f"{d['name']}={d['value']}" for d in preview["details"]),
+            }
+        )
+    out = StringIO()
+    fieldnames = [
+        "id",
+        "review_status",
+        "company_name",
+        "sheet_name",
+        "source_entry_group",
+        "run_id",
+        "row_number",
+        "row_label",
+        "status_value",
+        "assigned_ef_id",
+        "owner_notes",
+        "created_at",
+        "details",
+    ]
+    writer = csv.DictWriter(out, fieldnames=fieldnames)
+    writer.writeheader()
+    writer.writerows(export_rows)
+    return Response(
+        out.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=unmapped_mapping_rows.csv"},
+    )
 
 
 @app.route("/admin/mapping", methods=["GET"])
@@ -11233,6 +11735,7 @@ def admin_users():
 def owner_analytics():
     if not bool(getattr(current_user, "is_admin", False)):
         abort(403)
+    _ensure_db_tables()
     return render_template("owner_analytics.html", user=current_user, **_owner_analytics_context())
 
 

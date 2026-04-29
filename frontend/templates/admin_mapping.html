@@ -19,6 +19,9 @@
       <a class="btn btn-ghost d-inline-flex align-items-center" href="{{ url_for('admin_mapping_runs') }}">
         {{ illu.illu_list('me-1') }}Mapping runs
       </a>
+      <a class="btn btn-ghost d-inline-flex align-items-center" href="{{ url_for('admin_unmapped_mappings') }}">
+        {{ illu.illu_nav_file('me-1') }}Unmapped rows
+      </a>
       <a class="btn btn-ghost d-inline-flex align-items-center" href="{{ url_for('admin') }}">
         {{ illu.illu_arrow_left('me-1') }}Admin
       </a>
