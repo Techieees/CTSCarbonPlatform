@@ -22,6 +22,7 @@ import hashlib
 import json
 from collections import defaultdict, Counter
 import csv
+import difflib
 from io import BytesIO, StringIO
 import re
 import time
@@ -5091,6 +5092,362 @@ def _unmapped_row_preview(row: MappingUnmappedRow) -> dict[str, object]:
         "details": details[:10],
         "ef_search": row.row_label or _mapping_unmapped_context_value(pd.Series(payload), ("Product Type", "Service Provided", "Description")),
     }
+
+
+def _unmapped_payload(row: MappingUnmappedRow) -> dict[str, object]:
+    try:
+        payload = json.loads(row.row_payload or "{}")
+    except Exception:
+        payload = {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _unmapped_description(row: MappingUnmappedRow) -> str:
+    payload = _unmapped_payload(row)
+    for key in ("Description", "description"):
+        value = str(payload.get(key) or "").strip()
+        if value and value.lower() not in {"nan", "none"}:
+            return value
+    return ""
+
+
+def _unmapped_description_key(row: MappingUnmappedRow) -> str:
+    value = _unmapped_description(row)
+    return re.sub(r"\s+", " ", value).strip().lower()
+
+
+def _dedupe_unmapped_rows_by_description(rows: list[MappingUnmappedRow]) -> tuple[list[MappingUnmappedRow], dict[int, int]]:
+    kept: list[MappingUnmappedRow] = []
+    seen: dict[str, int] = {}
+    duplicate_counts: dict[int, int] = {}
+    for row in rows:
+        desc_key = _unmapped_description_key(row)
+        if not desc_key:
+            kept.append(row)
+            duplicate_counts[int(row.id)] = 1
+            continue
+        group_key = desc_key
+        if group_key in seen:
+            duplicate_counts[seen[group_key]] = duplicate_counts.get(seen[group_key], 1) + 1
+            continue
+        seen[group_key] = int(row.id)
+        kept.append(row)
+        duplicate_counts[int(row.id)] = 1
+    return kept, duplicate_counts
+
+
+def _is_cat1_purchased_goods_services_sheet(sheet_name: str) -> bool:
+    normalized = str(sheet_name or "").strip().lower()
+    return normalized in {
+        "scope 3 category 1 purchased goods & services",
+        "scope 3 cat 1 goods spend",
+        "scope 3 cat 1 services spend",
+        "scope 3 cat 1 common purchases",
+        "scope 3 cat 1 goods activity",
+        "scope 3 cat 1 services activity",
+        "scope 3 cat 1 supplier summary",
+        "scope 3 cat 1 goods service",
+        "scope 3 cat 1 goods services",
+    }
+
+
+def _unmapped_category_sheet_names(sheet_name: str) -> set[str]:
+    raw = str(sheet_name or "").strip()
+    canonical = STAGE2_2026_SHEET_ALIASES.get(raw, raw)
+    names = {raw, canonical}
+    if _is_cat1_purchased_goods_services_sheet(raw):
+        names.update({"Scope 3 Purchased Goods Spend", "Scope 3 Purchased Service Spend"})
+    return {name for name in names if name}
+
+
+def _is_klarakarbon_ef_row(row: dict[str, object]) -> bool:
+    category = str(row.get("ef_category") or "").strip().lower()
+    return category.startswith("klarakarbon")
+
+
+def _ef_option_key(option: dict[str, object]) -> str:
+    return f"{option.get('sheet') or ''}||{option.get('ef_id') or ''}"
+
+
+def _ef_option_label(option: dict[str, object]) -> str:
+    name = str(option.get("ef_name") or option.get("Emission Factor Category") or option.get("ef_description") or "").strip()
+    ef_id = str(option.get("ef_id") or "").strip()
+    if name and ef_id:
+        return f"{name} ({ef_id})"
+    return ef_id or name
+
+
+def _load_unmapped_ef_options_for_sheet(sheet_name: str) -> list[dict[str, object]]:
+    data = _load_stage2_emission_factors()
+    all_rows: list[dict[str, object]] = list(data.get("rows") or [])
+    category_sheets = _unmapped_category_sheet_names(sheet_name)
+    category_norms = {name.strip().lower() for name in category_sheets}
+    is_cat1 = _is_cat1_purchased_goods_services_sheet(sheet_name)
+
+    options: list[dict[str, object]] = []
+    for row in all_rows:
+        if _is_klarakarbon_ef_row(row):
+            continue
+        ef_id = str(row.get("ef_id") or "").strip()
+        if not ef_id:
+            continue
+        row_sheet = str(row.get("sheet") or "").strip()
+        row_sheet_norm = row_sheet.lower()
+        ef_category_norm = str(row.get("ef_category") or "").strip().lower()
+        if is_cat1:
+            if row_sheet_norm not in {"scope 3 purchased goods spend", "scope 3 purchased service spend"}:
+                continue
+        elif category_norms:
+            matches_sheet = row_sheet_norm in category_norms
+            matches_category = any(name and name in ef_category_norm for name in category_norms)
+            if not matches_sheet and not matches_category:
+                continue
+        item = dict(row)
+        item["key"] = _ef_option_key(item)
+        item["label"] = _ef_option_label(item)
+        if item["label"]:
+            options.append(item)
+
+    seen: set[tuple[str, str]] = set()
+    unique: list[dict[str, object]] = []
+    for option in sorted(options, key=lambda r: (str(r.get("ef_name") or "").lower(), str(r.get("ef_id") or ""))):
+        key = (str(option.get("sheet") or ""), str(option.get("ef_id") or ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(option)
+    return unique[:500]
+
+
+def _find_unmapped_ef_option(ef_key_or_id: str, preferred_sheet: str | None = None) -> dict[str, object] | None:
+    value = (ef_key_or_id or "").strip()
+    if not value:
+        return None
+    wanted_sheet = (preferred_sheet or "").strip()
+    wanted_ef_id = value
+    if "||" in value:
+        wanted_sheet, wanted_ef_id = value.split("||", 1)
+        wanted_sheet = wanted_sheet.strip()
+        wanted_ef_id = wanted_ef_id.strip()
+    data = _load_stage2_emission_factors()
+    for row in list(data.get("rows") or []):
+        if _is_klarakarbon_ef_row(row):
+            continue
+        if str(row.get("ef_id") or "").strip() != wanted_ef_id:
+            continue
+        if wanted_sheet and str(row.get("sheet") or "").strip() != wanted_sheet:
+            continue
+        option = dict(row)
+        option["key"] = _ef_option_key(option)
+        option["label"] = _ef_option_label(option)
+        return option
+    return None
+
+
+def _unmapped_query_from_request():
+    status_filter = (request.args.get("status") or "open").strip().lower()
+    company_filter = (request.args.get("company") or "").strip()
+    sheet_filter = (request.args.get("sheet") or "").strip()
+    search = (request.args.get("search") or "").strip()
+
+    query = MappingUnmappedRow.query
+    if status_filter and status_filter != "all":
+        query = query.filter(MappingUnmappedRow.review_status == status_filter)
+    if company_filter:
+        query = query.filter(MappingUnmappedRow.company_name.ilike(f"%{company_filter}%"))
+    if sheet_filter:
+        query = query.filter(MappingUnmappedRow.sheet_name.ilike(f"%{sheet_filter}%"))
+    if search:
+        like = f"%{search}%"
+        query = query.filter(
+            or_(
+                MappingUnmappedRow.row_label.ilike(like),
+                MappingUnmappedRow.row_payload.ilike(like),
+                MappingUnmappedRow.assigned_ef_id.ilike(like),
+                MappingUnmappedRow.owner_notes.ilike(like),
+            )
+        )
+    return query, status_filter, company_filter, sheet_filter, search
+
+
+def _backup_stage2_ef_workbook(action: str) -> None:
+    backup_dir = STAGE2_EF_XLSX.parent / "_ef_backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = backup_dir / f"{STAGE2_EF_XLSX.stem}_before_{action}_{ts}{STAGE2_EF_XLSX.suffix}"
+    try:
+        shutil.copy2(STAGE2_EF_XLSX, backup_path)
+    except Exception:
+        pass
+
+
+def _coerce_excel_number(value: object) -> object:
+    try:
+        text = str(value or "").strip()
+        if text == "":
+            return None
+        return float(text)
+    except Exception:
+        return value
+
+
+def _append_unmapped_mapping_to_workbook(row: MappingUnmappedRow, ef_option: dict[str, object]) -> tuple[str, bool]:
+    description = _unmapped_description(row)
+    if not description:
+        raise ValueError("Description column is empty for this unmapped row.")
+
+    is_cat1 = _is_cat1_purchased_goods_services_sheet(row.sheet_name or "")
+    target_sheet = "All together" if is_cat1 else str(ef_option.get("sheet") or "").strip()
+    if not target_sheet:
+        raise ValueError("Could not determine the target emission factor sheet.")
+
+    wb = load_workbook(STAGE2_EF_XLSX, keep_links=False)
+    if target_sheet not in wb.sheetnames:
+        raise ValueError(f"Target sheet not found in mapping workbook: {target_sheet}")
+    ws = wb[target_sheet]
+    headers = [("" if v is None else str(v).strip()) for v in (next(ws.iter_rows(min_row=1, max_row=1, values_only=True), None) or [])]
+    while headers and headers[-1] == "":
+        headers.pop()
+    header_idx = {h: idx + 1 for idx, h in enumerate(headers) if h}
+
+    if is_cat1:
+        required = ["Product type", "ef_description", "ef_id", "ef_name", "ef_value", "ef_unit", "ef_source", "scope"]
+        missing = [h for h in required if h not in header_idx]
+        if missing:
+            raise ValueError(f"All together sheet headers are missing: {', '.join(missing)}")
+        product_col = header_idx["Product type"]
+        ef_id_col = header_idx["ef_id"]
+        assigned_ef_id = str(ef_option.get("ef_id") or "").strip()
+        desc_key = re.sub(r"\s+", " ", description).strip().lower()
+        for values in ws.iter_rows(min_row=2, values_only=True):
+            existing_desc = values[product_col - 1] if product_col - 1 < len(values) else None
+            existing_ef_id = values[ef_id_col - 1] if ef_id_col - 1 < len(values) else None
+            if re.sub(r"\s+", " ", str(existing_desc or "")).strip().lower() == desc_key and str(existing_ef_id or "").strip() == assigned_ef_id:
+                return target_sheet, False
+        new_row = ws.max_row + 1
+        values = {
+            "Product type": description,
+            "ef_description": description,
+            "ef_id": assigned_ef_id,
+            "ef_name": str(ef_option.get("ef_name") or ef_option.get("Emission Factor Category") or "").strip(),
+            "ef_value": _coerce_excel_number(ef_option.get("ef_value")),
+            "ef_unit": str(ef_option.get("ef_unit") or "").strip(),
+            "ef_source": str(ef_option.get("ef_source") or "").strip(),
+            "scope": str(ef_option.get("scope") or "3").strip() or "3",
+        }
+    else:
+        required = _ef_expected_headers()
+        missing = [h for h in required if h not in header_idx]
+        if missing:
+            raise ValueError(f"{target_sheet} sheet headers are missing: {', '.join(missing)}")
+        ef_id_col = header_idx["ef_id"]
+        desc_col = header_idx["ef_description"]
+        assigned_ef_id = str(ef_option.get("ef_id") or "").strip()
+        desc_key = re.sub(r"\s+", " ", description).strip().lower()
+        for values in ws.iter_rows(min_row=2, values_only=True):
+            existing_desc = values[desc_col - 1] if desc_col - 1 < len(values) else None
+            existing_ef_id = values[ef_id_col - 1] if ef_id_col - 1 < len(values) else None
+            if re.sub(r"\s+", " ", str(existing_desc or "")).strip().lower() == desc_key and str(existing_ef_id or "").strip() == assigned_ef_id:
+                return target_sheet, False
+        new_row = ws.max_row + 1
+        values = {
+            "ef_name": str(ef_option.get("ef_name") or ef_option.get("Emission Factor Category") or "").strip(),
+            "ef_description": description,
+            "scope": str(ef_option.get("scope") or "").strip(),
+            "ef_category": str(ef_option.get("ef_category") or row.sheet_name or "").strip(),
+            "ef_id": assigned_ef_id,
+            "ef_value": _coerce_excel_number(ef_option.get("ef_value")),
+            "ef_unit": str(ef_option.get("ef_unit") or "").strip(),
+            "ef_source": str(ef_option.get("ef_source") or "").strip(),
+            "Emission Factor Category": str(ef_option.get("Emission Factor Category") or ef_option.get("ef_name") or "").strip(),
+        }
+
+    _backup_stage2_ef_workbook("unmapped_mapping")
+    for header, value in values.items():
+        ws.cell(row=new_row, column=header_idx[header]).value = value
+    wb.save(STAGE2_EF_XLSX)
+    _clear_ef_cache()
+    return target_sheet, True
+
+
+def _open_duplicate_rows_for_unmapped(row: MappingUnmappedRow) -> list[MappingUnmappedRow]:
+    desc_key = _unmapped_description_key(row)
+    if not desc_key:
+        return [row]
+    candidates = MappingUnmappedRow.query.filter(
+        MappingUnmappedRow.sheet_name == row.sheet_name,
+        MappingUnmappedRow.review_status == "open",
+    ).all()
+    rows = [candidate for candidate in candidates if _unmapped_description_key(candidate) == desc_key]
+    if row not in rows:
+        rows.append(row)
+    return rows
+
+
+def _apply_unmapped_mapping(
+    row: MappingUnmappedRow,
+    ef_option: dict[str, object],
+    *,
+    owner_notes: str | None = None,
+    resolve_duplicates: bool = True,
+) -> tuple[str, int, bool]:
+    target_sheet, inserted = _append_unmapped_mapping_to_workbook(row, ef_option)
+    assigned_ef_id = str(ef_option.get("ef_id") or "").strip() or None
+    now = datetime.utcnow()
+    user_id = int(getattr(current_user, "id", 0) or 0) or None
+    rows_to_update = _open_duplicate_rows_for_unmapped(row) if resolve_duplicates else [row]
+    for item in rows_to_update:
+        item.assigned_ef_id = assigned_ef_id
+        if owner_notes is not None:
+            item.owner_notes = owner_notes.strip() or item.owner_notes
+        item.review_status = "resolved"
+        item.resolved_at = now
+        item.resolved_by_user_id = user_id
+    return target_sheet, len(rows_to_update), inserted
+
+
+def _fuzzy_candidate_texts(option: dict[str, object]) -> list[str]:
+    values: list[str] = []
+    for key in ("ef_name", "Emission Factor Category", "ef_description"):
+        value = str(option.get(key) or "").strip()
+        if value and value.lower() not in {"nan", "none"} and value not in values:
+            values.append(value)
+    return values
+
+
+def _build_unmapped_fuzzy_suggestions(rows: list[MappingUnmappedRow], threshold: float = 0.92) -> list[dict[str, object]]:
+    suggestions: list[dict[str, object]] = []
+    for row in rows:
+        description = _unmapped_description(row)
+        if not description:
+            continue
+        desc_norm = _norm_name(description)
+        if not desc_norm:
+            continue
+        best_option: dict[str, object] | None = None
+        best_score = 0.0
+        for option in _load_unmapped_ef_options_for_sheet(row.sheet_name or ""):
+            for candidate in _fuzzy_candidate_texts(option):
+                cand_norm = _norm_name(candidate)
+                if not cand_norm:
+                    continue
+                score = difflib.SequenceMatcher(None, desc_norm, cand_norm).ratio()
+                if score > best_score:
+                    best_score = score
+                    best_option = option
+        if best_option is not None and best_score >= threshold:
+            preview = _unmapped_row_preview(row)
+            preview["description"] = description
+            suggestions.append(
+                {
+                    "row": preview,
+                    "ef": best_option,
+                    "ef_key": _ef_option_key(best_option),
+                    "score": best_score,
+                    "score_pct": f"{best_score:.2f}",
+                }
+            )
+    return suggestions
 
 
 def _find_tco2e_column(df: "pd.DataFrame") -> str | None:
@@ -10429,30 +10786,129 @@ def admin_unmapped_mappings():
         flash("Access denied")
         return redirect(url_for("dashboard"))
 
-    status_filter = (request.args.get("status") or "open").strip().lower()
-    company_filter = (request.args.get("company") or "").strip()
-    sheet_filter = (request.args.get("sheet") or "").strip()
-    search = (request.args.get("search") or "").strip()
-
-    query = MappingUnmappedRow.query
-    if status_filter and status_filter != "all":
-        query = query.filter(MappingUnmappedRow.review_status == status_filter)
-    if company_filter:
-        query = query.filter(MappingUnmappedRow.company_name.ilike(f"%{company_filter}%"))
-    if sheet_filter:
-        query = query.filter(MappingUnmappedRow.sheet_name.ilike(f"%{sheet_filter}%"))
-    if search:
-        like = f"%{search}%"
-        query = query.filter(
-            or_(
-                MappingUnmappedRow.row_label.ilike(like),
-                MappingUnmappedRow.row_payload.ilike(like),
-                MappingUnmappedRow.assigned_ef_id.ilike(like),
-                MappingUnmappedRow.owner_notes.ilike(like),
-            )
-        )
-
+    query, status_filter, company_filter, sheet_filter, search = _unmapped_query_from_request()
+    dedupe_mode = (request.args.get("dedupe") or "").strip().lower()
     rows = query.order_by(MappingUnmappedRow.created_at.desc(), MappingUnmappedRow.id.desc()).limit(500).all()
+    duplicate_counts: dict[int, int] = {}
+    if dedupe_mode == "description":
+        rows, duplicate_counts = _dedupe_unmapped_rows_by_description(rows)
+    previews = []
+    ef_options_by_row: dict[int, list[dict[str, object]]] = {}
+    for row in rows:
+        preview = _unmapped_row_preview(row)
+        preview["description"] = _unmapped_description(row)
+        preview["duplicate_count"] = duplicate_counts.get(int(row.id), 1)
+        previews.append(preview)
+        ef_options_by_row[int(row.id)] = _load_unmapped_ef_options_for_sheet(row.sheet_name or "")
+    counts = {
+        "open": int(MappingUnmappedRow.query.filter_by(review_status="open").count()),
+        "resolved": int(MappingUnmappedRow.query.filter_by(review_status="resolved").count()),
+        "ignored": int(MappingUnmappedRow.query.filter_by(review_status="ignored").count()),
+        "superseded": int(MappingUnmappedRow.query.filter_by(review_status="superseded").count()),
+        "all": int(MappingUnmappedRow.query.count()),
+    }
+    companies = [
+        item[0]
+        for item in db.session.query(MappingUnmappedRow.company_name)
+        .distinct()
+        .order_by(MappingUnmappedRow.company_name.asc())
+        .all()
+        if item[0]
+    ]
+    sheets = [
+        item[0]
+        for item in db.session.query(MappingUnmappedRow.sheet_name)
+        .distinct()
+        .order_by(MappingUnmappedRow.sheet_name.asc())
+        .all()
+        if item[0]
+    ]
+    return render_template(
+        "admin_unmapped_mappings.html",
+        user=current_user,
+        rows=previews,
+        counts=counts,
+        status_filter=status_filter,
+        company_filter=company_filter,
+        sheet_filter=sheet_filter,
+        search=search,
+        dedupe_mode=dedupe_mode,
+        ef_options_by_row=ef_options_by_row,
+        fuzzy_suggestions=[],
+        companies=companies,
+        sheets=sheets,
+    )
+
+
+@app.route("/admin/mapping/unmapped/<int:row_id>/update", methods=["POST"])
+@login_required
+def admin_unmapped_mapping_update(row_id: int):
+    _ensure_db_tables()
+    if not bool(getattr(current_user, "is_admin", False)):
+        flash("Access denied")
+        return redirect(url_for("dashboard"))
+
+    row = MappingUnmappedRow.query.get_or_404(row_id)
+    review_status = (request.form.get("review_status") or "open").strip().lower()
+    if review_status not in {"open", "resolved", "ignored"}:
+        review_status = "open"
+    owner_notes = (request.form.get("owner_notes") or "").strip() or None
+    ef_key = (request.form.get("assigned_ef_key") or request.form.get("assigned_ef_id") or "").strip()
+    ef_option = _find_unmapped_ef_option(ef_key)
+
+    try:
+        if review_status == "resolved" and ef_option is not None:
+            target_sheet, resolved_count, inserted = _apply_unmapped_mapping(row, ef_option, owner_notes=owner_notes)
+            db.session.commit()
+            action = "added to" if inserted else "already existed in"
+            flash(f"Mapped {resolved_count} unmapped row(s); mapping {action} {target_sheet}.")
+        else:
+            row.review_status = review_status
+            row.assigned_ef_id = str(ef_option.get("ef_id") or "").strip() if ef_option else (request.form.get("assigned_ef_id") or "").strip() or None
+            row.owner_notes = owner_notes
+            if review_status in {"resolved", "ignored"}:
+                row.resolved_at = datetime.utcnow()
+                row.resolved_by_user_id = int(getattr(current_user, "id", 0) or 0) or None
+            else:
+                row.resolved_at = None
+                row.resolved_by_user_id = None
+            db.session.commit()
+            if review_status == "resolved" and ef_option is None:
+                flash("Unmapped row marked resolved, but no valid EF was selected for workbook mapping.")
+            else:
+                flash("Unmapped row review status updated.")
+    except PermissionError:
+        db.session.rollback()
+        flash("Mapping workbook is open/locked. Close Excel and try again.")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Unmapped mapping failed: {e}")
+    return redirect(
+        url_for(
+            "admin_unmapped_mappings",
+            status=request.args.get("status", "open"),
+            company=request.args.get("company", ""),
+            sheet=request.args.get("sheet", ""),
+            search=request.args.get("search", ""),
+            dedupe=request.args.get("dedupe", ""),
+        )
+    )
+
+
+@app.route("/admin/mapping/unmapped/fuzzy", methods=["GET"])
+@login_required
+def admin_unmapped_mappings_fuzzy():
+    _ensure_db_tables()
+    if not bool(getattr(current_user, "is_admin", False)):
+        flash("Access denied")
+        return redirect(url_for("dashboard"))
+
+    query, status_filter, company_filter, sheet_filter, search = _unmapped_query_from_request()
+    rows = query.order_by(MappingUnmappedRow.created_at.desc(), MappingUnmappedRow.id.desc()).limit(500).all()
+    dedupe_mode = (request.args.get("dedupe") or "").strip().lower()
+    if dedupe_mode == "description":
+        rows, _ = _dedupe_unmapped_rows_by_description(rows)
+    suggestions = _build_unmapped_fuzzy_suggestions(rows)
     previews = [_unmapped_row_preview(row) for row in rows]
     counts = {
         "open": int(MappingUnmappedRow.query.filter_by(review_status="open").count()),
@@ -10486,43 +10942,50 @@ def admin_unmapped_mappings():
         company_filter=company_filter,
         sheet_filter=sheet_filter,
         search=search,
+        dedupe_mode=dedupe_mode,
+        ef_options_by_row={},
+        fuzzy_suggestions=suggestions,
         companies=companies,
         sheets=sheets,
     )
 
 
-@app.route("/admin/mapping/unmapped/<int:row_id>/update", methods=["POST"])
+@app.route("/admin/mapping/unmapped/fuzzy/approve", methods=["POST"])
 @login_required
-def admin_unmapped_mapping_update(row_id: int):
+def admin_unmapped_mappings_fuzzy_approve():
     _ensure_db_tables()
     if not bool(getattr(current_user, "is_admin", False)):
         flash("Access denied")
         return redirect(url_for("dashboard"))
 
-    row = MappingUnmappedRow.query.get_or_404(row_id)
-    review_status = (request.form.get("review_status") or "open").strip().lower()
-    if review_status not in {"open", "resolved", "ignored"}:
-        review_status = "open"
-    row.review_status = review_status
-    row.assigned_ef_id = (request.form.get("assigned_ef_id") or "").strip() or None
-    row.owner_notes = (request.form.get("owner_notes") or "").strip() or None
-    if review_status in {"resolved", "ignored"}:
-        row.resolved_at = datetime.utcnow()
-        row.resolved_by_user_id = int(getattr(current_user, "id", 0) or 0) or None
-    else:
-        row.resolved_at = None
-        row.resolved_by_user_id = None
-    db.session.commit()
-    flash("Unmapped row review status updated.")
-    return redirect(
-        url_for(
-            "admin_unmapped_mappings",
-            status=request.args.get("status", "open"),
-            company=request.args.get("company", ""),
-            sheet=request.args.get("sheet", ""),
-            search=request.args.get("search", ""),
-        )
-    )
+    selections = request.form.getlist("suggestion")
+    if not selections:
+        flash("Choose at least one fuzzy suggestion to approve.")
+        return redirect(url_for("admin_unmapped_mappings_fuzzy", status=request.args.get("status", "open"), company=request.args.get("company", ""), sheet=request.args.get("sheet", ""), search=request.args.get("search", ""), dedupe=request.args.get("dedupe", "")))
+
+    approved = 0
+    try:
+        for selection in selections:
+            row_id_text, _, ef_key = selection.partition("|")
+            try:
+                row_id = int(row_id_text)
+            except Exception:
+                continue
+            row = MappingUnmappedRow.query.get(row_id)
+            ef_option = _find_unmapped_ef_option(ef_key)
+            if row is None or ef_option is None:
+                continue
+            _apply_unmapped_mapping(row, ef_option)
+            approved += 1
+        db.session.commit()
+        flash(f"Approved {approved} fuzzy mapping suggestion(s).")
+    except PermissionError:
+        db.session.rollback()
+        flash("Mapping workbook is open/locked. Close Excel and try again.")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Fuzzy approval failed: {e}")
+    return redirect(url_for("admin_unmapped_mappings", status=request.args.get("status", "open"), company=request.args.get("company", ""), sheet=request.args.get("sheet", ""), search=request.args.get("search", ""), dedupe=request.args.get("dedupe", "")))
 
 
 @app.route("/admin/mapping/unmapped/export", methods=["GET"])

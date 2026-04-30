@@ -182,7 +182,7 @@
     "Water Tracker": {
       "columns": [
         "Reporting period (month, year)",
-        "Site",
+        "Site Tag",
         "Water Consumption",
         "Unit",
         "Country",
