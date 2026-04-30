@@ -16,15 +16,18 @@
       <a class="btn {% if dedupe_mode == 'description' %}btn-primary{% else %}btn-ghost{% endif %} d-inline-flex align-items-center" href="{{ url_for('admin_unmapped_mappings', status=status_filter, company=company_filter, sheet=sheet_filter, search=search, dedupe='description') }}">
         Remove duplications
       </a>
+      <a class="btn btn-ghost d-inline-flex align-items-center" href="{{ url_for('admin_unmapped_mappings_export', status=status_filter, company=company_filter, sheet=sheet_filter, search=search, dedupe='description') }}">
+        {{ illu.illu_btn_download('me-1') }}Export CSV (without duplications)
+      </a>
       {% if dedupe_mode == 'description' %}
       <a class="btn btn-ghost d-inline-flex align-items-center" href="{{ url_for('admin_unmapped_mappings', status=status_filter, company=company_filter, sheet=sheet_filter, search=search) }}">
         Show all
       </a>
       {% endif %}
-      <a class="btn btn-ghost d-inline-flex align-items-center" href="{{ url_for('admin_unmapped_mappings_fuzzy', status=status_filter, company=company_filter, sheet=sheet_filter, search=search, dedupe=dedupe_mode) }}">
-        Run fuzzy logic
+      <a class="btn btn-ghost d-inline-flex align-items-center" href="{{ url_for('admin_unmapped_mappings_fuzzy', status=status_filter, company=company_filter, sheet=sheet_filter, search=search, dedupe=dedupe_mode) }}" target="_blank" rel="noopener">
+        Run fuzzy logic algorithm
       </a>
-      <a class="btn btn-ghost d-inline-flex align-items-center" href="{{ url_for('admin_unmapped_mappings_export') }}">
+      <a class="btn btn-ghost d-inline-flex align-items-center" href="{{ url_for('admin_unmapped_mappings_export', status=status_filter, company=company_filter, sheet=sheet_filter, search=search) }}">
         {{ illu.illu_btn_download('me-1') }}Export CSV
       </a>
       <a class="btn btn-ghost d-inline-flex align-items-center" href="{{ url_for('admin_mapping_panel') }}">
@@ -83,9 +86,14 @@
     <div class="card-header bg-transparent d-flex flex-wrap align-items-center justify-content-between gap-2">
       <div>
         <div class="fw-semibold">Fuzzy logic suggestions</div>
-        <div class="small text-muted">Only suggestions with score 0.92 or higher are shown. Nothing is mapped until you approve.</div>
+        <div class="small text-muted">
+          The algorithm compares unmapped Description values with All together Product type values. Only suggestions with score 0.92 or higher are shown. Nothing is mapped until you approve.
+        </div>
       </div>
-      <span class="badge text-bg-light border">{{ fuzzy_suggestions|length }} suggestion(s)</span>
+      <div class="d-flex flex-wrap gap-2">
+        <span class="badge text-bg-light border">{{ fuzzy_suggestions|length }} fuzzy match(es)</span>
+        <span class="badge text-bg-light border">{{ fuzzy_unmatched_count }} not matched</span>
+      </div>
     </div>
     <div class="card-body p-0">
       <form method="post" action="{{ url_for('admin_unmapped_mappings_fuzzy_approve', status=status_filter, company=company_filter, sheet=sheet_filter, search=search, dedupe=dedupe_mode) }}">
@@ -95,8 +103,10 @@
               <tr>
                 <th style="width: 3rem;">Approve</th>
                 <th>Unmapped Description</th>
+                <th>All Together Product type</th>
                 <th>Suggested EF</th>
                 <th>Score</th>
+                <th>Match Method</th>
                 <th>Company / Sheet</th>
               </tr>
             </thead>
@@ -110,11 +120,13 @@
                   <div class="fw-medium">{{ suggestion.row.description }}</div>
                   <div class="small text-muted">Excel row {{ suggestion.row.row_number }}</div>
                 </td>
+                <td>{{ suggestion.ef['Product type'] }}</td>
                 <td>
                   <div>{{ suggestion.ef.label }}</div>
                   <div class="small text-muted">{{ suggestion.ef.sheet }}</div>
                 </td>
                 <td><span class="badge text-bg-success">{{ suggestion.score_pct }}</span></td>
+                <td class="small font-monospace">{{ suggestion.match_method }}</td>
                 <td>
                   <div>{{ suggestion.row.company_name }}</div>
                   <div class="small text-muted">{{ suggestion.row.sheet_name }}</div>
@@ -131,7 +143,10 @@
     </div>
   </div>
   {% elif request.endpoint == 'admin_unmapped_mappings_fuzzy' %}
-  <div class="alert alert-info">No fuzzy suggestions found at or above 0.92 for the current filters.</div>
+  <div class="alert alert-info">
+    No All together fuzzy suggestions found at or above 0.92 for the current filters.
+    {% if fuzzy_scanned_count %}Scanned {{ fuzzy_scanned_count }} unmapped row(s).{% endif %}
+  </div>
   {% endif %}
 
   <div class="card shadow-sm border-secondary-subtle">

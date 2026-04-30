@@ -5210,7 +5210,7 @@ def _load_unmapped_ef_options_for_sheet(sheet_name: str) -> list[dict[str, objec
 
     seen: set[tuple[str, str]] = set()
     unique: list[dict[str, object]] = []
-    for option in sorted(options, key=lambda r: (str(r.get("ef_name") or "").lower(), str(r.get("ef_id") or ""))):
+    for option in sorted(options, key=lambda r: (str(r.get("ef_id") or ""), str(r.get("ef_name") or "").lower())):
         key = (str(option.get("sheet") or ""), str(option.get("ef_id") or ""))
         if key in seen:
             continue
@@ -5406,17 +5406,53 @@ def _apply_unmapped_mapping(
     return target_sheet, len(rows_to_update), inserted
 
 
-def _fuzzy_candidate_texts(option: dict[str, object]) -> list[str]:
-    values: list[str] = []
-    for key in ("ef_name", "Emission Factor Category", "ef_description"):
-        value = str(option.get(key) or "").strip()
-        if value and value.lower() not in {"nan", "none"} and value not in values:
-            values.append(value)
-    return values
+def _all_together_cell(row_values: tuple[object, ...], header_idx: dict[str, int], header: str) -> object:
+    idx = header_idx.get(header)
+    if idx is None or idx >= len(row_values):
+        return ""
+    return row_values[idx]
+
+
+def _load_all_together_fuzzy_options() -> list[dict[str, object]]:
+    if not STAGE2_EF_XLSX.exists():
+        return []
+    wb = load_workbook(STAGE2_EF_XLSX, read_only=True, data_only=True, keep_links=False)
+    if "All together" not in wb.sheetnames:
+        return []
+    ws = wb["All together"]
+    first = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), None)
+    headers = [("" if v is None else str(v).strip()) for v in (first or [])]
+    header_idx = {h: idx for idx, h in enumerate(headers) if h}
+    required = {"Product type", "ef_id"}
+    if not required.issubset(header_idx):
+        return []
+
+    options: list[dict[str, object]] = []
+    for row_values in ws.iter_rows(min_row=2, values_only=True):
+        product_type = str(_all_together_cell(row_values, header_idx, "Product type") or "").strip()
+        ef_id = str(_all_together_cell(row_values, header_idx, "ef_id") or "").strip()
+        if not product_type or not ef_id:
+            continue
+        option = {
+            "sheet": "All together",
+            "Product type": product_type,
+            "ef_description": str(_all_together_cell(row_values, header_idx, "ef_description") or "").strip(),
+            "ef_id": ef_id,
+            "ef_name": str(_all_together_cell(row_values, header_idx, "ef_name") or "").strip(),
+            "ef_value": _all_together_cell(row_values, header_idx, "ef_value"),
+            "ef_unit": str(_all_together_cell(row_values, header_idx, "ef_unit") or "").strip(),
+            "ef_source": str(_all_together_cell(row_values, header_idx, "ef_source") or "").strip(),
+            "scope": str(_all_together_cell(row_values, header_idx, "scope") or "3").strip() or "3",
+        }
+        option["key"] = _ef_option_key(option)
+        option["label"] = _ef_option_label(option)
+        options.append(option)
+    return options
 
 
 def _build_unmapped_fuzzy_suggestions(rows: list[MappingUnmappedRow], threshold: float = 0.92) -> list[dict[str, object]]:
     suggestions: list[dict[str, object]] = []
+    all_together_options = _load_all_together_fuzzy_options()
     for row in rows:
         description = _unmapped_description(row)
         if not description:
@@ -5426,15 +5462,15 @@ def _build_unmapped_fuzzy_suggestions(rows: list[MappingUnmappedRow], threshold:
             continue
         best_option: dict[str, object] | None = None
         best_score = 0.0
-        for option in _load_unmapped_ef_options_for_sheet(row.sheet_name or ""):
-            for candidate in _fuzzy_candidate_texts(option):
-                cand_norm = _norm_name(candidate)
-                if not cand_norm:
-                    continue
-                score = difflib.SequenceMatcher(None, desc_norm, cand_norm).ratio()
-                if score > best_score:
-                    best_score = score
-                    best_option = option
+        for option in all_together_options:
+            candidate = str(option.get("Product type") or "").strip()
+            cand_norm = _norm_name(candidate)
+            if not cand_norm:
+                continue
+            score = difflib.SequenceMatcher(None, desc_norm, cand_norm).ratio()
+            if score > best_score:
+                best_score = score
+                best_option = option
         if best_option is not None and best_score >= threshold:
             preview = _unmapped_row_preview(row)
             preview["description"] = description
@@ -5445,6 +5481,7 @@ def _build_unmapped_fuzzy_suggestions(rows: list[MappingUnmappedRow], threshold:
                     "ef_key": _ef_option_key(best_option),
                     "score": best_score,
                     "score_pct": f"{best_score:.2f}",
+                    "match_method": f"Cat1: All together fuzzy:{best_score:.2f}",
                 }
             )
     return suggestions
@@ -10835,6 +10872,8 @@ def admin_unmapped_mappings():
         dedupe_mode=dedupe_mode,
         ef_options_by_row=ef_options_by_row,
         fuzzy_suggestions=[],
+        fuzzy_scanned_count=0,
+        fuzzy_unmatched_count=0,
         companies=companies,
         sheets=sheets,
     )
@@ -10909,6 +10948,9 @@ def admin_unmapped_mappings_fuzzy():
     if dedupe_mode == "description":
         rows, _ = _dedupe_unmapped_rows_by_description(rows)
     suggestions = _build_unmapped_fuzzy_suggestions(rows)
+    suggested_ids = {int(suggestion["row"]["id"]) for suggestion in suggestions}
+    fuzzy_scanned_count = len(rows)
+    fuzzy_unmatched_count = max(0, fuzzy_scanned_count - len(suggested_ids))
     previews = [_unmapped_row_preview(row) for row in rows]
     counts = {
         "open": int(MappingUnmappedRow.query.filter_by(review_status="open").count()),
@@ -10945,6 +10987,8 @@ def admin_unmapped_mappings_fuzzy():
         dedupe_mode=dedupe_mode,
         ef_options_by_row={},
         fuzzy_suggestions=suggestions,
+        fuzzy_scanned_count=fuzzy_scanned_count,
+        fuzzy_unmatched_count=fuzzy_unmatched_count,
         companies=companies,
         sheets=sheets,
     )
@@ -10996,7 +11040,12 @@ def admin_unmapped_mappings_export():
         flash("Access denied")
         return redirect(url_for("dashboard"))
 
-    rows = MappingUnmappedRow.query.order_by(MappingUnmappedRow.created_at.desc()).all()
+    query, _status_filter, _company_filter, _sheet_filter, _search = _unmapped_query_from_request()
+    rows = query.order_by(MappingUnmappedRow.created_at.desc(), MappingUnmappedRow.id.desc()).all()
+    dedupe_mode = (request.args.get("dedupe") or "").strip().lower()
+    duplicate_counts: dict[int, int] = {}
+    if dedupe_mode == "description":
+        rows, duplicate_counts = _dedupe_unmapped_rows_by_description(rows)
     export_rows: list[dict[str, object]] = []
     for row in rows:
         preview = _unmapped_row_preview(row)
@@ -11014,6 +11063,8 @@ def admin_unmapped_mappings_export():
                 "assigned_ef_id": row.assigned_ef_id or "",
                 "owner_notes": row.owner_notes or "",
                 "created_at": row.created_at.isoformat() if row.created_at else "",
+                "description": _unmapped_description(row),
+                "duplicate_count": duplicate_counts.get(int(row.id), 1),
                 "details": "; ".join(f"{d['name']}={d['value']}" for d in preview["details"]),
             }
         )
@@ -11031,6 +11082,8 @@ def admin_unmapped_mappings_export():
         "assigned_ef_id",
         "owner_notes",
         "created_at",
+        "description",
+        "duplicate_count",
         "details",
     ]
     writer = csv.DictWriter(out, fieldnames=fieldnames)
@@ -11039,7 +11092,12 @@ def admin_unmapped_mappings_export():
     return Response(
         out.getvalue(),
         mimetype="text/csv",
-        headers={"Content-Disposition": "attachment; filename=unmapped_mapping_rows.csv"},
+        headers={
+            "Content-Disposition": (
+                "attachment; filename="
+                + ("unmapped_mapping_rows_without_duplications.csv" if dedupe_mode == "description" else "unmapped_mapping_rows.csv")
+            )
+        },
     )
 
 
