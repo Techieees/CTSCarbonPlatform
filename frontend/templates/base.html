@@ -90,7 +90,7 @@
                     <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="accountDropdownTop">
                         <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('public_profile', user_id=current_user.id) }}">{{ illu.illu_nav_id('me-2') }}Profile</a></li>
                         <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('settings_profile_page') }}">{{ illu.illu_nav_file('me-2') }}Profile Settings</a></li>
-                        <li><button class="dropdown-item d-inline-flex align-items-center" type="button" data-open-chat>{{ illu.illu_nav_user('me-2') }}Messages</button></li>
+                        <li class="messaging-desktop-only"><button class="dropdown-item d-inline-flex align-items-center" type="button" data-open-chat>{{ illu.illu_nav_user('me-2') }}Messages</button></li>
                         <li><button class="dropdown-item d-inline-flex align-items-center" type="button" data-open-notifications>{{ illu.illu_nav_file('me-2') }}Notifications</button></li>
                         <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('logout') }}">{{ illu.illu_nav_signout('me-2') }}Logout</a></li>
                     </ul>
@@ -178,7 +178,7 @@
                             <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('public_profile', user_id=current_user.id) }}">{{ illu.illu_nav_id('me-2') }}Profile</a></li>
                             <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('feed') }}">{{ illu.illu_nav_file('me-2') }}Feed</a></li>
                             <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('dashboard') }}">{{ illu.illu_nav_speed('me-2') }}Data Entry</a></li>
-                            <li><button class="dropdown-item d-inline-flex align-items-center" type="button" data-open-chat>{{ illu.illu_nav_user('me-2') }}Messages</button></li>
+                            <li class="messaging-desktop-only"><button class="dropdown-item d-inline-flex align-items-center" type="button" data-open-chat>{{ illu.illu_nav_user('me-2') }}Messages</button></li>
                             <li><button class="dropdown-item d-inline-flex align-items-center" type="button" data-open-notifications>{{ illu.illu_nav_file('me-2') }}Notifications</button></li>
                             <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('settings_profile_page') }}">{{ illu.illu_nav_file('me-2') }}Profile Settings</a></li>
                             {% if current_user.is_admin %}

@@ -967,8 +967,18 @@ body.dark-mode .chat-widget__conversation-row {
 
 @media (max-width: 767.98px) {
   body.has-chat-widget main {
-    padding-bottom: calc(84px + env(safe-area-inset-bottom));
+    padding-bottom: 0;
   }
+
+  .chat-widget,
+  .messaging-desktop-only {
+    display: none !important;
+  }
+
+  /*
+   * Messaging is desktop-only. The remaining mobile chat rules below are kept
+   * for future re-enablement but are unreachable while .chat-widget is hidden.
+   */
 
   .chat-widget {
     left: 0;
