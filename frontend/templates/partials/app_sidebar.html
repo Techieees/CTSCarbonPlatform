@@ -9,7 +9,7 @@
 {% set governance_active = ep in ('governance_audit_ready_output',) %}
 {% set esg_active = ep in ('csrd', 'csrd_policies', 'lca', 'lca_tool') %}
 {% set resources_active = ep in ('reports_page', 'report_detail', 'newsletters_page', 'newsletter_detail', 'events_page', 'event_detail', 'awards_index', 'awards_form_page', 'audit_2025_page') %}
-{% set admin_active = current_user.is_admin and ep in ('admin_users', 'admin_access_requests', 'owner_analytics', 'admin', 'admin_mapping_panel', 'admin_unmapped_mappings', 'manage_emission_factors', 'admin_report', 'awards_admin') %}
+{% set admin_active = current_user.is_admin and ep in ('admin_users', 'admin_access_requests', 'owner_analytics', 'admin', 'admin_mapping_panel', 'admin_unmapped_mappings', 'admin_tower_defense', 'manage_emission_factors', 'admin_report', 'awards_admin') %}
 {% set settings_active = ep in ('profile_page', 'settings_profile_page') %}
 {% set feed_active = ep == 'feed' %}
 {% set selected_section = 'dashboard' %}
@@ -300,6 +300,10 @@
           <a href="{{ url_for('admin_unmapped_mappings') }}" class="app-sidebar__menu-item {% if ep == 'admin_unmapped_mappings' %}is-active{% endif %}" {% if ep == 'admin_unmapped_mappings' %}aria-current="page"{% endif %}>
             {{ illu.illu_nav_file('app-sidebar__icon') }}
             <span>Unmapped Rows</span>
+          </a>
+          <a href="{{ url_for('admin_tower_defense') }}" class="app-sidebar__menu-item {% if ep == 'admin_tower_defense' %}is-active{% endif %}" {% if ep == 'admin_tower_defense' %}aria-current="page"{% endif %}>
+            {{ illu.illu_nav_bolt('app-sidebar__icon') }}
+            <span>Tower Defense</span>
           </a>
           <a href="{{ url_for('manage_emission_factors') }}" class="app-sidebar__menu-item {% if ep == 'manage_emission_factors' %}is-active{% endif %}" {% if ep == 'manage_emission_factors' %}aria-current="page"{% endif %}>
             {{ illu.illu_nav_sliders('app-sidebar__icon') }}

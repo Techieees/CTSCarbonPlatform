@@ -11031,6 +11031,15 @@ def admin_mapping_runs():
     return render_template("mapping_runs_admin.html", user=current_user, rows=rows)
 
 
+@app.route("/admin/tower-defense", methods=["GET"])
+@login_required
+def admin_tower_defense():
+    if not bool(getattr(current_user, "is_admin", False)):
+        flash("Access denied")
+        return redirect(url_for("dashboard"))
+    return render_template("admin_tower_defense.html", user=current_user)
+
+
 @app.route("/admin/mapping/unmapped", methods=["GET"])
 @login_required
 def admin_unmapped_mappings():

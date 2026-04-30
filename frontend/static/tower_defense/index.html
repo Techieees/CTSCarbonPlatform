@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Neon Grid TD — Retro Tower Defense</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="top-bar">
+      <h1 class="logo">NEON GRID TD</h1>
+      <p class="tagline">20 sectors — defend the core</p>
+    </header>
+
+    <main class="layout">
+      <section class="canvas-wrap">
+        <canvas id="game-canvas" width="560" height="560" aria-label="Game field"></canvas>
+        <div id="overlay-menu" class="overlay hidden" role="dialog" aria-modal="true">
+          <div class="panel neon-panel">
+            <h2 id="menu-title">MENU</h2>
+            <p id="menu-sub" class="muted"></p>
+            <div id="menu-buttons" class="btn-stack"></div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="sidebar neon-panel">
+        <div id="hud-welcome" class="hud-section">
+          <h3 class="section-title">Main menu</h3>
+          <p class="muted small">Build on dark green tiles. Paths glow cyan. Exit is the magenta square.</p>
+          <button type="button" id="btn-menu-play" class="btn btn-primary full-width">Play</button>
+        </div>
+
+        <div id="hud-playing" class="hud-section hidden">
+          <h3 class="section-title">Status</h3>
+          <ul class="stat-list">
+            <li><span>Coins</span> <strong id="stat-coins">0</strong></li>
+            <li><span>Lives</span> <strong id="stat-lives">0</strong></li>
+            <li><span>Wave</span> <strong id="stat-wave">0</strong> / <span id="stat-wave-max">0</span></li>
+            <li><span>Sector</span> <strong id="stat-level">1</strong></li>
+          </ul>
+
+          <h3 class="section-title">Next wave</h3>
+          <div id="wave-preview" class="wave-preview muted small"></div>
+
+          <h3 class="section-title">Towers</h3>
+          <div id="tower-tray" class="tower-tray"></div>
+
+          <h3 class="section-title">Selection</h3>
+          <div id="selection-info" class="selection-info muted small">Click a tower on the map to upgrade or sell.</div>
+          <div id="tower-actions" class="controls-row hidden">
+            <button type="button" id="btn-upgrade" class="btn btn-ghost">Upgrade</button>
+            <button type="button" id="btn-sell" class="btn btn-ghost">Sell</button>
+          </div>
+
+          <div class="controls-row">
+            <button type="button" id="btn-start-wave" class="btn btn-primary">Start wave</button>
+            <button type="button" id="btn-pause" class="btn btn-ghost">Pause</button>
+            <button type="button" id="btn-restart" class="btn btn-ghost">Restart</button>
+          </div>
+        </div>
+
+        <div id="hud-level-select" class="hud-section hidden">
+          <h3 class="section-title">Select sector (level)</h3>
+          <p class="muted small">Unlocks persist via localStorage.</p>
+          <div id="level-grid" class="level-grid"></div>
+          <button type="button" id="btn-back-menu" class="btn btn-ghost full-width">Back</button>
+        </div>
+      </aside>
+    </main>
+
+    <footer class="footer muted small">
+      Pure canvas — no libraries. Use a local HTTP server so ES modules load (e.g. <code class="muted">npx serve tower-defense</code>). Build on checker tiles; path is brighter gray.
+    </footer>
+  </div>
+
+  <script type="module" src="js/ui.js"></script>
+</body>
+</html>
