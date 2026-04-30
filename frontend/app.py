@@ -5406,6 +5406,209 @@ def _apply_unmapped_mapping(
     return target_sheet, len(rows_to_update), inserted
 
 
+def _import_stage2_compute_emissions_tco2e():
+    mod = _import_stage2_main_mapping()
+    return getattr(mod, "_compute_emissions_tco2e")
+
+
+def _unmapped_data_entry_header_lookup(headers: list[str]) -> dict[str, str]:
+    """Map canonical field keys -> exact header string from the active template."""
+    canon = {str(h).strip().lower(): str(h) for h in headers if str(h).strip()}
+    wanted: dict[str, tuple[str, ...]] = {
+        "ef_id": ("ef_id", "ef id"),
+        "ef_name": ("ef_name", "ef name"),
+        "ef_unit": ("ef_unit", "ef unit"),
+        "ef_value": ("ef_value", "ef value"),
+        "ef_source": ("ef_source", "ef source", "source"),
+        "emissions_tco2e": ("emissions_tco2e", "emissions (tco2e)", "emissions tco2e", "emissions"),
+        "match_method": ("match_method", "match method"),
+        "status": ("status", "mapping status"),
+    }
+    out: dict[str, str] = {}
+    for key, candidates in wanted.items():
+        hit: str | None = None
+        for cand in candidates:
+            if cand.lower() in canon:
+                hit = canon[cand.lower()]
+                break
+        if hit:
+            out[key] = hit
+    return out
+
+
+def _spend_euro_from_unmapped_payload(payload: dict[str, object]) -> float | None:
+    for col in ("Spend_Euro", "Spend Euro", "spend_euro", "Spend"):
+        if col in payload:
+            val = _to_numeric_spend(payload.get(col))
+            if val is not None:
+                return float(val)
+    return None
+
+
+def _locate_data_entry_grid_row_for_unmapped(row: MappingUnmappedRow, headers: list[str]) -> dict[str, object] | None:
+    company = _resolve_template_company_name(row.company_name) or str(row.company_name or "").strip()
+    sheet = _resolve_template_sheet_name(company, row.sheet_name) or str(row.sheet_name or "").strip()
+    grid_rows = _load_data_entry_grid_rows(company, sheet, headers)
+    entry_group = str(row.source_entry_group or "").strip()
+    if entry_group:
+        grid_rows = [r for r in grid_rows if str(r.get("entry_group") or "").strip() == entry_group]
+
+    pos = int(row.row_number or 0) - 2
+    if pos >= 0 and pos < len(grid_rows):
+        return grid_rows[pos]
+
+    desc = _unmapped_description(row)
+    if not desc:
+        return None
+    desc_key = re.sub(r"\s+", " ", desc).strip().lower()
+    lookup = {str(h).strip().lower() for h in headers}
+    desc_header = None
+    for cand in ("Description", "description"):
+        if cand.lower() in lookup:
+            desc_header = cand
+            break
+    if not desc_header:
+        return None
+    try:
+        col_idx = headers.index(desc_header)
+    except Exception:
+        return None
+    for candidate in grid_rows:
+        cells = list(candidate.get("cells") or [])
+        if col_idx >= len(cells):
+            continue
+        cell_val = str(cells[col_idx] or "").strip()
+        if re.sub(r"\s+", " ", cell_val).strip().lower() == desc_key:
+            return candidate
+    return None
+
+
+def _set_data_entry_column_values(
+    *,
+    company_name: str,
+    sheet_name: str,
+    entry_group: str,
+    row_index: int,
+    created_at: datetime | None,
+    updates: dict[str, str],
+) -> None:
+    if not updates:
+        return
+    query = DataEntry.query.filter_by(
+        company_name=company_name,
+        sheet_name=sheet_name,
+        entry_group=entry_group,
+        row_index=int(row_index or 0),
+    )
+    if created_at is not None:
+        query = query.filter(DataEntry.created_at == created_at)
+    entries = query.all()
+    if not entries:
+        ts = created_at or datetime.utcnow()
+        uid = int(getattr(current_user, "id", 0) or 0) or None
+        for column_name, text in updates.items():
+            if str(text or "").strip() == "":
+                continue
+            db.session.add(
+                DataEntry(
+                    company_name=company_name,
+                    sheet_name=sheet_name,
+                    entry_group=entry_group,
+                    uploaded_by_user_id=uid,
+                    row_index=int(row_index or 0),
+                    column_name=str(column_name),
+                    value=str(text).strip(),
+                    created_at=ts,
+                )
+            )
+        return
+
+    for entry in entries:
+        column_name = str(getattr(entry, "column_name", "") or "")
+        if column_name not in updates:
+            continue
+        new_val = updates[column_name]
+        if str(new_val or "").strip() == "":
+            entry.value = None
+        else:
+            entry.value = str(new_val).strip()
+
+
+def _apply_unmapped_mapping_to_data_entry_row(
+    row: MappingUnmappedRow,
+    ef_option: dict[str, object],
+    *,
+    match_method: str,
+    status_text: str = "Mapped",
+) -> None:
+    company = _resolve_template_company_name(row.company_name) or str(row.company_name or "").strip()
+    sheet = _resolve_template_sheet_name(company, row.sheet_name) or str(row.sheet_name or "").strip()
+    headers, _rules = _get_data_entry_template_schema(company, sheet)
+    if not headers:
+        raise ValueError("Data entry headers not found for this company and sheet.")
+
+    target = _locate_data_entry_grid_row_for_unmapped(row, headers)
+    if not target:
+        raise ValueError("Could not locate the matching data entry row for this unmapped record.")
+
+    header_by_key = _unmapped_data_entry_header_lookup(headers)
+    payload = _unmapped_payload(row)
+    spend_eur = _spend_euro_from_unmapped_payload(payload)
+    compute = _import_stage2_compute_emissions_tco2e()
+    emissions = compute(
+        spend_eur,
+        _coerce_excel_number(ef_option.get("ef_value")),
+        str(ef_option.get("ef_unit") or "").strip() or None,
+    )
+
+    values: dict[str, str] = {}
+    mapping = {
+        "ef_id": str(ef_option.get("ef_id") or "").strip(),
+        "ef_name": str(ef_option.get("ef_name") or ef_option.get("Emission Factor Category") or "").strip(),
+        "ef_unit": str(ef_option.get("ef_unit") or "").strip(),
+        "ef_value": "" if ef_option.get("ef_value") is None else str(_coerce_excel_number(ef_option.get("ef_value"))),
+        "ef_source": str(ef_option.get("ef_source") or "").strip(),
+        "match_method": str(match_method or "").strip(),
+        "status": str(status_text or "").strip(),
+        "emissions_tco2e": "" if emissions is None else str(round(float(emissions), 10)).rstrip("0").rstrip("."),
+    }
+    for key, text in mapping.items():
+        header_name = header_by_key.get(key)
+        if not header_name:
+            continue
+        values[header_name] = text
+
+    entry_group = str(target.get("entry_group") or "").strip()
+    if entry_group.startswith("legacy:"):
+        raise ValueError("Legacy data entry rows cannot be auto-updated from this tool.")
+    row_index = int(target.get("row_index") or 0)
+    created_at = _parse_iso_datetime(target.get("created_at"))
+
+    _set_data_entry_column_values(
+        company_name=company,
+        sheet_name=sheet,
+        entry_group=entry_group,
+        row_index=row_index,
+        created_at=created_at,
+        updates=values,
+    )
+
+
+def _apply_unmapped_map_full(
+    row: MappingUnmappedRow,
+    ef_option: dict[str, object],
+    *,
+    owner_notes: str | None = None,
+    match_method: str = "manual:unmapped_map",
+) -> tuple[str, int, bool]:
+    target_sheet, resolved_count, inserted = _apply_unmapped_mapping(
+        row, ef_option, owner_notes=owner_notes, resolve_duplicates=True
+    )
+    # Data entry row applies to the representative unmapped row only (same grid row for duplicates)
+    _apply_unmapped_mapping_to_data_entry_row(row, ef_option, match_method=match_method, status_text="Mapped")
+    return target_sheet, resolved_count, inserted
+
+
 def _all_together_cell(row_values: tuple[object, ...], header_idx: dict[str, int], header: str) -> object:
     idx = header_idx.get(header)
     if idx is None or idx >= len(row_values):
@@ -5448,6 +5651,16 @@ def _load_all_together_fuzzy_options() -> list[dict[str, object]]:
         option["label"] = _ef_option_label(option)
         options.append(option)
     return options
+
+
+def _parse_unmapped_fuzzy_threshold(raw: object, default: float = 0.92) -> float:
+    try:
+        value = float(str(raw or "").strip().replace(",", "."))
+    except Exception:
+        return default
+    if value <= 0:
+        return default
+    return max(0.0, min(1.0, value))
 
 
 def _build_unmapped_fuzzy_suggestions(rows: list[MappingUnmappedRow], threshold: float = 0.92) -> list[dict[str, object]]:
@@ -6248,6 +6461,9 @@ def _infer_column_rule(header: str) -> dict[str, str]:
         "employee count",
         "headcount",
         "ef_value",
+        "emissions",
+        "tco2e",
+        "co2e",
     )
     text_exclusions = ("id", "unit", "currency", "supplier", "source", "description", "name", "country")
 
@@ -10874,6 +11090,7 @@ def admin_unmapped_mappings():
         fuzzy_suggestions=[],
         fuzzy_scanned_count=0,
         fuzzy_unmatched_count=0,
+        fuzzy_threshold=0.92,
         companies=companies,
         sheets=sheets,
     )
@@ -10894,13 +11111,24 @@ def admin_unmapped_mapping_update(row_id: int):
     owner_notes = (request.form.get("owner_notes") or "").strip() or None
     ef_key = (request.form.get("assigned_ef_key") or request.form.get("assigned_ef_id") or "").strip()
     ef_option = _find_unmapped_ef_option(ef_key)
+    action = (request.form.get("action") or "save").strip().lower()
 
     try:
-        if review_status == "resolved" and ef_option is not None:
-            target_sheet, resolved_count, inserted = _apply_unmapped_mapping(row, ef_option, owner_notes=owner_notes)
-            db.session.commit()
-            action = "added to" if inserted else "already existed in"
-            flash(f"Mapped {resolved_count} unmapped row(s); mapping {action} {target_sheet}.")
+        if action == "map":
+            if ef_option is None:
+                flash("Choose a valid emission factor before running Map.")
+            else:
+                target_sheet, resolved_count, inserted = _apply_unmapped_map_full(
+                    row,
+                    ef_option,
+                    owner_notes=owner_notes,
+                    match_method="manual:unmapped_map",
+                )
+                db.session.commit()
+                action_note = "added to" if inserted else "already existed in"
+                flash(
+                    f"Mapped {resolved_count} unmapped row(s); data entry updated; EF mapping {action_note} {target_sheet}."
+                )
         else:
             row.review_status = review_status
             row.assigned_ef_id = str(ef_option.get("ef_id") or "").strip() if ef_option else (request.form.get("assigned_ef_id") or "").strip() or None
@@ -10912,10 +11140,12 @@ def admin_unmapped_mapping_update(row_id: int):
                 row.resolved_at = None
                 row.resolved_by_user_id = None
             db.session.commit()
-            if review_status == "resolved" and ef_option is None:
-                flash("Unmapped row marked resolved, but no valid EF was selected for workbook mapping.")
+            if review_status == "resolved" and not row.assigned_ef_id:
+                flash("Marked resolved without an EF assignment.")
+            elif review_status == "resolved" and row.assigned_ef_id:
+                flash("Saved. Use Map to write the EF mapping, recalculate emissions, and update the data entry row.")
             else:
-                flash("Unmapped row review status updated.")
+                flash("Unmapped row updated.")
     except PermissionError:
         db.session.rollback()
         flash("Mapping workbook is open/locked. Close Excel and try again.")
@@ -10945,13 +11175,22 @@ def admin_unmapped_mappings_fuzzy():
     query, status_filter, company_filter, sheet_filter, search = _unmapped_query_from_request()
     rows = query.order_by(MappingUnmappedRow.created_at.desc(), MappingUnmappedRow.id.desc()).limit(500).all()
     dedupe_mode = (request.args.get("dedupe") or "").strip().lower()
+    fuzzy_threshold = _parse_unmapped_fuzzy_threshold(request.args.get("threshold"), default=0.92)
+    duplicate_counts: dict[int, int] = {}
     if dedupe_mode == "description":
-        rows, _ = _dedupe_unmapped_rows_by_description(rows)
-    suggestions = _build_unmapped_fuzzy_suggestions(rows)
+        rows, duplicate_counts = _dedupe_unmapped_rows_by_description(rows)
+    suggestions = _build_unmapped_fuzzy_suggestions(rows, threshold=fuzzy_threshold)
     suggested_ids = {int(suggestion["row"]["id"]) for suggestion in suggestions}
     fuzzy_scanned_count = len(rows)
     fuzzy_unmatched_count = max(0, fuzzy_scanned_count - len(suggested_ids))
-    previews = [_unmapped_row_preview(row) for row in rows]
+    previews = []
+    ef_options_by_row: dict[int, list[dict[str, object]]] = {}
+    for row in rows:
+        preview = _unmapped_row_preview(row)
+        preview["description"] = _unmapped_description(row)
+        preview["duplicate_count"] = duplicate_counts.get(int(row.id), 1)
+        previews.append(preview)
+        ef_options_by_row[int(row.id)] = _load_unmapped_ef_options_for_sheet(row.sheet_name or "")
     counts = {
         "open": int(MappingUnmappedRow.query.filter_by(review_status="open").count()),
         "resolved": int(MappingUnmappedRow.query.filter_by(review_status="resolved").count()),
@@ -10985,10 +11224,11 @@ def admin_unmapped_mappings_fuzzy():
         sheet_filter=sheet_filter,
         search=search,
         dedupe_mode=dedupe_mode,
-        ef_options_by_row={},
+        ef_options_by_row=ef_options_by_row,
         fuzzy_suggestions=suggestions,
         fuzzy_scanned_count=fuzzy_scanned_count,
         fuzzy_unmatched_count=fuzzy_unmatched_count,
+        fuzzy_threshold=fuzzy_threshold,
         companies=companies,
         sheets=sheets,
     )
@@ -11005,12 +11245,15 @@ def admin_unmapped_mappings_fuzzy_approve():
     selections = request.form.getlist("suggestion")
     if not selections:
         flash("Choose at least one fuzzy suggestion to approve.")
-        return redirect(url_for("admin_unmapped_mappings_fuzzy", status=request.args.get("status", "open"), company=request.args.get("company", ""), sheet=request.args.get("sheet", ""), search=request.args.get("search", ""), dedupe=request.args.get("dedupe", "")))
+        return redirect(url_for("admin_unmapped_mappings_fuzzy", status=request.args.get("status", "open"), company=request.args.get("company", ""), sheet=request.args.get("sheet", ""), search=request.args.get("search", ""), dedupe=request.args.get("dedupe", ""), threshold=request.args.get("threshold", "0.92")))
 
     approved = 0
     try:
         for selection in selections:
-            row_id_text, _, ef_key = selection.partition("|")
+            row_id_text, sep, tail = selection.partition("|")
+            if not sep:
+                continue
+            ef_key, sep2, match_method = tail.partition("|")
             try:
                 row_id = int(row_id_text)
             except Exception:
@@ -11019,7 +11262,8 @@ def admin_unmapped_mappings_fuzzy_approve():
             ef_option = _find_unmapped_ef_option(ef_key)
             if row is None or ef_option is None:
                 continue
-            _apply_unmapped_mapping(row, ef_option)
+            mm = str(match_method or "").strip() or "Cat1: All together fuzzy"
+            _apply_unmapped_map_full(row, ef_option, match_method=mm)
             approved += 1
         db.session.commit()
         flash(f"Approved {approved} fuzzy mapping suggestion(s).")
