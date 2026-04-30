@@ -72,6 +72,8 @@ export class Game {
     this.towers = [];
     /** @type {ReturnType<createProjectile>[]} */
     this.projectiles = [];
+    this.hitBursts = [];
+    this.damagePopups = [];
 
     /** @type {{ gx: number; gy: number } | null} */
     this.hoverCell = null;
@@ -81,6 +83,7 @@ export class Game {
     this.placeTowerType = "basic";
     /** @type {ReturnType<createTower> | null} */
     this.selectedTower = null;
+    this.debugMode = false;
 
     this.levelId = 1;
     this._lastTs = 0;
@@ -210,6 +213,9 @@ export class Game {
     const pos = this._enemyPos(e);
     e.gx = pos.gx;
     e.gy = pos.gy;
+    e.displayGx = pos.gx;
+    e.displayGy = pos.gy;
+    e.hitFlash = 0;
     this.enemies.push(e);
   }
 
@@ -254,6 +260,9 @@ export class Game {
       const pos = this._enemyPos(e);
       e.gx = pos.gx;
       e.gy = pos.gy;
+      e.displayGx += (e.gx - e.displayGx) * Math.min(1, dt * 18);
+      e.displayGy += (e.gy - e.displayGy) * Math.min(1, dt * 18);
+      e.hitFlash = Math.max(0, (e.hitFlash || 0) - dt);
     }
 
     const kept = [];
@@ -400,6 +409,26 @@ export class Game {
     this._notifyHud();
   }
 
+  toggleDebug() {
+    this.debugMode = !this.debugMode;
+    this._notifyHud();
+  }
+
+  registerHit(enemy, damage, x, y) {
+    enemy.hitFlash = 0.14;
+    this.hitBursts.push({ x, y, life: 0.18, maxLife: 0.18 });
+    this.damagePopups.push({
+      x,
+      y: y - 12,
+      value: Math.max(1, Math.round(damage)),
+      life: 0.55,
+      maxLife: 0.55,
+    });
+    console.log(
+      `[TD hit] ${enemy.typeId} -${damage.toFixed(1)} hp=${Math.max(0, enemy.hp).toFixed(1)}/${enemy.maxHp}`
+    );
+  }
+
   /** @param {ReturnType<createTower>} tower @param {object | null} enemy */
   _towerShoot(tower, enemy) {
     if (!enemy) return;
@@ -416,6 +445,8 @@ export class Game {
         createProjectile(tower, from, ref, dmg, tower.baseDef.projectileSpeed, "single", 0)
       );
     }
+    tower.flashTime = 0.12;
+    tower.recoilTime = 0.14;
     tower.cooldownLeft = cd;
   }
 
@@ -441,6 +472,8 @@ export class Game {
   _updateTowers(dt) {
     computeSupportBuffs(this);
     for (const tower of this.towers) {
+      tower.flashTime = Math.max(0, (tower.flashTime || 0) - dt);
+      tower.recoilTime = Math.max(0, (tower.recoilTime || 0) - dt);
       if (tower.baseDef.kind === "support") continue;
       tower.cooldownLeft = Math.max(0, tower.cooldownLeft - dt);
       if (tower.cooldownLeft > 0) continue;
@@ -454,6 +487,19 @@ export class Game {
       if (!p.dead) nextP.push(p);
     }
     this.projectiles = nextP;
+  }
+
+  _updateEffects(dt) {
+    for (const b of this.hitBursts) {
+      b.life -= dt;
+    }
+    this.hitBursts = this.hitBursts.filter((b) => b.life > 0);
+
+    for (const p of this.damagePopups) {
+      p.life -= dt;
+      p.y -= 22 * dt;
+    }
+    this.damagePopups = this.damagePopups.filter((p) => p.life > 0);
   }
 
   _notifyHud() {
@@ -472,6 +518,7 @@ export class Game {
       this._waveLogic(dt);
       this._updateEnemies(dt);
       this._updateTowers(dt);
+      this._updateEffects(dt);
     }
 
     this.render();
@@ -511,12 +558,12 @@ export class Game {
         const py = y * ts;
         const onPath = this.pathSet.has(keyCell(x, y));
         if (onPath) {
-          ctx.fillStyle = "#1a2233";
+          ctx.fillStyle = "#26334f";
         } else {
-          ctx.fillStyle = (x + y) % 2 === 0 ? "#0f1812" : "#0c1610";
+          ctx.fillStyle = (x + y) % 2 === 0 ? "#0d1510" : "#0a110d";
         }
         ctx.fillRect(px, py, ts, ts);
-        ctx.strokeStyle = "rgba(0,255,200,0.06)";
+        ctx.strokeStyle = "rgba(0,255,200,0.025)";
         ctx.strokeRect(px + 0.5, py + 0.5, ts - 1, ts - 1);
       }
     }
@@ -528,8 +575,8 @@ export class Game {
       const ay = (a[1] + 0.5) * ts;
       const bx = (b[0] + 0.5) * ts;
       const by = (b[1] + 0.5) * ts;
-      ctx.strokeStyle = "rgba(0,255,200,0.22)";
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = "rgba(0,255,200,0.42)";
+      ctx.lineWidth = 4;
       ctx.beginPath();
       ctx.moveTo(ax, ay);
       ctx.lineTo(bx, by);
@@ -540,13 +587,18 @@ export class Game {
     for (const tw of this.towers) {
       const px = tw.gx * ts;
       const py = tw.gy * ts;
-      ctx.fillStyle = "rgba(0,0,0,0.35)";
-      ctx.fillRect(px + 3, py + 3, ts - 6, ts - 6);
+      const recoil = (tw.recoilTime || 0) > 0 ? 2 : 0;
+      const flash = tw.flashTime || 0;
+      ctx.fillStyle = "rgba(0,0,0,0.7)";
+      ctx.fillRect(px + 2 + recoil, py + 2 + recoil, ts - 4, ts - 4);
+      ctx.fillStyle = flash > 0 ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.2)";
+      ctx.fillRect(px + 4 + recoil, py + 4 + recoil, ts - 8, ts - 8);
       ctx.strokeStyle = tw.baseDef.color;
-      ctx.strokeRect(px + 4, py + 4, ts - 8, ts - 8);
+      ctx.lineWidth = flash > 0 ? 3 : 2;
+      ctx.strokeRect(px + 4 + recoil, py + 4 + recoil, ts - 8, ts - 8);
       ctx.fillStyle = tw.baseDef.color;
-      const s = ts * 0.22;
-      ctx.fillRect(px + ts / 2 - s / 2, py + ts / 2 - s / 2, s, s);
+      const s = flash > 0 ? ts * 0.38 : ts * 0.3;
+      ctx.fillRect(px + ts / 2 - s / 2 + recoil, py + ts / 2 - s / 2 + recoil, s, s);
       if (tw.tier > 1) {
         ctx.fillStyle = "#fff";
         ctx.font = "10px monospace";
@@ -589,36 +641,98 @@ export class Game {
       ctx.stroke();
     }
 
+    if (this.debugMode) {
+      for (const tw of this.towers) {
+        const r = tw.range * ts;
+        const cx = (tw.gx + 0.5) * ts;
+        const cy = (tw.gy + 0.5) * ts;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(255,255,255,0.16)";
+        ctx.stroke();
+      }
+    }
+
     for (const p of this.projectiles) {
+      ctx.strokeStyle = p.color;
+      ctx.lineWidth = 3;
+      ctx.globalAlpha = 0.65;
+      ctx.beginPath();
+      ctx.moveTo(p.prevX, p.prevY);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
       ctx.fillStyle = p.color;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
       ctx.fill();
     }
 
     for (const e of this.enemies) {
       if (e.hp <= 0) continue;
-      const p = this.gridToPixel(e.gx, e.gy);
-      const rad = e.radius * ts;
+      const p = this.gridToPixel(e.displayGx || e.gx, e.displayGy || e.gy);
+      const flash = e.hitFlash || 0;
+      const rad = e.radius * ts * (flash > 0 ? 1.35 : 1.18);
+      ctx.shadowColor = e.color;
+      ctx.shadowBlur = 10;
       ctx.fillStyle = e.color;
       ctx.beginPath();
       ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = e.coreColor;
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = flash > 0 ? "#ffffff" : e.coreColor;
       ctx.beginPath();
       ctx.arc(p.x, p.y, rad * 0.45, 0, Math.PI * 2);
       ctx.fill();
-      const frac = e.hp / e.maxHp;
-      ctx.strokeStyle = "rgba(0,0,0,0.55)";
+      const frac = Math.max(0, e.hp / e.maxHp);
+      const barW = 28;
+      const barH = 5;
+      const bx = p.x - barW / 2;
+      const by = p.y - rad - 12;
+      ctx.fillStyle = "rgba(0,0,0,0.85)";
+      ctx.fillRect(bx - 1, by - 1, barW + 2, barH + 2);
+      ctx.fillStyle = "#ff315d";
+      ctx.fillRect(bx, by, barW, barH);
+      ctx.fillStyle = frac > 0.45 ? "#00ffc8" : "#fff23a";
+      ctx.fillRect(bx, by, barW * frac, barH);
+      if (this.debugMode) {
+        ctx.strokeStyle = "rgba(255,255,255,0.35)";
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "10px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText(`${Math.ceil(e.hp)}/${e.maxHp}`, p.x, by - 4);
+        ctx.textAlign = "left";
+      }
+      ctx.lineWidth = 1;
+    }
+
+    for (const b of this.hitBursts) {
+      const t = 1 - b.life / b.maxLife;
+      ctx.globalAlpha = Math.max(0, 1 - t);
+      ctx.strokeStyle = "#ffffff";
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(p.x, p.y - rad - 4, 5, 0, Math.PI * 2);
+      ctx.arc(b.x, b.y, 5 + t * 18, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.strokeStyle = "#00ffc8";
-      ctx.beginPath();
-      ctx.arc(p.x, p.y - rad - 4, 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac);
-      ctx.stroke();
-      ctx.lineWidth = 1;
+      ctx.globalAlpha = 1;
+    }
+
+    for (const p of this.damagePopups) {
+      const t = p.life / p.maxLife;
+      ctx.globalAlpha = Math.max(0, t);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 12px monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(`-${p.value}`, p.x, p.y);
+      ctx.textAlign = "left";
+      ctx.globalAlpha = 1;
     }
 
     if (this.level && this.pathCells.length) {

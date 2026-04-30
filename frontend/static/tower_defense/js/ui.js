@@ -134,6 +134,7 @@ function refreshHud(game) {
     "disabled",
     !game.level || game.state === GameState.GAME_OVER || game.state === GameState.VICTORY
   );
+  $("btn-debug").textContent = game.debugMode ? "Debug on" : "Debug off";
 
   const tw = game.selectedTower;
   if (tw && game.state === GameState.PLAYING) {
@@ -285,6 +286,11 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-restart").addEventListener("click", () => {
     game.restartLevel();
     showOverlay(false, "", "", []);
+    refreshHud(game);
+  });
+
+  $("btn-debug").addEventListener("click", () => {
+    game.toggleDebug();
     refreshHud(game);
   });
 

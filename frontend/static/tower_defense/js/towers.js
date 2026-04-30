@@ -155,6 +155,8 @@ export function createProjectile(src, from, targetEnemyRef, damage, speed, kind,
   return {
     x: from.x,
     y: from.y,
+    prevX: from.x,
+    prevY: from.y,
     targetRef: targetEnemyRef,
     damage,
     speed,
@@ -173,6 +175,8 @@ function dist(ax, ay, bx, by) {
 
 export function updateProjectile(game, proj, dt, enemies) {
   const tgt = proj.targetRef && proj.targetRef.current;
+  proj.prevX = proj.x;
+  proj.prevY = proj.y;
   let tx = proj.x;
   let ty = proj.y;
   if (tgt && tgt.hp > 0) {
@@ -180,7 +184,7 @@ export function updateProjectile(game, proj, dt, enemies) {
     tx = p.x;
     ty = p.y;
   }
-  const step = proj.speed * dt;
+  const step = proj.speed * game.tileSize * dt;
   const d = dist(proj.x, proj.y, tx, ty);
   if (d < step + 0.08 || (tgt && tgt.hp <= 0)) {
     proj.dead = true;
@@ -193,10 +197,12 @@ export function updateProjectile(game, proj, dt, enemies) {
         const ep = game.gridToPixel(e.gx, e.gy);
         if (dist(hitX, hitY, ep.x, ep.y) <= R) {
           e.hp -= proj.damage;
+          game.registerHit(e, proj.damage, ep.x, ep.y);
         }
       }
     } else if (tgt && tgt.hp > 0) {
       tgt.hp -= proj.damage;
+      game.registerHit(tgt, proj.damage, hitX, hitY);
     }
     return;
   }
