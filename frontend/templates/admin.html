@@ -501,7 +501,8 @@ if (monthSelect && monthForm) {
         el.textContent = 'Last job: none yet';
         return;
       }
-      el.textContent = 'Last job: ' + (job.type || 'job') + ' - ' + (job.status || '') + ' (' + Number(job.progress || 0) + '%)';
+      const rows = job.rows === undefined || job.rows === null ? '' : ' - rows: ' + Number(job.rows || 0);
+      el.textContent = 'Last job: ' + (job.type || 'job') + ' - ' + (job.status || '') + ' (' + Number(job.progress || 0) + '%)' + rows;
     } catch (e) {
       el.textContent = 'Last job: unavailable';
     }

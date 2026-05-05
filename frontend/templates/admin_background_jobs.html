@@ -31,12 +31,13 @@
               <th>Company</th>
               <th>Status</th>
               <th style="min-width: 14rem;">Progress</th>
+              <th>Rows</th>
               <th>Message</th>
               <th>Created</th>
             </tr>
           </thead>
           <tbody id="jobsTableBody">
-            <tr><td colspan="7" class="text-muted p-3">Loading jobs...</td></tr>
+            <tr><td colspan="8" class="text-muted p-3">Loading jobs...</td></tr>
           </tbody>
         </table>
       </div>
@@ -74,7 +75,7 @@
   function renderJobs(jobs) {
     if (!tbody) return;
     if (!Array.isArray(jobs) || !jobs.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="text-muted p-3">No background jobs yet.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="text-muted p-3">No background jobs yet.</td></tr>';
       return;
     }
     tbody.innerHTML = jobs.map((job) => {
@@ -89,6 +90,7 @@
         '<td><div class="progress bg-secondary-subtle" style="height: 12px;">' +
           '<div class="progress-bar bg-' + statusClass(status) + '" role="progressbar" style="width: ' + progress + '%;" aria-valuenow="' + progress + '" aria-valuemin="0" aria-valuemax="100"></div>' +
         '</div><div class="small text-muted mt-1">' + progress + '%</div></td>' +
+        '<td>' + (job.rows === undefined || job.rows === null ? '-' : esc(job.rows)) + '</td>' +
         '<td>' + esc(job.message || '') + error + '</td>' +
         '<td class="small text-muted text-nowrap">' + esc(fmtTime(job.created_at)) + '</td>' +
       '</tr>';
@@ -103,7 +105,7 @@
       renderJobs(data.jobs || []);
     } catch (e) {
       if (tbody) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-danger p-3">' + esc(e.message || 'Could not load jobs') + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-danger p-3">' + esc(e.message || 'Could not load jobs') + '</td></tr>';
       }
     }
   }

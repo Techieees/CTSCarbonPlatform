@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Travel MGMT Output{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <section class="mb-4">
+    <div class="d-flex flex-column flex-lg-row gap-3 justify-content-between align-items-lg-start">
+      <div>
+        <div class="text-uppercase text-muted small fw-semibold mb-1">Data Output</div>
+        <h1 class="mb-2">Travel MGMT Output</h1>
+        <p class="text-muted mb-0">Latest preprocessing result from <code>analysis_summary.xlsx</code>.</p>
+      </div>
+      {% if output_exists and download_url %}
+      <a class="btn btn-primary" href="{{ download_url }}">Download Excel</a>
+      {% endif %}
+    </div>
+  </section>
+
+  {% if error_message %}
+  <div class="alert alert-danger">{{ error_message }}</div>
+  {% elif not output_exists %}
+  <div class="alert alert-info">If no travel data processed yet, please run preprocessing.</div>
+  {% else %}
+  <div class="card shadow-sm border-secondary-subtle">
+    <div class="card-header d-flex flex-column flex-md-row justify-content-between gap-2">
+      <div>
+        <strong>By Cost Center</strong>
+        <div class="text-muted small">{{ row_count }} rows{% if updated_at %} - Updated {{ updated_at }}{% endif %}</div>
+      </div>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="text-secondary small text-uppercase" style="background-color: var(--bs-secondary-bg);">
+            <tr>
+              {% for column in columns %}
+              <th>{{ column }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+            <tr>
+              {% for column in columns %}
+              <td>{{ row.get(column, "") }}</td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+

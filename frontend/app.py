@@ -589,6 +589,11 @@ def _serialize_job(job: dict[str, object]) -> dict[str, object]:
         "completed_at": job.get("completed_at"),
         "cancel_requested": bool(job.get("cancel_requested")),
     }
+    if job.get("rows") is not None:
+        try:
+            response["rows"] = int(job.get("rows") or 0)
+        except Exception:
+            response["rows"] = job.get("rows")
     if job.get("result") is not None:
         response["result"] = job.get("result")
     return response
@@ -12837,6 +12842,56 @@ def analytics_forecasting():
     return render_template("analytics_output.html", user=current_user, **context)
 
 
+@app.route("/data-output/travel", methods=["GET"])
+@login_required
+def data_output_travel():
+    output_path = STAGE2_TRAVEL_DIR / "analysis_summary.xlsx"
+    columns = ["Cost Center", "Total Travels", "Total Spend", "Total CO2", "Total Km"]
+    rows: list[dict[str, object]] = []
+    error_message = ""
+    updated_at = ""
+
+    if output_path.exists():
+        try:
+            df = pd.read_excel(output_path, sheet_name=0, engine="openpyxl")
+            available_columns = [col for col in columns if col in df.columns]
+            if available_columns:
+                df = df[available_columns]
+            else:
+                available_columns = df.columns.tolist()
+            df = df.where(pd.notna(df), "")
+            rows = df.to_dict(orient="records")
+            columns = available_columns
+            try:
+                updated_at = datetime.utcfromtimestamp(output_path.stat().st_mtime).strftime("%Y-%m-%d %H:%M UTC")
+            except Exception:
+                updated_at = ""
+        except Exception as exc:
+            error_message = f"Could not read Travel MGMT output: {exc}"
+
+    return render_template(
+        "data_output_travel.html",
+        user=current_user,
+        output_exists=output_path.exists() and not error_message,
+        rows=rows,
+        columns=columns,
+        row_count=len(rows),
+        updated_at=updated_at,
+        error_message=error_message,
+        download_url=url_for("data_output_travel_download") if output_path.exists() else "",
+    )
+
+
+@app.route("/data-output/travel/download", methods=["GET"])
+@login_required
+def data_output_travel_download():
+    output_path = STAGE2_TRAVEL_DIR / "analysis_summary.xlsx"
+    if not output_path.exists():
+        flash("Travel MGMT output file not found.")
+        return redirect(url_for("data_output_travel"))
+    return send_file(str(output_path), as_attachment=True, download_name="travel_mgmt_analysis_summary.xlsx")
+
+
 @app.route("/analytics/mapped-window-output", methods=["GET", "POST"])
 @login_required
 def analytics_mapped_window_output():
@@ -13391,10 +13446,17 @@ def _run_travel_preprocess_job(*, job_id: str, run_dir: str, raw_path: str) -> d
 
     _update_job_progress(job_id, 5, "Starting Travel preprocessing")
     run_travel_preprocess(Path(run_dir), Path(raw_path), progress_callback=progress)
+    analysis_summary = STAGE2_TRAVEL_DIR / "analysis_summary.xlsx"
+    row_count = 0
+    if analysis_summary.exists():
+        final_df = pd.read_excel(analysis_summary, sheet_name=0, engine="openpyxl")
+        row_count = int(len(final_df))
+    _update_job(job_id, rows=row_count)
     return {
         "ok": True,
         "run_dir": run_dir,
-        "analysis_summary": str(STAGE2_TRAVEL_DIR / "analysis_summary.xlsx"),
+        "analysis_summary": str(analysis_summary),
+        "rows": row_count,
     }
 
 
