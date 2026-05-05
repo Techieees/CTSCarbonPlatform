@@ -5,6 +5,14 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from travel_preprocess_io import read_travel_excel
 
 # File paths
 data_path = r"C:\Users\FlorianDemir\Desktop\Business Travel_MGMT\January 2025(WholeYear)\cleaned_source_Raw_Data.xlsx"
@@ -12,7 +20,7 @@ output_dir = r"C:\Users\FlorianDemir\Desktop\Business Travel_MGMT\January 2025(W
 os.makedirs(output_dir, exist_ok=True)
 
 # Read the data
-df = pd.read_excel(data_path)
+df = read_travel_excel(data_path)
 
 # Convert columns to float for numerical analysis
 for col in ['Total Amount', 'Kg CO2', 'Km Total']:

@@ -1,9 +1,19 @@
 import pandas as pd
 import os
-import traceback
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from travel_preprocess_io import read_travel_excel
 
 # Input and output file paths
-input_path = r"C:\Users\FlorianDemir\Desktop\Business Travel_MGMT\January 2025(WholeYear)\CTS Nordics Travel Mgmt Report_travellers_2025_whole_year_source.xlsb"
+input_path = os.environ.get(
+    "CTS_TRAVEL_INPUT_PATH",
+    r"C:\Users\FlorianDemir\Desktop\Business Travel_MGMT\January 2025(WholeYear)\CTS Nordics Travel Mgmt Report_travellers_2025_whole_year_source.xlsb",
+)
 output_dir = r"C:\Users\FlorianDemir\Desktop\Business Travel_MGMT\January 2025(WholeYear)"
 output_path = os.path.join(output_dir, "source Raw Data.xlsx")
 
@@ -29,17 +39,6 @@ def _normalize_header(value):
     return " ".join(str(value or "").strip().lower().split())
 
 
-def _read_xlsb_source(path):
-    if not str(path).lower().endswith(".xlsb"):
-        raise RuntimeError("Only .xlsb files are allowed for Travel uploads.")
-    try:
-        return pd.read_excel(path, sheet_name=sheet_name, engine="pyxlsb")
-    except Exception as exc:
-        print(f"[TRAVEL] Failed to read .xlsb file: {exc}")
-        print(traceback.format_exc())
-        raise RuntimeError("Failed to read .xlsb file. Ensure file is valid or convert to .xlsx.") from exc
-
-
 def _validate_required_headers(df):
     actual = {_normalize_header(col) for col in df.columns}
     missing = [col for col in required_columns if _normalize_header(col) not in actual]
@@ -47,7 +46,7 @@ def _validate_required_headers(df):
         raise RuntimeError("Travel source is missing required columns: " + ", ".join(missing))
 
 
-data = _read_xlsb_source(input_path)
+data = read_travel_excel(input_path, sheet_name=sheet_name)
 _validate_required_headers(data)
 
 df = data.copy()

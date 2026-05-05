@@ -30,12 +30,12 @@
                 </div>
                 <div class="card-body">
                     <form method="post" action="{{ url_for('upload_travel_preprocess') }}" enctype="multipart/form-data" class="d-flex flex-column flex-md-row align-items-stretch align-items-md-center gap-2">
-                        <input class="form-control" type="file" name="travel_file" accept=".xlsb" required>
+                        <input class="form-control" type="file" name="travel_file" accept=".xlsb,.xlsx" required>
                         <button class="btn btn-primary d-inline-flex align-items-center" type="submit">
                             {{ illu.illu_btn_save('me-1') }}Start preprocess
                         </button>
                     </form>
-                    <p class="text-muted small mb-0 mt-2">Admin only. Upload a Travel Management `.xlsb` file to refresh `analysis_summary.xlsx` for Stage 2 source appending.</p>
+                    <p class="text-muted small mb-0 mt-2">Admin only. Upload a Travel Management file (.xlsb or .xlsx) to refresh `analysis_summary.xlsx` for Stage 2 source appending.</p>
                 </div>
             </div>
         </div>

@@ -134,7 +134,7 @@ EMPLOYEE_COMMUTING_NATIONAL_AVERAGE_FIELDS: tuple[dict[str, str], ...] = (
 ALLOWED_EMAIL_DOMAIN = "cts-nordics.com"
 PROFILE_PHOTO_ALLOWED_EXT = frozenset({".png", ".jpg", ".jpeg", ".webp"})
 COMPANY_LOGO_ALLOWED_EXT = frozenset({".png"})
-TRAVEL_ALLOWED_EXT = frozenset({".xlsb"})
+TRAVEL_ALLOWED_EXT = frozenset({".xlsb", ".xlsx"})
 FEED_IMAGE_ALLOWED_EXT = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif"})
 FEED_VIDEO_ALLOWED_EXT = frozenset({".mp4", ".webm", ".mov", ".m4v"})
 FEED_FILE_ALLOWED_EXT = frozenset({".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".csv", ".txt"})
@@ -4572,6 +4572,221 @@ def _string_cell_value(value: object) -> str:
     except Exception:
         pass
     return "" if value is None else str(value)
+
+
+_DATA_ENTRY_MAPPING_METADATA_COLUMNS = frozenset(
+    {
+        "ef_id",
+        "status",
+        "mapping_status",
+        "mapped_by",
+        "mapping_run_id",
+    }
+)
+
+
+def _upsert_data_entry_cell(
+    *,
+    company_name: str,
+    sheet_name: str,
+    entry_group: str,
+    row_index: int,
+    column_name: str,
+    value: object,
+    uploaded_by_user_id: int | None = None,
+) -> None:
+    query = DataEntry.query.filter_by(
+        company_name=company_name,
+        sheet_name=sheet_name,
+        row_index=int(row_index),
+        column_name=str(column_name),
+    )
+    if entry_group and not entry_group.startswith("legacy:"):
+        query = query.filter_by(entry_group=entry_group)
+    entry = query.order_by(DataEntry.id.asc()).first()
+    if entry is None:
+        entry = DataEntry(
+            company_name=company_name,
+            sheet_name=sheet_name,
+            entry_group="" if entry_group.startswith("legacy:") else entry_group,
+            uploaded_by_user_id=uploaded_by_user_id,
+            row_index=int(row_index),
+            column_name=str(column_name),
+            created_at=datetime.utcnow(),
+        )
+        db.session.add(entry)
+    entry.value = _string_cell_value(value)
+
+
+def _clear_data_entry_mapping_metadata(
+    company_name: str,
+    sheet_name: str,
+    entry_groups: set[str] | None = None,
+) -> int:
+    query = DataEntry.query.filter(
+        DataEntry.company_name == company_name,
+        DataEntry.sheet_name == sheet_name,
+        DataEntry.column_name.in_(tuple(_DATA_ENTRY_MAPPING_METADATA_COLUMNS)),
+    )
+    normalized_groups = {str(g or "").strip() for g in (entry_groups or set()) if str(g or "").strip()}
+    if normalized_groups:
+        query = query.filter(DataEntry.entry_group.in_(tuple(normalized_groups)))
+    deleted = int(query.delete(synchronize_session=False) or 0)
+    if deleted:
+        print(f"[UNMAPPED] Cleared {deleted} mapping metadata cell(s) for {company_name} / {sheet_name}")
+    return deleted
+
+
+def _data_entry_row_metadata_lookup(company_name: str, sheet_name: str) -> dict[tuple[str, int], dict[str, str]]:
+    rows = (
+        DataEntry.query.filter(
+            DataEntry.company_name == company_name,
+            DataEntry.sheet_name == sheet_name,
+            DataEntry.column_name.in_(tuple(_DATA_ENTRY_MAPPING_METADATA_COLUMNS)),
+        )
+        .order_by(DataEntry.created_at.asc(), DataEntry.row_index.asc(), DataEntry.id.asc())
+        .all()
+    )
+    out: dict[tuple[str, int], dict[str, str]] = {}
+    for row in rows:
+        key = (str(row.entry_group or "").strip(), int(row.row_index or 0))
+        out.setdefault(key, {})[str(row.column_name or "").strip().lower()] = _string_cell_value(row.value).strip()
+    return out
+
+
+def _persist_mapping_metadata_to_data_entry(
+    *,
+    company_name: str,
+    sheet_name: str,
+    source_entry_group: str | None,
+    mapped_df: pd.DataFrame,
+    run_id: str,
+    user_id: int | None,
+) -> None:
+    if mapped_df is None or mapped_df.empty:
+        return
+
+    grid_rows = _load_data_entry_grid_rows_no_request(company_name, sheet_name, list(mapped_df.columns))
+    entry_group_filter = str(source_entry_group or "").strip()
+    if entry_group_filter:
+        grid_rows = [r for r in grid_rows if str(r.get("entry_group") or "").strip() == entry_group_filter]
+    if not grid_rows:
+        return
+
+    ef_col = _df_find_column_casefold(mapped_df, ("ef_id", "EF ID", "Emission Factor ID", "assigned_ef_id"))
+    status_col = _df_find_column_casefold(mapped_df, ("status", "Status", "mapping_status", "Mapping Status"))
+    mapped_by_col = _df_find_column_casefold(mapped_df, ("mapped_by", "Mapped By"))
+
+    for pos, row_meta in enumerate(grid_rows):
+        if pos >= len(mapped_df.index):
+            break
+        mapped_row = mapped_df.iloc[pos]
+        row_index = int(row_meta.get("row_index") or (pos + 1))
+        entry_group = str(row_meta.get("entry_group") or "").strip()
+        ef_value = _string_cell_value(mapped_row.get(ef_col) if ef_col else "").strip()
+        status_value = _string_cell_value(mapped_row.get(status_col) if status_col else "").strip()
+        mapped_by_value = _string_cell_value(mapped_row.get(mapped_by_col) if mapped_by_col else "").strip()
+
+        _upsert_data_entry_cell(
+            company_name=company_name,
+            sheet_name=sheet_name,
+            entry_group=entry_group,
+            row_index=row_index,
+            column_name="ef_id",
+            value=ef_value,
+            uploaded_by_user_id=user_id,
+        )
+        _upsert_data_entry_cell(
+            company_name=company_name,
+            sheet_name=sheet_name,
+            entry_group=entry_group,
+            row_index=row_index,
+            column_name="status",
+            value=status_value,
+            uploaded_by_user_id=user_id,
+        )
+        _upsert_data_entry_cell(
+            company_name=company_name,
+            sheet_name=sheet_name,
+            entry_group=entry_group,
+            row_index=row_index,
+            column_name="mapping_run_id",
+            value=run_id,
+            uploaded_by_user_id=user_id,
+        )
+        if mapped_by_value:
+            _upsert_data_entry_cell(
+                company_name=company_name,
+                sheet_name=sheet_name,
+                entry_group=entry_group,
+                row_index=row_index,
+                column_name="mapped_by",
+                value=mapped_by_value,
+                uploaded_by_user_id=user_id,
+            )
+
+    print(f"[UNMAPPED] Persisted live mapping metadata for {company_name} / {sheet_name} run {run_id}")
+
+
+def _delete_stale_open_unmapped_rows_from_live_data_entry(
+    company_name: str | None = None,
+    sheet_name: str | None = None,
+) -> int:
+    query = MappingUnmappedRow.query.filter(MappingUnmappedRow.review_status == "open")
+    if company_name:
+        query = query.filter(MappingUnmappedRow.company_name == company_name)
+    if sheet_name:
+        query = query.filter(MappingUnmappedRow.sheet_name == sheet_name)
+
+    rows = query.all()
+    if not rows:
+        return 0
+
+    metadata_cache: dict[tuple[str, str], dict[tuple[str, int], dict[str, str]]] = {}
+    to_delete: list[MappingUnmappedRow] = []
+    for row in rows:
+        cache_key = (str(row.company_name or ""), str(row.sheet_name or ""))
+        if cache_key not in metadata_cache:
+            metadata_cache[cache_key] = _data_entry_row_metadata_lookup(*cache_key)
+        lookup = metadata_cache[cache_key]
+        entry_group = str(row.source_entry_group or "").strip()
+        row_index = max(1, int(row.row_number or 2) - 1)
+        meta = lookup.get((entry_group, row_index)) or lookup.get(("", row_index)) or {}
+        ef_id = str(meta.get("ef_id") or "").strip()
+        status = str(meta.get("status") or meta.get("mapping_status") or "").strip().lower()
+        if ef_id or (status and status != "no match"):
+            to_delete.append(row)
+
+    for row in to_delete:
+        db.session.delete(row)
+    if to_delete:
+        print(f"[UNMAPPED] Deleted {len(to_delete)} stale open unmapped row(s) from live data_entry metadata")
+    return len(to_delete)
+
+
+def _supersede_open_unmapped_rows(
+    company_name: str,
+    sheet_name: str,
+    source_entry_group: str | None = None,
+    *,
+    reason: str = "data_changed",
+) -> int:
+    query = MappingUnmappedRow.query.filter(
+        MappingUnmappedRow.company_name == company_name,
+        MappingUnmappedRow.sheet_name == sheet_name,
+        MappingUnmappedRow.review_status == "open",
+    )
+    entry_group = str(source_entry_group or "").strip()
+    if entry_group:
+        query = query.filter(MappingUnmappedRow.source_entry_group == entry_group)
+    rows = query.all()
+    for row in rows:
+        row.review_status = "superseded"
+        row.resolved_at = datetime.utcnow()
+        row.owner_notes = (str(row.owner_notes or "").strip() + f" | Superseded: {reason}").strip(" |")
+    if rows:
+        print(f"[UNMAPPED] Superseded {len(rows)} open row(s) for {company_name} / {sheet_name}: {reason}")
+    return len(rows)
 
 
 def _persist_translated_data_entry_columns(
@@ -10184,6 +10399,13 @@ def _run_translation_job(
             columns=tuple(columns),
             uploaded_by_user_id=user_id,
         )
+        if changed_cells:
+            _clear_data_entry_mapping_metadata(resolved_company, resolved_sheet)
+            _supersede_open_unmapped_rows(
+                resolved_company,
+                resolved_sheet,
+                reason="translation_updated_source_values",
+            )
         total_rows_affected += rows_affected
         total_cells_updated += changed_cells
         translated_sheets.append(
@@ -10329,6 +10551,14 @@ def _run_mapping_job(
     mr.status = "succeeded"
     mr.output_path = str(out_path)
     mr.input_path = str(input_path)
+    _persist_mapping_metadata_to_data_entry(
+        company_name=resolved_company,
+        sheet_name=resolved_sheet,
+        source_entry_group=entry_group_filter or None,
+        mapped_df=mapped_df,
+        run_id=run_id,
+        user_id=int(user_id),
+    )
     db.session.commit()
 
     unmapped_count = 0
@@ -11626,6 +11856,10 @@ def admin_unmapped_mappings():
         flash("Access denied")
         return redirect(url_for("dashboard"))
 
+    removed_stale = _delete_stale_open_unmapped_rows_from_live_data_entry()
+    if removed_stale:
+        db.session.commit()
+
     query, status_filter, company_filter, sheet_filter, search = _unmapped_query_from_request()
     dedupe_mode = (request.args.get("dedupe") or "").strip().lower()
     rows = query.order_by(MappingUnmappedRow.created_at.desc(), MappingUnmappedRow.id.desc()).limit(500).all()
@@ -11758,6 +11992,10 @@ def admin_unmapped_mappings_fuzzy():
     if not bool(getattr(current_user, "is_admin", False)):
         flash("Access denied")
         return redirect(url_for("dashboard"))
+
+    removed_stale = _delete_stale_open_unmapped_rows_from_live_data_entry()
+    if removed_stale:
+        db.session.commit()
 
     query, status_filter, company_filter, sheet_filter, search = _unmapped_query_from_request()
     rows = query.order_by(MappingUnmappedRow.created_at.desc(), MappingUnmappedRow.id.desc()).limit(500).all()
@@ -13100,12 +13338,12 @@ def upload_travel_preprocess():
 
     upload = request.files.get("travel_file")
     if not upload or not getattr(upload, "filename", None):
-        flash("Please choose a Travel .xlsb file.")
+        flash("Please choose a Travel Management file (.xlsb or .xlsx).")
         return redirect(url_for("admin"))
 
     ext = Path(secure_filename(upload.filename or "")).suffix.lower()
     if ext not in TRAVEL_ALLOWED_EXT:
-        flash("Only .xlsb files are allowed for Travel uploads.")
+        flash("Only .xlsb or .xlsx files are allowed")
         return redirect(url_for("admin"))
 
     run_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:10]}"
@@ -13113,7 +13351,7 @@ def upload_travel_preprocess():
     raw_dir = run_dir / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
 
-    safe_name = secure_filename(upload.filename or "travel_source.xlsb") or "travel_source.xlsb"
+    safe_name = secure_filename(upload.filename or "travel_source.xlsx") or "travel_source.xlsx"
     raw_path = raw_dir / safe_name
     upload.save(str(raw_path))
 

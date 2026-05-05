@@ -5,6 +5,14 @@
 
 import pandas as pd
 import os
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from travel_preprocess_io import read_travel_excel
 
 input_path = r"C:\Users\FlorianDemir\Desktop\Business Travel_MGMT\January 2025(WholeYear)\source Raw Data.xlsx"
 output_path = r"C:\Users\FlorianDemir\Desktop\Business Travel_MGMT\January 2025(WholeYear)\cleaned_source_Raw_Data.xlsx"
@@ -25,7 +33,7 @@ keep_columns = [
 ]
 
 # Read the file
-df = pd.read_excel(input_path)
+df = read_travel_excel(input_path)
 
 missing_columns = [col for col in keep_columns if col not in df.columns]
 if missing_columns:

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
 import threading
-import traceback
 from datetime import datetime
 from pathlib import Path
 
@@ -19,6 +19,7 @@ from config import (
     STAGE1_KLARAKARBON_OUTPUT_DIR,
     STAGE2_TRAVEL_DIR,
 )
+from travel_preprocess_io import TRAVEL_ALLOWED_EXTENSIONS, read_travel_excel
 
 
 _KLARAKARBON_LOCK = threading.Lock()
@@ -36,6 +37,7 @@ _LEGACY_TRAVEL_DIR = Path(
     r"C:\Users\FlorianDemir\Desktop\Business Travel_MGMT\January 2025(WholeYear)"
 )
 _LEGACY_TRAVEL_INPUT = _LEGACY_TRAVEL_DIR / "CTS Nordics Travel Mgmt Report_travellers_2025_whole_year_source.xlsb"
+_LEGACY_TRAVEL_INPUT_STEM = "CTS Nordics Travel Mgmt Report_travellers_2025_whole_year_source"
 
 _KLARAKARBON_SCRIPT_DIR = Path(__file__).resolve().parent / "engine" / "stage1_preprocess" / "Datas" / "Klarakarbon"
 _TRAVEL_SCRIPT_DIR = Path(__file__).resolve().parent / "engine" / "stage1_preprocess" / "Datas" / "Business Travel_MGMT"
@@ -92,21 +94,13 @@ def travel_required_headers() -> list[str]:
 
 
 def _read_travel_source_headers(upload_path: Path) -> list[str]:
-    if upload_path.suffix.lower() != ".xlsb":
-        raise RuntimeError("Only .xlsb files are allowed for Travel uploads.")
-
-    try:
-        df = pd.read_excel(upload_path, sheet_name="source", nrows=0, engine="pyxlsb")
-        return [str(col).strip() for col in df.columns if str(col).strip()]
-    except Exception as exc:
-        print(f"[TRAVEL] Failed to read .xlsb headers: {exc}")
-        print(traceback.format_exc())
-        raise RuntimeError("Failed to read .xlsb file. Ensure file is valid or convert to .xlsx.") from exc
+    df = read_travel_excel(upload_path, sheet_name="source", nrows=0)
+    return [str(col).strip() for col in df.columns if str(col).strip()]
 
 
 def validate_travel_upload(upload_path: Path) -> list[str]:
-    if upload_path.suffix.lower() != ".xlsb":
-        return [f"{upload_path.name}: Only .xlsb files are allowed for Travel uploads."]
+    if upload_path.suffix.lower() not in TRAVEL_ALLOWED_EXTENSIONS:
+        return [f"{upload_path.name}: Only .xlsb or .xlsx files are allowed"]
 
     required = travel_required_headers()
     if not required:
@@ -191,8 +185,11 @@ def validate_klarakarbon_uploads(company_name: str, upload_paths: list[Path]) ->
     return errors
 
 
-def _run_script(script_path: Path, run_dir: Path) -> None:
+def _run_script(script_path: Path, run_dir: Path, env: dict[str, str] | None = None) -> None:
     _append_log(run_dir, f"RUN {script_path.name}")
+    proc_env = None
+    if env:
+        proc_env = {**dict(os.environ), **env}
     proc = subprocess.run(
         [sys.executable, str(script_path)],
         cwd=str(script_path.parent),
@@ -200,6 +197,7 @@ def _run_script(script_path: Path, run_dir: Path) -> None:
         text=True,
         encoding="utf-8",
         errors="replace",
+        env=proc_env,
     )
     if proc.stdout:
         _append_log(run_dir, proc.stdout)
@@ -276,15 +274,17 @@ def run_travel_preprocess(run_dir: Path, upload_path: Path) -> None:
                 "cleaned_source_Raw_Data.xlsx",
                 "analysis_summary.xlsx",
                 "negative_km_rows.xlsx",
-                _LEGACY_TRAVEL_INPUT.name,
+                f"{_LEGACY_TRAVEL_INPUT_STEM}.xlsb",
+                f"{_LEGACY_TRAVEL_INPUT_STEM}.xlsx",
             ]:
                 candidate = _LEGACY_TRAVEL_DIR / name
                 if candidate.exists():
                     candidate.unlink()
 
-            shutil.copy2(upload_path, _LEGACY_TRAVEL_INPUT)
+            legacy_input = _LEGACY_TRAVEL_DIR / f"{_LEGACY_TRAVEL_INPUT_STEM}{upload_path.suffix.lower()}"
+            shutil.copy2(upload_path, legacy_input)
 
-            _run_script(_TRAVEL_SCRIPT_1, run_dir)
+            _run_script(_TRAVEL_SCRIPT_1, run_dir, env={"CTS_TRAVEL_INPUT_PATH": str(legacy_input)})
             _run_script(_TRAVEL_SCRIPT_2, run_dir)
             _run_script(_TRAVEL_SCRIPT_3, run_dir)
 
