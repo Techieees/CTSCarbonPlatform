@@ -4,7 +4,7 @@
 
 
 import pandas as pd
-import os
+import argparse
 import sys
 from pathlib import Path
 
@@ -13,9 +13,6 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from travel_preprocess_io import read_travel_excel
-
-input_path = r"C:\Users\FlorianDemir\Desktop\Business Travel_MGMT\January 2025(WholeYear)\source Raw Data.xlsx"
-output_path = r"C:\Users\FlorianDemir\Desktop\Business Travel_MGMT\January 2025(WholeYear)\cleaned_source_Raw_Data.xlsx"
 
 # Only keep the following columns
 keep_columns = [
@@ -32,36 +29,49 @@ keep_columns = [
     'Traveler Name', 'Scope', 'GHG Category'
 ]
 
-# Read the file
-df = read_travel_excel(input_path)
 
-missing_columns = [col for col in keep_columns if col not in df.columns]
-if missing_columns:
-    raise RuntimeError("Travel source is missing required columns: " + ", ".join(missing_columns))
-
-# Only keep the required columns
-df_clean = df[keep_columns].copy()
-
-# Cost Center merge
-cost_center_replace = {'CTS DUBLIN': 'CTS-VDC SERVICES', 'CTS IRELAND': 'CTS-VDC SERVICES'}
-df_clean['Cost Center'] = df_clean['Cost Center'].replace(cost_center_replace)
-
-# Convert 'Inv Date' to DD/MM/YYYY format
-df_clean['Inv Date'] = pd.to_datetime(df_clean['Inv Date'], errors='coerce').dt.strftime('%d/%m/%Y')
-
-# Check if 'Km Total' has negative values
-df_clean['Negative Km Total Exists'] = df_clean['Km Total'].apply(lambda x: 'Yes' if pd.notnull(x) and x < 0 else 'No')
-
-# Convert 'Kg CO2' to numeric type
-df_clean['Kg CO2'] = pd.to_numeric(df_clean['Kg CO2'], errors='coerce')
-# Add CO2 Exists column
-df_clean['CO2 Exists'] = df_clean['Kg CO2'].apply(lambda x: 'Yes' if pd.notnull(x) and x > 0 else 'No')
-
-df_clean.to_excel(output_path, index=False)
+def _parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input", required=True, help="Extracted source Raw Data.xlsx path")
+    parser.add_argument("--output", required=True, help="Cleaned output workbook path")
+    return parser.parse_args()
 
 
+def main():
+    args = _parse_args()
+    input_path = Path(args.input)
+    output_path = Path(args.output)
+
+    # Read the file
+    df = read_travel_excel(input_path)
+
+    missing_columns = [col for col in keep_columns if col not in df.columns]
+    if missing_columns:
+        raise RuntimeError("Travel source is missing required columns: " + ", ".join(missing_columns))
+
+    # Only keep the required columns
+    df_clean = df[keep_columns].copy()
+
+    # Cost Center merge
+    cost_center_replace = {'CTS DUBLIN': 'CTS-VDC SERVICES', 'CTS IRELAND': 'CTS-VDC SERVICES'}
+    df_clean['Cost Center'] = df_clean['Cost Center'].replace(cost_center_replace)
+
+    # Convert 'Inv Date' to DD/MM/YYYY format
+    df_clean['Inv Date'] = pd.to_datetime(df_clean['Inv Date'], errors='coerce').dt.strftime('%d/%m/%Y')
+
+    # Check if 'Km Total' has negative values
+    df_clean['Negative Km Total Exists'] = df_clean['Km Total'].apply(lambda x: 'Yes' if pd.notnull(x) and x < 0 else 'No')
+
+    # Convert 'Kg CO2' to numeric type
+    df_clean['Kg CO2'] = pd.to_numeric(df_clean['Kg CO2'], errors='coerce')
+    # Add CO2 Exists column
+    df_clean['CO2 Exists'] = df_clean['Kg CO2'].apply(lambda x: 'Yes' if pd.notnull(x) and x > 0 else 'No')
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df_clean.to_excel(output_path, index=False)
+
+    print(f"Cleaned data saved to: {output_path}")
 
 
-
-
-print(f"Cleaned data saved to: {output_path}") 
+if __name__ == "__main__":
+    main()

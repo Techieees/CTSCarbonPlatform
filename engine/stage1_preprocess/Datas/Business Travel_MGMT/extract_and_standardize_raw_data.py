@@ -1,5 +1,5 @@
 import pandas as pd
-import os
+import argparse
 import sys
 import traceback
 from pathlib import Path
@@ -9,14 +9,6 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from travel_preprocess_io import read_travel_excel
-
-# Input and output file paths
-input_path = os.environ.get(
-    "CTS_TRAVEL_INPUT_PATH",
-    r"C:\Users\FlorianDemir\Desktop\Business Travel_MGMT\January 2025(WholeYear)\CTS Nordics Travel Mgmt Report_travellers_2025_whole_year_source.xlsb",
-)
-output_dir = r"C:\Users\FlorianDemir\Desktop\Business Travel_MGMT\January 2025(WholeYear)"
-output_path = os.path.join(output_dir, "source Raw Data.xlsx")
 
 # Sheet name (change if necessary)
 sheet_name = "source"
@@ -47,7 +39,19 @@ def _validate_required_headers(df):
         raise RuntimeError("Missing required columns: " + ", ".join(missing))
 
 
+def _parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input", required=True, help="Uploaded Travel Management file path")
+    parser.add_argument("--output-dir", required=True, help="Directory for extracted output files")
+    return parser.parse_args()
+
+
 def main():
+    args = _parse_args()
+    input_path = Path(args.input)
+    output_dir = Path(args.output_dir)
+    output_path = output_dir / "source Raw Data.xlsx"
+
     print("STEP: extract started", flush=True)
     print(f"Input path: {input_path}", flush=True)
     print(f"Sheet name: {sheet_name}", flush=True)
@@ -80,7 +84,7 @@ def main():
     df["GHG Category"] = "Business Travel"
 
     # Create output directory if it does not exist
-    os.makedirs(output_dir, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     # Save the new file
     df.to_excel(output_path, index=False, engine='openpyxl')

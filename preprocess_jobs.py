@@ -33,12 +33,6 @@ _LEGACY_KLARAKARBON_OUTPUT_DIR = ENGINE_STAGE1_KLARAKARBON_OUTPUT_WORK_DIR
 _LEGACY_KLARAKARBON_COMBINED_INPUT = _LEGACY_KLARAKARBON_OUTPUT_DIR / "combined_klarakarbon_data_20260129_170025.xlsx"
 _LEGACY_KLARAKARBON_DC_INPUT = _LEGACY_KLARAKARBON_OUTPUT_DIR / "klarakarbon_double_counting_20260129_1702.xlsx"
 
-_LEGACY_TRAVEL_DIR = Path(
-    r"C:\Users\FlorianDemir\Desktop\Business Travel_MGMT\January 2025(WholeYear)"
-)
-_LEGACY_TRAVEL_INPUT = _LEGACY_TRAVEL_DIR / "CTS Nordics Travel Mgmt Report_travellers_2025_whole_year_source.xlsb"
-_LEGACY_TRAVEL_INPUT_STEM = "CTS Nordics Travel Mgmt Report_travellers_2025_whole_year_source"
-
 _KLARAKARBON_SCRIPT_DIR = Path(__file__).resolve().parent / "engine" / "stage1_preprocess" / "Datas" / "Klarakarbon"
 _TRAVEL_SCRIPT_DIR = Path(__file__).resolve().parent / "engine" / "stage1_preprocess" / "Datas" / "Business Travel_MGMT"
 
@@ -186,13 +180,18 @@ def validate_klarakarbon_uploads(company_name: str, upload_paths: list[Path]) ->
     return errors
 
 
-def _run_script(script_path: Path, run_dir: Path, env: dict[str, str] | None = None) -> None:
+def _run_script(
+    script_path: Path,
+    run_dir: Path,
+    env: dict[str, str] | None = None,
+    args: list[str] | tuple[str, ...] | None = None,
+) -> None:
     _append_log(run_dir, f"RUN {script_path.name}")
     proc_env = None
     if env:
         proc_env = {**dict(os.environ), **env}
     proc = subprocess.run(
-        [sys.executable, str(script_path)],
+        [sys.executable, str(script_path), *(list(args or []))],
         cwd=str(script_path.parent),
         capture_output=True,
         text=True,
@@ -284,38 +283,37 @@ def run_travel_preprocess(run_dir: Path, upload_path: Path, progress_callback=No
 
     with _TRAVEL_LOCK:
         try:
-            _LEGACY_TRAVEL_DIR.mkdir(parents=True, exist_ok=True)
-            for name in [
-                "source Raw Data.xlsx",
-                "cleaned_source_Raw_Data.xlsx",
-                "analysis_summary.xlsx",
-                "negative_km_rows.xlsx",
-                f"{_LEGACY_TRAVEL_INPUT_STEM}.xlsb",
-                f"{_LEGACY_TRAVEL_INPUT_STEM}.xlsx",
-            ]:
-                candidate = _LEGACY_TRAVEL_DIR / name
-                if candidate.exists():
-                    candidate.unlink()
-
-            legacy_input = _LEGACY_TRAVEL_DIR / f"{_LEGACY_TRAVEL_INPUT_STEM}{upload_path.suffix.lower()}"
-            shutil.copy2(upload_path, legacy_input)
+            run_dir.mkdir(parents=True, exist_ok=True)
+            source_raw_path = run_dir / "source Raw Data.xlsx"
+            cleaned_path = run_dir / "cleaned_source_Raw_Data.xlsx"
+            analysis_path = run_dir / "analysis_summary.xlsx"
             report(10, "Travel file staged")
 
-            _run_script(_TRAVEL_SCRIPT_1, run_dir, env={"CTS_TRAVEL_INPUT_PATH": str(legacy_input)})
+            _run_script(
+                _TRAVEL_SCRIPT_1,
+                run_dir,
+                args=["--input", str(upload_path), "--output-dir", str(run_dir)],
+            )
             report(30, "Travel data extracted")
-            _run_script(_TRAVEL_SCRIPT_2, run_dir)
+            _run_script(
+                _TRAVEL_SCRIPT_2,
+                run_dir,
+                args=["--input", str(source_raw_path), "--output", str(cleaned_path)],
+            )
             report(60, "Travel data cleaned")
-            _run_script(_TRAVEL_SCRIPT_3, run_dir)
+            _run_script(
+                _TRAVEL_SCRIPT_3,
+                run_dir,
+                args=["--input", str(cleaned_path), "--output-dir", str(run_dir)],
+            )
             report(90, "Travel analysis generated")
 
-            final_source = _LEGACY_TRAVEL_DIR / "analysis_summary.xlsx"
-            if not final_source.exists():
-                raise FileNotFoundError(f"Expected Travel output was not found: {final_source}")
+            if not analysis_path.exists():
+                raise FileNotFoundError(f"Expected Travel output was not found: {analysis_path}")
 
             STAGE2_TRAVEL_DIR.mkdir(parents=True, exist_ok=True)
             publish_path = STAGE2_TRAVEL_DIR / "analysis_summary.xlsx"
-            shutil.copy2(final_source, publish_path)
-            shutil.copy2(final_source, run_dir / "analysis_summary.xlsx")
+            shutil.copy2(analysis_path, publish_path)
             _write_status(run_dir, "succeeded", publish_path=str(publish_path))
             report(100, "Travel preprocessing completed")
         except Exception as exc:
