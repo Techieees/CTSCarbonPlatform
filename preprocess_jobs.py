@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import traceback
 from datetime import datetime
 from pathlib import Path
 
@@ -91,38 +92,22 @@ def travel_required_headers() -> list[str]:
 
 
 def _read_travel_source_headers(upload_path: Path) -> list[str]:
+    if upload_path.suffix.lower() != ".xlsb":
+        raise RuntimeError("Only .xlsb files are allowed for Travel uploads.")
+
     try:
         df = pd.read_excel(upload_path, sheet_name="source", nrows=0, engine="pyxlsb")
         return [str(col).strip() for col in df.columns if str(col).strip()]
-    except Exception:
-        pass
-
-    try:
-        import importlib
-
-        xw = importlib.import_module("xlwings")
-
-        app = xw.App(visible=False)
-        wb = None
-        try:
-            wb = xw.Book(str(upload_path))
-            sheet = wb.sheets["source"]
-            values = sheet.range("A1").expand().value
-            if isinstance(values, list) and values:
-                first_row = values[0] if isinstance(values[0], list) else values
-                return [str(v).strip() for v in first_row if str(v).strip()]
-            return []
-        finally:
-            try:
-                wb.close()
-            except Exception:
-                pass
-            app.quit()
     except Exception as exc:
-        raise RuntimeError(f"could not read Travel source headers ({exc})") from exc
+        print(f"[TRAVEL] Failed to read .xlsb headers: {exc}")
+        print(traceback.format_exc())
+        raise RuntimeError("Failed to read .xlsb file. Ensure file is valid or convert to .xlsx.") from exc
 
 
 def validate_travel_upload(upload_path: Path) -> list[str]:
+    if upload_path.suffix.lower() != ".xlsb":
+        return [f"{upload_path.name}: Only .xlsb files are allowed for Travel uploads."]
+
     required = travel_required_headers()
     if not required:
         return ["Travel template is not configured."]

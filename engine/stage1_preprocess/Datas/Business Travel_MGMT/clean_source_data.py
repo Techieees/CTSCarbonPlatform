@@ -27,6 +27,10 @@ keep_columns = [
 # Read the file
 df = pd.read_excel(input_path)
 
+missing_columns = [col for col in keep_columns if col not in df.columns]
+if missing_columns:
+    raise RuntimeError("Travel source is missing required columns: " + ", ".join(missing_columns))
+
 # Only keep the required columns
 df_clean = df[keep_columns].copy()
 

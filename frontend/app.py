@@ -5292,14 +5292,6 @@ def _sync_unmapped_rows_for_mapping_run(
 ) -> int:
     if mapped_df is None or mapped_df.empty:
         return 0
-    status_col = _df_find_column_casefold(mapped_df, ("status", "Status", "mapping_status", "Mapping Status"))
-    if not status_col:
-        return 0
-    status_series = mapped_df[status_col].fillna("").astype(str).str.strip().str.lower()
-    no_match_mask = status_series == "no match"
-    if not bool(getattr(no_match_mask, "any", lambda: False)()):
-        return 0
-
     entry_group = str(source_entry_group or "").strip() or None
     previous_query = MappingUnmappedRow.query.filter(
         MappingUnmappedRow.company_name == company_name,
@@ -5308,9 +5300,29 @@ def _sync_unmapped_rows_for_mapping_run(
     )
     if entry_group:
         previous_query = previous_query.filter(MappingUnmappedRow.source_entry_group == entry_group)
+    superseded_count = 0
     for previous in previous_query.all():
         previous.review_status = "superseded"
         previous.resolved_at = datetime.utcnow()
+        superseded_count += 1
+
+    print(
+        f"[UNMAPPED] Superseded {superseded_count} open row(s) for "
+        f"{company_name} / {sheet_name}{' / ' + entry_group if entry_group else ''}"
+    )
+
+    status_col = _df_find_column_casefold(mapped_df, ("status", "Status", "mapping_status", "Mapping Status"))
+    if not status_col:
+        MappingUnmappedRow.query.filter_by(run_id=run_id).delete()
+        print(f"[UNMAPPED] Mapping output has no status column for run {run_id}; no open rows inserted")
+        return 0
+
+    status_series = mapped_df[status_col].fillna("").astype(str).str.strip().str.lower()
+    no_match_mask = status_series == "no match"
+    if not bool(getattr(no_match_mask, "any", lambda: False)()):
+        MappingUnmappedRow.query.filter_by(run_id=run_id).delete()
+        print(f"[UNMAPPED] No open No match rows remain for run {run_id}")
+        return 0
 
     MappingUnmappedRow.query.filter_by(run_id=run_id).delete()
     inserted = 0
@@ -5332,6 +5344,7 @@ def _sync_unmapped_rows_for_mapping_run(
             )
         )
         inserted += 1
+    print(f"[UNMAPPED] Inserted {inserted} open No match row(s) for run {run_id}")
     return inserted
 
 
