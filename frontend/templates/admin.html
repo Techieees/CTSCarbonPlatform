@@ -36,6 +36,7 @@
                         </button>
                     </form>
                     <p class="text-muted small mb-0 mt-2">Admin only. Upload a Travel Management file (.xlsb or .xlsx) to refresh `analysis_summary.xlsx` for Stage 2 source appending.</p>
+                    <div class="small text-muted mt-2" id="adminLatestJob">Last job: loading...</div>
                 </div>
             </div>
         </div>
@@ -486,6 +487,29 @@ if (monthSelect && monthForm) {
 </script>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <script type="module" src="{{ url_for('static', filename='js/charts/init_charts.js') }}"></script>
+<script>
+(function () {
+  const el = document.getElementById('adminLatestJob');
+  if (!el) return;
+  async function refreshLatestJob() {
+    try {
+      const res = await fetch('/api/jobs', { headers: { 'Accept': 'application/json' } });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not load jobs');
+      const job = (data.jobs || [])[0];
+      if (!job) {
+        el.textContent = 'Last job: none yet';
+        return;
+      }
+      el.textContent = 'Last job: ' + (job.type || 'job') + ' - ' + (job.status || '') + ' (' + Number(job.progress || 0) + '%)';
+    } catch (e) {
+      el.textContent = 'Last job: unavailable';
+    }
+  }
+  refreshLatestJob();
+  window.setInterval(refreshLatestJob, 3000);
+})();
+</script>
 {% endblock %}
 
 <style>

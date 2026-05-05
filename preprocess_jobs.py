@@ -264,7 +264,7 @@ def run_klarakarbon_preprocess(company_name: str, run_dir: Path, upload_paths: l
             _write_status(run_dir, "failed", company_name=company_name, company_slug=slug, error=str(exc))
 
 
-def run_travel_preprocess(run_dir: Path, upload_path: Path) -> None:
+def run_travel_preprocess(run_dir: Path, upload_path: Path, progress_callback=None) -> None:
     _write_status(run_dir, "running")
     with _TRAVEL_LOCK:
         try:
@@ -283,10 +283,18 @@ def run_travel_preprocess(run_dir: Path, upload_path: Path) -> None:
 
             legacy_input = _LEGACY_TRAVEL_DIR / f"{_LEGACY_TRAVEL_INPUT_STEM}{upload_path.suffix.lower()}"
             shutil.copy2(upload_path, legacy_input)
+            if progress_callback:
+                progress_callback(10, "Travel file staged")
 
             _run_script(_TRAVEL_SCRIPT_1, run_dir, env={"CTS_TRAVEL_INPUT_PATH": str(legacy_input)})
+            if progress_callback:
+                progress_callback(30, "Travel data extracted")
             _run_script(_TRAVEL_SCRIPT_2, run_dir)
+            if progress_callback:
+                progress_callback(60, "Travel data cleaned")
             _run_script(_TRAVEL_SCRIPT_3, run_dir)
+            if progress_callback:
+                progress_callback(90, "Travel analysis generated")
 
             final_source = _LEGACY_TRAVEL_DIR / "analysis_summary.xlsx"
             if not final_source.exists():
@@ -297,6 +305,11 @@ def run_travel_preprocess(run_dir: Path, upload_path: Path) -> None:
             shutil.copy2(final_source, publish_path)
             shutil.copy2(final_source, run_dir / "analysis_summary.xlsx")
             _write_status(run_dir, "succeeded", publish_path=str(publish_path))
+            if progress_callback:
+                progress_callback(100, "Travel preprocessing completed")
         except Exception as exc:
             _append_log(run_dir, f"ERROR {exc}")
             _write_status(run_dir, "failed", error=str(exc))
+            if progress_callback:
+                progress_callback(100, f"Travel preprocessing failed: {exc}")
+            raise

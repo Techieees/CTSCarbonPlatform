@@ -4,7 +4,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file, send_from_directory, Response, session, abort, g
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from sqlalchemy import or_
+from sqlalchemy import and_, exists, func, or_
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from openpyxl import load_workbook, Workbook
@@ -500,6 +500,7 @@ STAGE2_MAPPING_OUTPUT_DIR = STAGE2_OUTPUT_DIR
 _STAGE2_MAP_LOCK = threading.Lock()
 _MAPPING_RUNS: dict[str, dict[str, object]] = {}  # legacy in-memory (kept for backward compatibility)
 jobs: dict[str, dict[str, object]] = {}
+job_store = jobs
 _JOBS_LOCK = threading.Lock()
 _JOB_RETENTION_MINUTES = 240
 
@@ -559,6 +560,7 @@ def _update_job(job_id: str, **updates: object) -> None:
         job = jobs.get(job_id)
         if not job:
             return
+        updates.setdefault("updated_at", _job_timestamp())
         job.update(updates)
 
 
@@ -569,6 +571,26 @@ def _update_job_progress(job_id: str, progress: int, message: str | None = None)
         payload["message"] = message
     _update_job(job_id, **payload)
     print(f"[JOB] Progress {job_id}: {safe_progress}%")
+
+
+def _serialize_job(job: dict[str, object]) -> dict[str, object]:
+    response = {
+        "job_id": job.get("job_id"),
+        "type": job.get("type"),
+        "company": job.get("company"),
+        "status": job.get("status"),
+        "progress": int(job.get("progress") or 0),
+        "message": job.get("message") or "",
+        "error": job.get("error"),
+        "created_at": job.get("created_at"),
+        "updated_at": job.get("updated_at"),
+        "started_at": job.get("started_at"),
+        "completed_at": job.get("completed_at"),
+        "cancel_requested": bool(job.get("cancel_requested")),
+    }
+    if job.get("result") is not None:
+        response["result"] = job.get("result")
+    return response
 
 
 def run_in_background(job_type: str, company: str, target, *args, **kwargs) -> str:
@@ -587,6 +609,7 @@ def run_in_background(job_type: str, company: str, target, *args, **kwargs) -> s
             "message": "Queued",
             "error": None,
             "created_at": now,
+            "updated_at": now,
             "started_at": None,
             "completed_at": None,
             "cancel_requested": False,
@@ -646,7 +669,7 @@ def run_in_background(job_type: str, company: str, target, *args, **kwargs) -> s
                 job_id,
                 status="failed",
                 error=str(exc),
-                message="Failed",
+                message=str(exc),
                 completed_at=_job_timestamp(),
             )
             print(f"[JOB] Failed {job_id}: {exc}")
@@ -4738,9 +4761,38 @@ def _delete_stale_open_unmapped_rows_from_live_data_entry(
     if sheet_name:
         query = query.filter(MappingUnmappedRow.sheet_name == sheet_name)
 
+    ef_exists_for_same_live_row = exists().where(
+        and_(
+            DataEntry.company_name == MappingUnmappedRow.company_name,
+            DataEntry.sheet_name == MappingUnmappedRow.sheet_name,
+            DataEntry.column_name == "ef_id",
+            DataEntry.value.isnot(None),
+            func.trim(DataEntry.value) != "",
+            DataEntry.row_index == (MappingUnmappedRow.row_number - 1),
+            or_(
+                DataEntry.entry_group == MappingUnmappedRow.source_entry_group,
+                and_(
+                    or_(
+                        MappingUnmappedRow.source_entry_group.is_(None),
+                        MappingUnmappedRow.source_entry_group == "",
+                    ),
+                    or_(DataEntry.entry_group.is_(None), DataEntry.entry_group == ""),
+                ),
+            ),
+        )
+    )
+    direct_rows = query.filter(ef_exists_for_same_live_row).all()
+    for row in direct_rows:
+        db.session.delete(row)
+    if direct_rows:
+        print(
+            "[UNMAPPED] Deleted "
+            f"{len(direct_rows)} open unmapped row(s) with live data_entry ef_id metadata"
+        )
+
     rows = query.all()
     if not rows:
-        return 0
+        return len(direct_rows)
 
     metadata_cache: dict[tuple[str, str], dict[tuple[str, int], dict[str, str]]] = {}
     to_delete: list[MappingUnmappedRow] = []
@@ -4761,7 +4813,7 @@ def _delete_stale_open_unmapped_rows_from_live_data_entry(
         db.session.delete(row)
     if to_delete:
         print(f"[UNMAPPED] Deleted {len(to_delete)} stale open unmapped row(s) from live data_entry metadata")
-    return len(to_delete)
+    return len(direct_rows) + len(to_delete)
 
 
 def _supersede_open_unmapped_rows(
@@ -10262,6 +10314,7 @@ def api_excel_schema_save():
     )
 
 
+@app.route("/api/job-status/<job_id>", methods=["GET"])
 @app.route("/job-status/<job_id>", methods=["GET"])
 @login_required
 def api_job_status(job_id: str):
@@ -10279,23 +10332,10 @@ def api_job_status(job_id: str):
                 "error": None,
             }
         )
-    response = {
-        "job_id": job.get("job_id"),
-        "type": job.get("type"),
-        "company": job.get("company"),
-        "status": job.get("status"),
-        "progress": int(job.get("progress") or 0),
-        "message": job.get("message") or "",
-        "error": job.get("error"),
-        "created_at": job.get("created_at"),
-        "started_at": job.get("started_at"),
-        "completed_at": job.get("completed_at"),
-    }
-    if job.get("result") is not None:
-        response["result"] = job.get("result")
-    return jsonify(response)
+    return jsonify(_serialize_job(job))
 
 
+@app.route("/api/jobs", methods=["GET"])
 @app.route("/job-history", methods=["GET"])
 @login_required
 def api_job_history():
@@ -10303,22 +10343,7 @@ def api_job_history():
     with _JOBS_LOCK:
         visible = [dict(job) for job in jobs.values() if _user_can_access_job(job, current_user)]
     visible.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
-    history = [
-        {
-            "job_id": job.get("job_id"),
-            "type": job.get("type"),
-            "company": job.get("company"),
-            "status": job.get("status"),
-            "progress": int(job.get("progress") or 0),
-            "message": job.get("message") or "",
-            "error": job.get("error"),
-            "created_at": job.get("created_at"),
-            "started_at": job.get("started_at"),
-            "completed_at": job.get("completed_at"),
-            "cancel_requested": bool(job.get("cancel_requested")),
-        }
-        for job in visible[:50]
-    ]
+    history = [_serialize_job(job) for job in visible[:100]]
     return jsonify({"jobs": history})
 
 
@@ -12188,6 +12213,15 @@ def admin_mapping_panel():
     )
 
 
+@app.route("/admin/background-jobs", methods=["GET"])
+@login_required
+def admin_background_jobs():
+    if not bool(getattr(current_user, "is_admin", False)):
+        flash("Access denied")
+        return redirect(url_for("dashboard"))
+    return render_template("admin_background_jobs.html", user=current_user)
+
+
 @app.route("/analytics/output/download/<kind>", methods=["GET"])
 @login_required
 def analytics_output_download(kind: str):
@@ -13329,20 +13363,41 @@ def owner_analytics():
     return render_template("owner_analytics.html", user=current_user, **_owner_analytics_context())
 
 
+def _run_travel_preprocess_job(*, job_id: str, run_dir: str, raw_path: str) -> dict[str, object]:
+    def progress(progress_value: int, message: str) -> None:
+        _update_job_progress(job_id, progress_value, message)
+
+    _update_job_progress(job_id, 5, "Starting Travel preprocessing")
+    run_travel_preprocess(Path(run_dir), Path(raw_path), progress_callback=progress)
+    return {
+        "ok": True,
+        "run_dir": run_dir,
+        "analysis_summary": str(STAGE2_TRAVEL_DIR / "analysis_summary.xlsx"),
+    }
+
+
+@app.route("/start-travel-preprocess", methods=["POST"])
 @app.route("/admin/preprocess/travel/upload", methods=["POST"])
 @login_required
 def upload_travel_preprocess():
+    wants_json = request.path == "/start-travel-preprocess" or "application/json" in str(request.headers.get("Accept") or "")
     if not current_user.is_admin:
+        if wants_json:
+            return jsonify({"error": "Access denied"}), 403
         flash("Access denied")
         return redirect(url_for("dashboard"))
 
     upload = request.files.get("travel_file")
     if not upload or not getattr(upload, "filename", None):
+        if wants_json:
+            return jsonify({"error": "Please choose a Travel Management file (.xlsb or .xlsx)."}), 400
         flash("Please choose a Travel Management file (.xlsb or .xlsx).")
         return redirect(url_for("admin"))
 
     ext = Path(secure_filename(upload.filename or "")).suffix.lower()
     if ext not in TRAVEL_ALLOWED_EXT:
+        if wants_json:
+            return jsonify({"error": "Only .xlsb or .xlsx files are allowed"}), 400
         flash("Only .xlsb or .xlsx files are allowed")
         return redirect(url_for("admin"))
 
@@ -13362,6 +13417,8 @@ def upload_travel_preprocess():
             json.dumps({"status": "failed", "errors": validation_errors}, indent=2),
             encoding="utf-8",
         )
+        if wants_json:
+            return jsonify({"error": validation_errors[0], "errors": validation_errors}), 400
         flash(validation_errors[0])
         return redirect(url_for("admin"))
 
@@ -13370,12 +13427,18 @@ def upload_travel_preprocess():
         encoding="utf-8",
     )
 
-    threading.Thread(
-        target=run_travel_preprocess,
-        args=(run_dir, raw_path),
-        daemon=True,
-    ).start()
-    flash("Travel preprocessing started.")
+    job_id = run_in_background(
+        "preprocess",
+        "Travel",
+        _run_travel_preprocess_job,
+        run_dir=str(run_dir),
+        raw_path=str(raw_path),
+        job_user_id=int(current_user.id),
+        job_user_email=str(getattr(current_user, "email", "") or ""),
+    )
+    if wants_json:
+        return jsonify({"job_id": job_id, "status": "started"})
+    flash(f"Travel preprocessing started. Job ID: {job_id}")
     return redirect(url_for("admin"))
 
 
