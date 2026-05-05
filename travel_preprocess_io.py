@@ -31,5 +31,5 @@ def read_travel_excel(path: str | Path, **kwargs: Any) -> pd.DataFrame:
     except Exception as exc:
         print(f"[TRAVEL] Failed to read file {file_path}: {exc}")
         print(traceback.format_exc())
-        raise RuntimeError("Failed to read file. Ensure file is valid (.xlsb or .xlsx).") from exc
+        raise
 
