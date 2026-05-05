@@ -13,10 +13,10 @@ import pandas as pd
 
 from company_slug import company_slug
 from config import (
-    ENGINE_STAGE1_KLARAKARBON_ALL_TOGETHER_DIR,
-    ENGINE_STAGE1_KLARAKARBON_OUTPUT_WORK_DIR,
     FRONTEND_DIR,
     STAGE1_KLARAKARBON_OUTPUT_DIR,
+    STAGE1_KLARAKARBON_UPLOAD_DIR,
+    STAGE2_KLARAKARBON_DIR,
     STAGE2_TRAVEL_DIR,
 )
 from travel_preprocess_io import TRAVEL_ALLOWED_EXTENSIONS, read_travel_excel
@@ -27,11 +27,6 @@ _TRAVEL_LOCK = threading.Lock()
 
 _KLARAKARBON_TEMPLATES_PATH = FRONTEND_DIR / "data" / "klarakarbon_header_templates.json"
 _TRAVEL_TEMPLATE_PATH = FRONTEND_DIR / "data" / "travel_header_template.json"
-
-_LEGACY_KLARAKARBON_INPUT_DIR = ENGINE_STAGE1_KLARAKARBON_ALL_TOGETHER_DIR
-_LEGACY_KLARAKARBON_OUTPUT_DIR = ENGINE_STAGE1_KLARAKARBON_OUTPUT_WORK_DIR
-_LEGACY_KLARAKARBON_COMBINED_INPUT = _LEGACY_KLARAKARBON_OUTPUT_DIR / "combined_klarakarbon_data_20260129_170025.xlsx"
-_LEGACY_KLARAKARBON_DC_INPUT = _LEGACY_KLARAKARBON_OUTPUT_DIR / "klarakarbon_double_counting_20260129_1702.xlsx"
 
 _KLARAKARBON_SCRIPT_DIR = Path(__file__).resolve().parent / "engine" / "stage1_preprocess" / "Datas" / "Klarakarbon"
 _TRAVEL_SCRIPT_DIR = Path(__file__).resolve().parent / "engine" / "stage1_preprocess" / "Datas" / "Business Travel_MGMT"
@@ -221,44 +216,61 @@ def _clear_directory_files(target_dir: Path) -> None:
             child.unlink()
 
 
-def _copy_latest(pattern: str, target_path: Path) -> None:
-    matches = sorted(target_path.parent.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
-    if not matches:
-        raise FileNotFoundError(f"No file matched {pattern} in {target_path.parent}")
-    shutil.copy2(matches[0], target_path)
-
-
-def run_klarakarbon_preprocess(company_name: str, run_dir: Path, upload_paths: list[Path]) -> None:
+def run_klarakarbon_preprocess(company_name: str, run_dir: Path, upload_paths: list[Path], progress_callback=None) -> None:
     slug = company_slug(company_name)
-    publish_dir = STAGE1_KLARAKARBON_OUTPUT_DIR / slug
-    publish_path = publish_dir / "klarakarbon_categories_mapped_FINAL.xlsx"
+    company_input_dir = STAGE1_KLARAKARBON_UPLOAD_DIR / slug
+    publish_dir = STAGE2_KLARAKARBON_DIR
+    publish_path = publish_dir / "klarakarbon_summary.xlsx"
 
     _write_status(run_dir, "running", company_name=company_name, company_slug=slug)
+
+    def report(progress_value: int, message: str) -> None:
+        if progress_callback:
+            progress_callback(progress_value, message)
+
     with _KLARAKARBON_LOCK:
         try:
-            _clear_directory_files(_LEGACY_KLARAKARBON_INPUT_DIR)
-            _clear_directory_files(_LEGACY_KLARAKARBON_OUTPUT_DIR)
+            run_dir.mkdir(parents=True, exist_ok=True)
+            company_input_dir.mkdir(parents=True, exist_ok=True)
+            same_input_dir = all(path.resolve().parent == company_input_dir.resolve() for path in upload_paths)
+            if not same_input_dir:
+                _clear_directory_files(company_input_dir)
+                for upload_path in upload_paths:
+                    shutil.copy2(upload_path, company_input_dir / upload_path.name)
+            report(10, "Klarakarbon files staged")
 
-            for upload_path in upload_paths:
-                shutil.copy2(upload_path, _LEGACY_KLARAKARBON_INPUT_DIR / upload_path.name)
+            combined_path = run_dir / "combined_klarakarbon_data.xlsx"
+            double_counting_path = run_dir / "klarakarbon_double_counting.xlsx"
+            final_source = run_dir / "klarakarbon_categories_mapped_FINAL.xlsx"
 
-            _run_script(_KLARAKARBON_SCRIPT_1, run_dir)
-            _copy_latest("combined_klarakarbon_data_*.xlsx", _LEGACY_KLARAKARBON_COMBINED_INPUT)
+            _run_script(
+                _KLARAKARBON_SCRIPT_1,
+                run_dir,
+                args=["--input-dir", str(company_input_dir), "--output", str(combined_path)],
+            )
+            report(40, "Klarakarbon files merged")
+            _run_script(
+                _KLARAKARBON_SCRIPT_2,
+                run_dir,
+                args=["--input", str(combined_path), "--output", str(double_counting_path)],
+            )
+            report(70, "Klarakarbon double counting completed")
+            _run_script(
+                _KLARAKARBON_SCRIPT_3,
+                run_dir,
+                args=["--input", str(double_counting_path), "--output", str(final_source)],
+            )
+            report(90, "Klarakarbon categories mapped")
 
-            _run_script(_KLARAKARBON_SCRIPT_2, run_dir)
-            _copy_latest("klarakarbon_double_counting_*.xlsx", _LEGACY_KLARAKARBON_DC_INPUT)
-
-            _run_script(_KLARAKARBON_SCRIPT_3, run_dir)
-
-            final_source = _LEGACY_KLARAKARBON_OUTPUT_DIR / "klarakarbon_categories_mapped_FINAL.xlsx"
             if not final_source.exists():
                 raise FileNotFoundError(f"Expected Klarakarbon output was not found: {final_source}")
 
             publish_dir.mkdir(parents=True, exist_ok=True)
             shutil.copy2(final_source, publish_path)
 
-            archive_path = run_dir / "klarakarbon_categories_mapped_FINAL.xlsx"
-            shutil.copy2(final_source, archive_path)
+            legacy_publish_dir = STAGE1_KLARAKARBON_OUTPUT_DIR / slug
+            legacy_publish_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(final_source, legacy_publish_dir / "klarakarbon_categories_mapped_FINAL.xlsx")
             _write_status(
                 run_dir,
                 "succeeded",
@@ -266,9 +278,11 @@ def run_klarakarbon_preprocess(company_name: str, run_dir: Path, upload_paths: l
                 company_slug=slug,
                 publish_path=str(publish_path),
             )
+            report(100, "Klarakarbon preprocessing completed")
         except Exception as exc:
             _append_log(run_dir, f"ERROR {exc}")
             _write_status(run_dir, "failed", company_name=company_name, company_slug=slug, error=str(exc))
+            raise
 
 
 def run_travel_preprocess(run_dir: Path, upload_path: Path, progress_callback=None) -> None:

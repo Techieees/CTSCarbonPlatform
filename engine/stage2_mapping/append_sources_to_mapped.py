@@ -14,7 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from config import STAGE1_KLARAKARBON_OUTPUT_DIR, STAGE2_OUTPUT_DIR, STAGE2_TRAVEL_DIR
+from config import STAGE1_KLARAKARBON_OUTPUT_DIR, STAGE2_KLARAKARBON_DIR, STAGE2_OUTPUT_DIR, STAGE2_TRAVEL_DIR
 from company_slug import company_slug
 
 
@@ -26,6 +26,7 @@ OUTPUT_DIR = STAGE2_OUTPUT_DIR
 
 # External source workbooks now resolve from DATA_DIR-backed locations.
 TRAVEL_PATH = STAGE2_TRAVEL_DIR / "analysis_summary.xlsx"
+KLARAKARBON_PATH = STAGE2_KLARAKARBON_DIR / "klarakarbon_summary.xlsx"
 
 
 def _infer_company_name(base_wb: Path) -> Optional[str]:
@@ -53,6 +54,8 @@ def _infer_company_name(base_wb: Path) -> Optional[str]:
 
 
 def resolve_klarakarbon_path_for_company(company_name: Optional[str], base_wb: Optional[Path] = None) -> Optional[Path]:
+    if KLARAKARBON_PATH.exists():
+        return KLARAKARBON_PATH
     resolved_company = str(company_name or "").strip()
     if not resolved_company and base_wb is not None:
         resolved_company = str(_infer_company_name(base_wb) or "").strip()

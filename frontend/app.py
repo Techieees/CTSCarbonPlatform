@@ -75,7 +75,9 @@ from config import (
     STAGE1_INPUT_BACKUP_DIR,
     STAGE1_INPUT_DIR,
     STAGE1_KLARAKARBON_OUTPUT_DIR,
+    STAGE1_KLARAKARBON_UPLOAD_DIR,
     STAGE2_EF_XLSX,
+    STAGE2_KLARAKARBON_DIR,
     STAGE2_MAPPING_DIR,
     STAGE2_OUTPUT_DIR,
     STAGE2_TRAVEL_DIR,
@@ -84,7 +86,9 @@ from company_slug import company_slug
 from preprocess_jobs import (
     klarakarbon_entry_headers,
     klarakarbon_company_supported,
+    run_klarakarbon_preprocess,
     run_travel_preprocess,
+    validate_klarakarbon_uploads,
     validate_travel_upload,
 )
 from frontend.services import messaging_service, notification_service, search_service
@@ -379,6 +383,7 @@ print("Templates loaded:", len(TEMPLATE_REGISTRY.templates_2026))
 
 KLARAKARBON_SHEET_NAME = "Klarakarbon"
 TRAVEL_SHEET_NAME = "Travel"
+KLARAKARBON_UPLOAD_COMPANIES = ("Fortica", "Gapit", "GT Nordics", "NEP Switchboards", "NordicEPOD")
 
 
 def _template_mode_from_request() -> str | None:
@@ -10093,6 +10098,101 @@ def upload_klarakarbon_preprocess():
     return redirect(url_for("dashboard"))
 
 
+def _run_klarakarbon_preprocess_job(*, job_id: str, company_name: str, run_dir: str, upload_paths: list[str]) -> dict[str, object]:
+    def progress(progress_value: int, message: str) -> None:
+        _update_job_progress(job_id, progress_value, message)
+
+    _update_job_progress(job_id, 5, "Starting Klarakarbon preprocessing")
+    run_klarakarbon_preprocess(
+        company_name,
+        Path(run_dir),
+        [Path(path) for path in upload_paths],
+        progress_callback=progress,
+    )
+    output_path = STAGE2_KLARAKARBON_DIR / "klarakarbon_summary.xlsx"
+    row_count = 0
+    if output_path.exists():
+        df = pd.read_excel(output_path, sheet_name=0, engine="openpyxl")
+        row_count = int(len(df))
+    _update_job(job_id, rows=row_count)
+    return {
+        "ok": True,
+        "company": company_name,
+        "run_dir": run_dir,
+        "output": str(output_path),
+        "rows": row_count,
+    }
+
+
+@app.route("/data-sources/klarakarbon", methods=["GET", "POST"])
+@login_required
+def data_sources_klarakarbon():
+    if not bool(getattr(current_user, "is_admin", False)):
+        flash("Access denied")
+        return redirect(url_for("dashboard"))
+
+    if request.method == "POST":
+        company_name = str(request.form.get("company") or "").strip()
+        if company_name not in KLARAKARBON_UPLOAD_COMPANIES:
+            flash("Unsupported Klarakarbon company.")
+            return redirect(url_for("data_sources_klarakarbon"))
+        uploads = [f for f in request.files.getlist("klarakarbon_files") if getattr(f, "filename", "")]
+        if not uploads:
+            flash("Please choose at least one Klarakarbon .xlsx file.")
+            return redirect(url_for("data_sources_klarakarbon"))
+
+        slug = company_slug(company_name)
+        run_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:10]}"
+        run_dir = FRONTEND_UPLOAD_DIR / "preprocess" / "klarakarbon" / slug / run_id
+        company_input_dir = STAGE1_KLARAKARBON_UPLOAD_DIR / slug
+        company_input_dir.mkdir(parents=True, exist_ok=True)
+        for existing_file in company_input_dir.iterdir():
+            if existing_file.is_file():
+                existing_file.unlink()
+        upload_paths: list[Path] = []
+        for upload in uploads:
+            safe_name = secure_filename(upload.filename or "")
+            if not safe_name or Path(safe_name).suffix.lower() != ".xlsx":
+                flash("Only .xlsx files are allowed for Klarakarbon uploads.")
+                return redirect(url_for("data_sources_klarakarbon"))
+            upload_path = company_input_dir / safe_name
+            upload.save(str(upload_path))
+            upload_paths.append(upload_path)
+
+        validation_errors = validate_klarakarbon_uploads(company_name, upload_paths)
+        if validation_errors:
+            flash(validation_errors[0])
+            return redirect(url_for("data_sources_klarakarbon"))
+
+        job_id = run_in_background(
+            "preprocess",
+            company_name,
+            _run_klarakarbon_preprocess_job,
+            company_name=company_name,
+            run_dir=str(run_dir),
+            upload_paths=[str(path) for path in upload_paths],
+            job_user_id=int(current_user.id),
+            job_user_email=str(getattr(current_user, "email", "") or ""),
+        )
+        flash(f"Klarakarbon preprocessing started for {company_name}. Job ID: {job_id}")
+        return redirect(url_for("data_sources_klarakarbon"))
+
+    company_cards = [
+        {
+            "name": company,
+            "slug": company_slug(company),
+            "upload_dir": str(STAGE1_KLARAKARBON_UPLOAD_DIR / company_slug(company)),
+        }
+        for company in KLARAKARBON_UPLOAD_COMPANIES
+    ]
+    return render_template(
+        "data_source_klarakarbon.html",
+        user=current_user,
+        companies=company_cards,
+        output_exists=(STAGE2_KLARAKARBON_DIR / "klarakarbon_summary.xlsx").exists(),
+    )
+
+
 def _user_can_access_company_file(company_file: Path) -> bool:
     if not company_file:
         return False
@@ -12846,22 +12946,23 @@ def analytics_forecasting():
 @login_required
 def data_output_travel():
     output_path = STAGE2_TRAVEL_DIR / "analysis_summary.xlsx"
-    columns = ["Cost Center", "Total Travels", "Total Spend", "Total CO2", "Total Km"]
-    rows: list[dict[str, object]] = []
+    sheet_data: dict[str, dict[str, object]] = {}
+    sheet_names: list[str] = []
     error_message = ""
     updated_at = ""
 
     if output_path.exists():
         try:
-            df = pd.read_excel(output_path, sheet_name=0, engine="openpyxl")
-            available_columns = [col for col in columns if col in df.columns]
-            if available_columns:
-                df = df[available_columns]
-            else:
-                available_columns = df.columns.tolist()
-            df = df.where(pd.notna(df), "")
-            rows = df.to_dict(orient="records")
-            columns = available_columns
+            xls = pd.ExcelFile(output_path, engine="openpyxl")
+            sheet_names = list(xls.sheet_names)
+            for sheet_name in sheet_names:
+                df = pd.read_excel(xls, sheet_name=sheet_name)
+                df = df.where(pd.notna(df), "")
+                sheet_data[sheet_name] = {
+                    "columns": df.columns.tolist(),
+                    "rows": df.to_dict(orient="records"),
+                    "row_count": int(len(df)),
+                }
             try:
                 updated_at = datetime.utcfromtimestamp(output_path.stat().st_mtime).strftime("%Y-%m-%d %H:%M UTC")
             except Exception:
@@ -12873,9 +12974,9 @@ def data_output_travel():
         "data_output_travel.html",
         user=current_user,
         output_exists=output_path.exists() and not error_message,
-        rows=rows,
-        columns=columns,
-        row_count=len(rows),
+        sheet_names=sheet_names,
+        sheet_data=sheet_data,
+        row_count=sum(int(sheet.get("row_count") or 0) for sheet in sheet_data.values()),
         updated_at=updated_at,
         error_message=error_message,
         download_url=url_for("data_output_travel_download") if output_path.exists() else "",
@@ -12890,6 +12991,57 @@ def data_output_travel_download():
         flash("Travel MGMT output file not found.")
         return redirect(url_for("data_output_travel"))
     return send_file(str(output_path), as_attachment=True, download_name="travel_mgmt_analysis_summary.xlsx")
+
+
+@app.route("/data-output/klarakarbon", methods=["GET"])
+@login_required
+def data_output_klarakarbon():
+    output_path = STAGE2_KLARAKARBON_DIR / "klarakarbon_summary.xlsx"
+    sheet_data: dict[str, dict[str, object]] = {}
+    sheet_names: list[str] = []
+    error_message = ""
+    updated_at = ""
+
+    if output_path.exists():
+        try:
+            xls = pd.ExcelFile(output_path, engine="openpyxl")
+            sheet_names = list(xls.sheet_names)
+            for sheet_name in sheet_names:
+                df = pd.read_excel(xls, sheet_name=sheet_name)
+                df = df.where(pd.notna(df), "")
+                sheet_data[sheet_name] = {
+                    "columns": df.columns.tolist(),
+                    "rows": df.to_dict(orient="records"),
+                    "row_count": int(len(df)),
+                }
+            try:
+                updated_at = datetime.utcfromtimestamp(output_path.stat().st_mtime).strftime("%Y-%m-%d %H:%M UTC")
+            except Exception:
+                updated_at = ""
+        except Exception as exc:
+            error_message = f"Could not read Klarakarbon output: {exc}"
+
+    return render_template(
+        "data_output_klarakarbon.html",
+        user=current_user,
+        output_exists=output_path.exists() and not error_message,
+        sheet_names=sheet_names,
+        sheet_data=sheet_data,
+        row_count=sum(int(sheet.get("row_count") or 0) for sheet in sheet_data.values()),
+        updated_at=updated_at,
+        error_message=error_message,
+        download_url=url_for("data_output_klarakarbon_download") if output_path.exists() else "",
+    )
+
+
+@app.route("/data-output/klarakarbon/download", methods=["GET"])
+@login_required
+def data_output_klarakarbon_download():
+    output_path = STAGE2_KLARAKARBON_DIR / "klarakarbon_summary.xlsx"
+    if not output_path.exists():
+        flash("Klarakarbon output file not found.")
+        return redirect(url_for("data_output_klarakarbon"))
+    return send_file(str(output_path), as_attachment=True, download_name="klarakarbon_summary.xlsx")
 
 
 @app.route("/analytics/mapped-window-output", methods=["GET", "POST"])
@@ -14019,7 +14171,9 @@ def _run_append_and_pipeline(company_name: str, sheet_name: str) -> dict[str, ob
 
     published_path: Path | None = None
     if sheet_key == KLARAKARBON_SHEET_NAME:
-        published_path = _publish_klarakarbon_data_entry_output(company_name)
+        published_path = STAGE2_KLARAKARBON_DIR / "klarakarbon_summary.xlsx"
+        if not published_path.exists():
+            raise RuntimeError("Klarakarbon summary workbook was not found. Upload Klarakarbon data first.")
     elif sheet_key == TRAVEL_SHEET_NAME:
         published_path = STAGE2_TRAVEL_DIR / "analysis_summary.xlsx"
         if not published_path.exists():

@@ -3,6 +3,7 @@
 # Author: Florian Demir (Sustainability Data Analyst)
 
 import pandas as pd
+import argparse
 import os
 import re
 import sys
@@ -12,22 +13,16 @@ PROJECT_ROOT = Path(__file__).resolve().parents[4]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from config import ENGINE_STAGE1_KLARAKARBON_OUTPUT_WORK_DIR
+def _parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input", required=True)
+    parser.add_argument("--output", required=True)
+    return parser.parse_args()
 
-# =============================================================================
-# PATHS
-# =============================================================================
-base_folder = str(ENGINE_STAGE1_KLARAKARBON_OUTPUT_WORK_DIR)
 
-input_file = os.path.join(
-    base_folder,
-    "klarakarbon_double_counting_20260129_1702.xlsx"
-)
-
-output_file = os.path.join(
-    base_folder,
-    "klarakarbon_categories_mapped_FINAL.xlsx"
-)
+args = _parse_args()
+input_file = args.input
+output_file = args.output
 
 # =============================================================================
 # LOAD DATA
@@ -174,6 +169,7 @@ print(f"\nUnmapped rows remaining: {unmapped}")
 # =============================================================================
 # SAVE OUTPUT
 # =============================================================================
+Path(output_file).parent.mkdir(parents=True, exist_ok=True)
 df.to_excel(output_file, index=False)
 
 print(f"\nFinal file saved to:\n{output_file}")

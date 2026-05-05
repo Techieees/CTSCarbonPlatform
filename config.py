@@ -83,6 +83,7 @@ STAGE1_EXCHANGE_RATE_WORKBOOK = data_path(
     "exchange_rates",
     "Exchange_Rates_European_Central_Bank.xlsx",
 )
+STAGE1_KLARAKARBON_UPLOAD_DIR = data_path("stage1", "klarakarbon")
 STAGE1_KLARAKARBON_INPUT_DIR = data_path("stage1_preprocess", "klarakarbon", "input")
 STAGE1_KLARAKARBON_OUTPUT_DIR = data_path("stage1_preprocess", "klarakarbon", "output")
 STAGE1_BUSINESS_TRAVEL_DIR = data_path("stage1_preprocess", "business_travel_mgmt")
@@ -93,6 +94,7 @@ STAGE2_INPUT_DIR = data_path("stage2_mapping", "input")
 STAGE2_OUTPUT_DIR = data_path("stage2_mapping", "output")
 STAGE2_MANUAL_MAPPING_DIR = data_path("stage2_mapping", "manual_mappings")
 STAGE2_TRAVEL_DIR = data_path("stage2_mapping", "travel")
+STAGE2_KLARAKARBON_DIR = data_path("stage2_mapping", "klarakarbon")
 STAGE2_HEADCOUNT_CSV = data_path("stage2_mapping", "input", "headcount_info.csv")
 STAGE2_EF_XLSX = STAGE2_MAPPING_DIR / "CTS_Emission_factors_short_list.xlsx"
 STAGE2_IMPORT_EMISSION_FACTORS_XLSX = pick_first_existing(
@@ -114,6 +116,7 @@ for directory in [
     ENGINE_STAGE1_DATAS_DIR,
     ENGINE_STAGE1_KLARAKARBON_ALL_TOGETHER_DIR,
     ENGINE_STAGE1_KLARAKARBON_OUTPUT_WORK_DIR,
+    STAGE1_KLARAKARBON_UPLOAD_DIR,
     STAGE1_KLARAKARBON_INPUT_DIR,
     STAGE1_KLARAKARBON_OUTPUT_DIR,
     STAGE1_BUSINESS_TRAVEL_DIR,
@@ -121,5 +124,6 @@ for directory in [
     STAGE2_OUTPUT_DIR,
     STAGE2_MANUAL_MAPPING_DIR,
     STAGE2_TRAVEL_DIR,
+    STAGE2_KLARAKARBON_DIR,
 ]:
     directory.mkdir(parents=True, exist_ok=True)

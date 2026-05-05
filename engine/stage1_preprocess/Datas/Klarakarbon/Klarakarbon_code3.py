@@ -3,24 +3,15 @@
 # Author: Florian Demir (Sustainability Data Analyst)
 
 import pandas as pd
+import argparse
 import os
 import sys
-from datetime import datetime
 from pathlib import Path
 from openpyxl import load_workbook
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
-
-from config import ENGINE_STAGE1_DATAS_DIR, ENGINE_STAGE1_KLARAKARBON_OUTPUT_WORK_DIR
-
-
-# Define folders
-input_folder = str(ENGINE_STAGE1_DATAS_DIR / "All Together")
-output_folder = str(ENGINE_STAGE1_KLARAKARBON_OUTPUT_WORK_DIR)
-output_file = os.path.join(output_folder, f"combined_klarakarbon_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
-
 
 
 #NordicEPOD - YTD 2 December
@@ -40,63 +31,72 @@ output_file = os.path.join(output_folder, f"combined_klarakarbon_data_{datetime.
 #GT Nordics Merged and cleaned
 #"C:\Users\FlorianDemir\Desktop\Klarakarbon 15 December\Klarakarbon YTD october GTN (1)_DEDUPED_20251215_115700.xlsx"
 
+def _parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input-dir", required=True)
+    parser.add_argument("--output", required=True)
+    return parser.parse_args()
 
 
+def main():
+    args = _parse_args()
+    input_folder = str(Path(args.input_dir))
+    output_file = args.output
 
-# List Excel files
-file_list = [f for f in os.listdir(input_folder) if f.endswith(".xlsx")]
+    # List Excel files
+    file_list = [f for f in os.listdir(input_folder) if f.endswith(".xlsx") and not f.startswith("~$")]
+    if not file_list:
+        raise FileNotFoundError(f"No Klarakarbon .xlsx files found in {input_folder}")
 
-combined_dataframes = []
+    combined_dataframes = []
 
-for file_name in file_list:
-    file_path = os.path.join(input_folder, file_name)
-    xls = pd.ExcelFile(file_path)
-    
-    for sheet_name in xls.sheet_names:
-        # Read entire sheet as raw data without headers
-        df_raw = pd.read_excel(file_path, sheet_name=sheet_name, header=None)
-        
-        # Find the first row that looks like a real header
-        for i in range(len(df_raw)):
-            row = df_raw.iloc[i]
-            if row.notna().sum() > 5:
-                df = pd.read_excel(file_path, sheet_name=sheet_name, header=i)
-                df["source_file"] = file_name
-                df["sheet_name"] = sheet_name
-                combined_dataframes.append(df)
-                break  # go to next sheet
-            
-            
-        for i in reversed(range(len(df_raw))):
-            row = df_raw.iloc[i]
-            if row.notna().sum() > 3:
-                df_end = pd.read_excel(file_path, sheet_name=sheet_name, header= None, skiprows= i+1)
-                if not df_end.empty:
-                    df_end["source_file"] = file_name
-                    df_end["sheet_name"] = sheet_name
-                    combined_dataframes.append(df_end)
-                break # check the next sheet
-        
-        
-        
+    for file_name in file_list:
+        file_path = os.path.join(input_folder, file_name)
+        xls = pd.ExcelFile(file_path)
+
+        for sheet_name in xls.sheet_names:
+            # Read entire sheet as raw data without headers
+            df_raw = pd.read_excel(file_path, sheet_name=sheet_name, header=None)
+
+            # Find the first row that looks like a real header
+            for i in range(len(df_raw)):
+                row = df_raw.iloc[i]
+                if row.notna().sum() > 5:
+                    df = pd.read_excel(file_path, sheet_name=sheet_name, header=i)
+                    df["source_file"] = file_name
+                    df["sheet_name"] = sheet_name
+                    combined_dataframes.append(df)
+                    break  # go to next sheet
+
+            for i in reversed(range(len(df_raw))):
+                row = df_raw.iloc[i]
+                if row.notna().sum() > 3:
+                    df_end = pd.read_excel(file_path, sheet_name=sheet_name, header=None, skiprows=i+1)
+                    if not df_end.empty:
+                        df_end["source_file"] = file_name
+                        df_end["sheet_name"] = sheet_name
+                        combined_dataframes.append(df_end)
+                    break # check the next sheet
+
+        final_df = pd.concat(combined_dataframes, ignore_index=True)
+
+        # Save intermediate result after each file
+        Path(output_file).parent.mkdir(parents=True, exist_ok=True)
+        final_df.to_excel(output_file, index=False)
+        print(f"Processed {file_name}, saved intermediate result.")
+        print("Saved to:", output_file)
+        print("Merge with the next file")
+
+    # Merge all
     final_df = pd.concat(combined_dataframes, ignore_index=True)
-    
-    # Save intermediate result after each file
-    os.makedirs(output_folder, exist_ok=True)
-    final_df.to_excel(output_file, index= False)
-    print(f"Processed {file_name}, saved intermediate result.")
+
+    # Save
+    Path(output_file).parent.mkdir(parents=True, exist_ok=True)
+    final_df.to_excel(output_file, index=False)
+
+    print("Merged with advanced header detection.")
     print("Saved to:", output_file)
-    print("Merge with the next file")
-    
-        
-            
 
-# Merge all
-final_df = pd.concat(combined_dataframes, ignore_index=True)
 
-# Save
-os.makedirs(output_folder, exist_ok=True)
-final_df.to_excel(output_file, index=False)
-
-print("✓ Merged with advanced header detection.")
-print("Saved to:", output_file)
+if __name__ == "__main__":
+    main()

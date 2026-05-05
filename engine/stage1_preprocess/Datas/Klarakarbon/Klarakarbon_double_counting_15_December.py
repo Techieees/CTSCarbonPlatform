@@ -3,16 +3,14 @@
 # Author: Florian Demir (Sustainability Data Analyst)
 
 import pandas as pd
+import argparse
 import os
 import sys
-from datetime import datetime
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
-
-from config import ENGINE_STAGE1_KLARAKARBON_OUTPUT_WORK_DIR
 
 # =============================================================================
 # HELPERS
@@ -36,27 +34,16 @@ def contains_any(series: pd.Series, keywords: list[str]) -> pd.Series:
     pattern = "|".join(keywords)
     return series.str.contains(pattern, na=False)
 
-# =============================================================================
-# PATHS
-# =============================================================================
+def _parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input", required=True)
+    parser.add_argument("--output", required=True)
+    return parser.parse_args()
 
-base_folder = str(ENGINE_STAGE1_KLARAKARBON_OUTPUT_WORK_DIR)
 
-input_file = os.path.join(
-    base_folder,
-    "combined_klarakarbon_data_20260129_170025.xlsx"
-)
-
-now_str = datetime.now().strftime("%Y%m%d_%H%M")
-
-output_file = os.path.join(
-    base_folder,
-    f"klarakarbon_double_counting_{now_str}.xlsx"
-)
-
-# =============================================================================
-# LOAD DATA
-# =============================================================================
+args = _parse_args()
+input_file = args.input
+output_file = args.output
 
 if not os.path.exists(input_file):
     raise FileNotFoundError(f"Input file not found:\n{input_file}")
@@ -193,6 +180,7 @@ df.loc[gapit_mask, ["CO2e (kg)", "match_method"]] = [
 # SAVE OUTPUT
 # =============================================================================
 
+Path(output_file).parent.mkdir(parents=True, exist_ok=True)
 df.to_excel(output_file, index=False)
 
 print(f"File saved successfully to:\n{output_file}")

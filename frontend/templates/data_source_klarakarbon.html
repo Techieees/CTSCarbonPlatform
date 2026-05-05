@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Klarakarbon Data Source{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <section class="mb-4">
+    <div class="d-flex flex-column flex-lg-row gap-3 justify-content-between align-items-lg-start">
+      <div>
+        <div class="text-uppercase text-muted small fw-semibold mb-1">Data Sources</div>
+        <h1 class="mb-2">Klarakarbon</h1>
+        <p class="text-muted mb-0">Upload company-specific Klarakarbon files and run the merge, double counting, and category mapping pipeline.</p>
+      </div>
+      {% if output_exists %}
+      <a class="btn btn-outline-primary" href="{{ url_for('data_output_klarakarbon') }}">View output</a>
+      {% endif %}
+    </div>
+  </section>
+
+  <div class="row g-3">
+    {% for company in companies %}
+    <div class="col-md-6 col-xl-4">
+      <div class="card h-100 shadow-sm border-secondary-subtle">
+        <div class="card-body d-flex flex-column">
+          <h2 class="h5 mb-2">{{ company.name }}</h2>
+          <p class="text-muted small mb-3">Files are stored under <code>data/stage1/klarakarbon/{{ company.slug }}/</code>.</p>
+          <form method="post" enctype="multipart/form-data" class="mt-auto">
+            <input type="hidden" name="company" value="{{ company.name }}">
+            <div class="mb-3">
+              <label class="form-label" for="klarakarbonFiles{{ loop.index }}">Klarakarbon Excel files</label>
+              <input id="klarakarbonFiles{{ loop.index }}" class="form-control" type="file" name="klarakarbon_files" accept=".xlsx" multiple required>
+            </div>
+            <button class="btn btn-primary w-100" type="submit">Upload {{ company.name }} Data</button>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
+
