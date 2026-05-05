@@ -603,6 +603,7 @@ def run_in_background(job_type: str, company: str, target, *args, **kwargs) -> s
         try:
             _raise_if_job_cancelled(job_id)
             with app.app_context():
+                print(f"[JOB CONTEXT] Running job {job_id} without request context")
                 result = target(job_id=job_id, *args, **kwargs)
             if _is_job_cancel_requested(job_id):
                 _update_job(
@@ -4480,9 +4481,64 @@ def _load_data_entry_grid_rows(company_name: str, sheet_name: str, headers: list
     return rows
 
 
+def _load_data_entry_grid_rows_no_request(company_name: str, sheet_name: str, headers: list[str]) -> list[dict[str, object]]:
+    entries = (
+        DataEntry.query.filter_by(company_name=company_name, sheet_name=sheet_name)
+        .order_by(DataEntry.created_at.asc(), DataEntry.row_index.asc(), DataEntry.id.asc())
+        .all()
+    )
+    grouped: dict[str, dict[str, object]] = {}
+    order: list[str] = []
+    for entry in entries:
+        created_at = getattr(entry, "created_at", None)
+        row_index = int(getattr(entry, "row_index", 0) or 0)
+        entry_group = str(getattr(entry, "entry_group", "") or "").strip()
+        group_key = entry_group or f"legacy:{created_at.isoformat() if created_at else ''}:{row_index}"
+        if group_key not in grouped:
+            grouped[group_key] = {
+                "entry_group": group_key,
+                "row_index": row_index,
+                "created_at": created_at,
+                "values": {},
+            }
+            order.append(group_key)
+        values = grouped[group_key]["values"]
+        if isinstance(values, dict):
+            values[str(entry.column_name)] = "" if entry.value is None else str(entry.value)
+
+    rows: list[dict[str, object]] = []
+    for key in order:
+        row = grouped[key]
+        values = row.get("values") if isinstance(row.get("values"), dict) else {}
+        created_at = row.get("created_at") if isinstance(row.get("created_at"), datetime) else None
+        rows.append(
+            {
+                "entry_group": row.get("entry_group") or "",
+                "row_index": int(row.get("row_index") or 0),
+                "created_at": created_at.isoformat() if created_at else "",
+                "is_editable": True,
+                "is_persisted": True,
+                "cells": [values.get(header, "") for header in headers],
+            }
+        )
+    return rows
+
+
 def _load_data_entries_dataframe(company_name: str, sheet_name: str, headers: list[str]) -> "pd.DataFrame":
     rows = _load_data_entry_grid_rows(company_name, sheet_name, headers)
     values = [list(row.get("cells") or []) for row in rows]
+    return pd.DataFrame(values, columns=headers)
+
+
+def _load_data_entries_dataframe_no_request(
+    company_name: str, sheet_name: str, headers: list[str], entry_groups: set[str] | None = None
+) -> "pd.DataFrame":
+    rows = _load_data_entry_grid_rows_no_request(company_name, sheet_name, headers)
+    if entry_groups:
+        rows = [r for r in rows if str(r.get("entry_group") or "").strip() in entry_groups]
+    values = [list(row.get("cells") or []) for row in rows]
+    if not values:
+        return pd.DataFrame(columns=headers)
     return pd.DataFrame(values, columns=headers)
 
 
@@ -4528,7 +4584,7 @@ def _persist_translated_data_entry_columns(
     columns: tuple[str, ...],
     uploaded_by_user_id: int | None = None,
 ) -> tuple[int, int]:
-    grid_rows = _load_data_entry_grid_rows(company_name, sheet_name, headers)
+    grid_rows = _load_data_entry_grid_rows_no_request(company_name, sheet_name, headers)
     changed_rows: set[int] = set()
     changed_cells = 0
 
@@ -9936,6 +9992,7 @@ def api_excel_schema_save():
     headers, _rules = _get_data_entry_template_schema(resolved_company, resolved_sheet)
     if not headers:
         return jsonify({"error": "Sheet not found"}), 404
+    template_mode = _current_template_mode()
     normalized_rows, validation_errors = _normalize_data_entry_rows(headers, rows)
     if validation_errors:
         return jsonify({"error": validation_errors[0], "validation_errors": validation_errors[:20]}), 400
@@ -10056,10 +10113,15 @@ def api_cancel_job(job_id: str):
     return jsonify({"ok": True, "job_id": jid, "status": "cancelling"})
 
 
-def _run_translation_job(*, job_id: str, resolved_company: str, user_id: int | None = None) -> dict[str, object]:
+def _run_translation_job(
+    *,
+    job_id: str,
+    resolved_company: str,
+    translation_plan: list[dict[str, object]],
+    user_id: int | None = None,
+) -> dict[str, object]:
     translation_mod = _import_translation_module()
     target_companies = set(getattr(translation_mod, "TARGET_COMPANIES", set()))
-    columns_by_sheet = dict(getattr(translation_mod, "TRANSLATION_COLUMNS_BY_SHEET", {}))
     run_translation_fn = getattr(translation_mod, "run_translation")
 
     if resolved_company not in target_companies:
@@ -10078,18 +10140,19 @@ def _run_translation_job(*, job_id: str, resolved_company: str, user_id: int | N
     total_rows_affected = 0
     total_cells_updated = 0
     translated_sheets: list[dict[str, object]] = []
-    items = list(columns_by_sheet.items())
+    items = list(translation_plan or [])
     total_items = max(1, len(items))
 
-    for idx, (sheet_name, columns) in enumerate(items, start=1):
+    for idx, item in enumerate(items, start=1):
         _raise_if_job_cancelled(job_id)
-        resolved_sheet = _resolve_template_sheet_name(resolved_company, str(sheet_name))
-        if not resolved_sheet:
+        resolved_sheet = str(item.get("sheet") or "").strip()
+        headers = list(item.get("headers") or [])
+        columns = tuple(str(c) for c in (item.get("columns") or []))
+        if not resolved_sheet or not headers:
             continue
-        headers, _rules = _get_data_entry_template_schema(resolved_company, resolved_sheet)
         if not headers:
             continue
-        df = _load_data_entries_dataframe(resolved_company, resolved_sheet, headers)
+        df = _load_data_entries_dataframe_no_request(resolved_company, resolved_sheet, headers)
         if df.empty:
             continue
 
@@ -10152,11 +10215,29 @@ def api_run_translation():
     if not resolved_company:
         return jsonify({"error": "Company not found"}), 404
 
+    translation_mod = _import_translation_module()
+    columns_by_sheet = dict(getattr(translation_mod, "TRANSLATION_COLUMNS_BY_SHEET", {}))
+    translation_plan: list[dict[str, object]] = []
+    for sheet_name, columns in columns_by_sheet.items():
+        resolved_sheet = _resolve_template_sheet_name(resolved_company, str(sheet_name))
+        if not resolved_sheet:
+            continue
+        headers, _rules = _get_data_entry_template_schema(resolved_company, resolved_sheet)
+        if headers:
+            translation_plan.append(
+                {
+                    "sheet": resolved_sheet,
+                    "headers": headers,
+                    "columns": list(columns),
+                }
+            )
+
     job_id = run_in_background(
         "translation",
         resolved_company,
         _run_translation_job,
         resolved_company=resolved_company,
+        translation_plan=translation_plan,
         user_id=int(getattr(current_user, "id", 0) or 0) or None,
         job_user_id=int(getattr(current_user, "id", 0) or 0) or None,
         job_user_email=str(getattr(current_user, "email", "") or ""),
@@ -10171,21 +10252,22 @@ def _run_mapping_job(
     user_email: str,
     resolved_company: str,
     resolved_sheet: str,
+    headers: list[str],
+    template_mode: str,
     entry_group_filter: str = "",
 ) -> dict[str, object]:
     _update_job_progress(job_id, 5, "Loading saved data...")
-    headers, _rules = _get_data_entry_template_schema(resolved_company, resolved_sheet)
     if not headers:
         raise RuntimeError("Sheet not found")
 
     if entry_group_filter:
-        df = _load_data_entries_dataframe_for_entry_groups(
+        df = _load_data_entries_dataframe_no_request(
             resolved_company, resolved_sheet, headers, {entry_group_filter}
         )
         if df.empty:
             raise RuntimeError("No saved rows found for this entry batch")
     else:
-        df = _load_data_entries_dataframe(resolved_company, resolved_sheet, headers)
+        df = _load_data_entries_dataframe_no_request(resolved_company, resolved_sheet, headers)
         if df.empty:
             raise RuntimeError("No saved rows found for this company and sheet")
 
@@ -10207,7 +10289,12 @@ def _run_mapping_job(
     try:
         _raise_if_job_cancelled(job_id)
         _update_job_progress(job_id, 30, "Running mapping engine...")
-        mapped_df, out_path, input_path = run_mapping(resolved_company, resolved_sheet, df)
+        mapped_df, out_path, input_path = run_mapping(
+            resolved_company,
+            resolved_sheet,
+            df,
+            template_mode=template_mode,
+        )
     except JobCancelled:
         mr.status = "cancelled"
         db.session.commit()
@@ -10264,7 +10351,7 @@ def _run_mapping_job(
         title="Mapping run completed",
         message=f"{resolved_company} / {resolved_sheet} mapping finished successfully.",
         notification_type="success",
-        link=url_for("home"),
+        link="/",
         feed_event="mapping_completed",
         feed_company=resolved_company,
         feed_timestamp=datetime.utcnow(),
@@ -10321,6 +10408,7 @@ def api_mapping_run():
     headers, _rules = _get_data_entry_template_schema(resolved_company, resolved_sheet)
     if not headers:
         return jsonify({"error": "Sheet not found"}), 404
+    template_mode = _current_template_mode()
 
     if entry_group_filter:
         existing_batch_map = MappingRun.query.filter_by(
@@ -10372,6 +10460,8 @@ def api_mapping_run():
         user_email=str(getattr(current_user, "email", "") or ""),
         resolved_company=resolved_company,
         resolved_sheet=resolved_sheet,
+        headers=headers,
+        template_mode=template_mode,
         entry_group_filter=entry_group_filter,
         job_user_id=int(current_user.id),
         job_user_email=str(getattr(current_user, "email", "") or ""),
@@ -13564,7 +13654,13 @@ def _run_append_and_pipeline(company_name: str, sheet_name: str) -> dict[str, ob
     }
 
 
-def run_mapping(company_name: str, sheet_name: str, df: pd.DataFrame) -> tuple[pd.DataFrame, Path, Path]:
+def run_mapping(
+    company_name: str,
+    sheet_name: str,
+    df: pd.DataFrame,
+    *,
+    template_mode: str | None = None,
+) -> tuple[pd.DataFrame, Path, Path]:
     """
     Run existing Stage2 mapping logic for a single company + single sheet dataframe.
     Mapping logic is NOT modified; we call main_mapping.process_all_sheets() on a temporary workbook.
@@ -13573,8 +13669,8 @@ def run_mapping(company_name: str, sheet_name: str, df: pd.DataFrame) -> tuple[p
     _cleanup_mapping_runs()
 
     df_pre = preprocess_for_mapping(company_name, sheet_name, df)
-    template_mode = _current_template_mode()
-    internal_sheet_name = _stage2_sheet_name_for_run(sheet_name, template_mode)
+    resolved_template_mode = normalize_template_mode(template_mode) if template_mode else _current_template_mode()
+    internal_sheet_name = _stage2_sheet_name_for_run(sheet_name, resolved_template_mode)
 
     run_dir = INSTANCE_DIR / "mapping_runs" / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:10]}"
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -13599,7 +13695,7 @@ def run_mapping(company_name: str, sheet_name: str, df: pd.DataFrame) -> tuple[p
         }
         try:
             setattr(mm, "INPUT_WORKBOOK_NAME", str(input_xlsx))
-            os.environ["CTS_TEMPLATE_MODE"] = normalize_template_mode(template_mode)
+            os.environ["CTS_TEMPLATE_MODE"] = normalize_template_mode(resolved_template_mode)
             os.environ["CTS_STAGE2_SOURCE_SHEET"] = str(sheet_name or "").strip()
             os.environ["CTS_STAGE2_INTERNAL_SHEET"] = str(internal_sheet_name or "").strip()
             mm.process_all_sheets()
