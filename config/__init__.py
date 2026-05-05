@@ -65,6 +65,14 @@ STAGE1_INPUT_DIR = PROJECT_ROOT / "data"
 STAGE1_INPUT_BACKUP_DIR = PROJECT_ROOT / "data"
 STAGE1_KLARAKARBON_OUTPUT_DIR = PROJECT_ROOT / "data"
 
+# -----------------
+# KLARAKARBON (NEW)
+# -----------------
+
+STAGE1_KLARAKARBON_UPLOAD_DIR = PROJECT_ROOT / "data" / "stage1" / "klarakarbon"
+STAGE2_KLARAKARBON_DIR = PROJECT_ROOT / "data" / "stage2_mapping" / "klarakarbon"
+
+
 STAGE2_MAPPING_DIR = PROJECT_ROOT / "engine" / "stage2_mapping"
 STAGE2_INPUT_DIR = PROJECT_ROOT / "data" / "stage2_mapping" / "input"
 STAGE2_OUTPUT_DIR = PROJECT_ROOT / "data" / "stage2_mapping" / "output"
