@@ -595,6 +595,7 @@ def run_in_background(job_type: str, company: str, target, *args, **kwargs) -> s
             "result": None,
         }
     print(f"[JOB] Created {job_id}")
+    print(f"[JOB CREATED] {job_id}")
 
     def runner() -> None:
         _update_job(job_id, status="running", started_at=_job_timestamp(), message="Running")
@@ -9979,9 +9980,20 @@ def api_excel_schema_save():
 @app.route("/job-status/<job_id>", methods=["GET"])
 @login_required
 def api_job_status(job_id: str):
-    job = _job_snapshot(str(job_id or "").strip())
+    jid = str(job_id or "").strip()
+    print(f"[JOB STATUS CHECK] {jid}")
+    job = _job_snapshot(jid)
     if not _user_can_access_job(job, current_user):
-        return jsonify({"error": "Job not found"}), 404
+        print(f"[JOB ERROR] Job not found: {jid}")
+        return jsonify(
+            {
+                "job_id": jid,
+                "status": "not_found",
+                "progress": 0,
+                "message": "Job not found or server restarted",
+                "error": None,
+            }
+        )
     response = {
         "job_id": job.get("job_id"),
         "type": job.get("type"),

@@ -255,6 +255,9 @@
       if (data.status === 'cancelled') {
         return { ok: false, error: 'Mapping cancelled', data };
       }
+      if (data.status === 'not_found') {
+        return { ok: false, error: 'Job not found (may have expired or server restarted)', data };
+      }
       await sleep(2000);
     }
   }

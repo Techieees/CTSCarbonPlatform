@@ -218,7 +218,7 @@ Gelecekte REST API eklemek için:
 ```bash
 # Gunicorn ile
 pip install gunicorn
-gunicorn -w 4 -b 0.0.0.0:5000 app:app
+gunicorn --config ../gunicorn.conf.py app:app
 
 # Nginx ile reverse proxy
 # SSL sertifikası ekleyin
@@ -234,7 +234,7 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 COPY . .
 EXPOSE 5000
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "app:app"]
+CMD ["gunicorn", "--config", "../gunicorn.conf.py", "app:app"]
 ```
 
 ## Sorun Giderme

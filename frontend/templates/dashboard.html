@@ -1186,7 +1186,7 @@ async function pollJob(jobId, onCompleted) {
       renderActiveJob(job);
       await refreshJobHistory();
       const status = String(job.status || '');
-      if (['completed', 'failed', 'cancelled'].includes(status)) {
+      if (['completed', 'failed', 'cancelled', 'not_found'].includes(status)) {
         window.clearInterval(activeJobPollTimer);
         activeJobPollTimer = null;
         activeJobId = '';
@@ -1194,6 +1194,8 @@ async function pollJob(jobId, onCompleted) {
           await onCompleted?.(job.result || {});
         } else if (status === 'failed') {
           setStatus(`Job failed: ${job.error || job.message || 'Unknown error'}`);
+        } else if (status === 'not_found') {
+          setStatus('Job not found (may have expired or server restarted)');
         } else {
           setStatus('Job cancelled');
         }
