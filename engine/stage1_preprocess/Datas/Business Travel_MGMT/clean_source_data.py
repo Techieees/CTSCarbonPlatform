@@ -26,7 +26,7 @@ keep_columns = [
     'Booking Channel', 'From - To City Grouped', 'Check In Date', 'Check Out Date', 'Hotel Name',
     'Hotel Brand', 'Hotel Chain', 'Rate Code', 'Hotel Destination', 'Hotel Country', 'Order by',
     'Days booked in adv.', 'Car Chain', 'Car Country', 'Car Destination', 'Booking Class Flexibility',
-    'Traveler Name', 'Scope', 'GHG Category'
+    'Scope', 'GHG Category'
 ]
 
 
