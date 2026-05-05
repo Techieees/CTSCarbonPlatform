@@ -204,7 +204,13 @@ def _run_script(script_path: Path, run_dir: Path, env: dict[str, str] | None = N
     if proc.stderr:
         _append_log(run_dir, proc.stderr)
     if proc.returncode != 0:
-        raise RuntimeError(f"{script_path.name} failed with exit code {proc.returncode}")
+        output_lines = [line.strip() for line in (proc.stderr or proc.stdout or "").splitlines() if line.strip()]
+        detail = output_lines[-1] if output_lines else f"exit code {proc.returncode}"
+        for line in reversed(output_lines):
+            if line.startswith("ERROR:") or "Missing required columns:" in line:
+                detail = line.replace("ERROR: ", "", 1)
+                break
+        raise RuntimeError(f"{script_path.name} failed: {detail}")
 
 
 def _clear_directory_files(target_dir: Path) -> None:
@@ -266,6 +272,14 @@ def run_klarakarbon_preprocess(company_name: str, run_dir: Path, upload_paths: l
 
 def run_travel_preprocess(run_dir: Path, upload_path: Path, progress_callback=None) -> None:
     _write_status(run_dir, "running")
+    current_progress = 0
+
+    def report(progress_value: int, message: str) -> None:
+        nonlocal current_progress
+        current_progress = progress_value
+        if progress_callback:
+            progress_callback(progress_value, message)
+
     with _TRAVEL_LOCK:
         try:
             _LEGACY_TRAVEL_DIR.mkdir(parents=True, exist_ok=True)
@@ -283,18 +297,14 @@ def run_travel_preprocess(run_dir: Path, upload_path: Path, progress_callback=No
 
             legacy_input = _LEGACY_TRAVEL_DIR / f"{_LEGACY_TRAVEL_INPUT_STEM}{upload_path.suffix.lower()}"
             shutil.copy2(upload_path, legacy_input)
-            if progress_callback:
-                progress_callback(10, "Travel file staged")
+            report(10, "Travel file staged")
 
             _run_script(_TRAVEL_SCRIPT_1, run_dir, env={"CTS_TRAVEL_INPUT_PATH": str(legacy_input)})
-            if progress_callback:
-                progress_callback(30, "Travel data extracted")
+            report(30, "Travel data extracted")
             _run_script(_TRAVEL_SCRIPT_2, run_dir)
-            if progress_callback:
-                progress_callback(60, "Travel data cleaned")
+            report(60, "Travel data cleaned")
             _run_script(_TRAVEL_SCRIPT_3, run_dir)
-            if progress_callback:
-                progress_callback(90, "Travel analysis generated")
+            report(90, "Travel analysis generated")
 
             final_source = _LEGACY_TRAVEL_DIR / "analysis_summary.xlsx"
             if not final_source.exists():
@@ -305,11 +315,10 @@ def run_travel_preprocess(run_dir: Path, upload_path: Path, progress_callback=No
             shutil.copy2(final_source, publish_path)
             shutil.copy2(final_source, run_dir / "analysis_summary.xlsx")
             _write_status(run_dir, "succeeded", publish_path=str(publish_path))
-            if progress_callback:
-                progress_callback(100, "Travel preprocessing completed")
+            report(100, "Travel preprocessing completed")
         except Exception as exc:
             _append_log(run_dir, f"ERROR {exc}")
             _write_status(run_dir, "failed", error=str(exc))
-            if progress_callback:
-                progress_callback(100, f"Travel preprocessing failed: {exc}")
+            report(current_progress, f"Travel preprocessing failed: {exc}")
             raise
+

@@ -1,6 +1,7 @@
 import pandas as pd
 import os
 import sys
+import traceback
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
@@ -43,35 +44,55 @@ def _validate_required_headers(df):
     actual = {_normalize_header(col) for col in df.columns}
     missing = [col for col in required_columns if _normalize_header(col) not in actual]
     if missing:
-        raise RuntimeError("Travel source is missing required columns: " + ", ".join(missing))
+        raise RuntimeError("Missing required columns: " + ", ".join(missing))
 
 
-data = read_travel_excel(input_path, sheet_name=sheet_name)
-_validate_required_headers(data)
+def main():
+    print("STEP: extract started", flush=True)
+    print(f"Input path: {input_path}", flush=True)
+    print(f"Sheet name: {sheet_name}", flush=True)
 
-df = data.copy()
+    data = read_travel_excel(input_path, sheet_name=sheet_name)
+    print(f"Loaded dataframe shape: {data.shape}", flush=True)
+    print(f"Loaded dataframe columns: {data.columns.tolist()}", flush=True)
+    print("Loaded dataframe head:", flush=True)
+    print(data.head(), flush=True)
 
-# Show shape and sample rows for verification
-print("Original data shape:", df.shape)
-print("First 5 rows:")
-print(df.head())
-print("Last 5 rows:")
-print(df.tail())
+    _validate_required_headers(data)
 
-# Remove only completely empty rows and columns (do not touch partially filled ones)
-df = df.dropna(how='all')
-df = df.dropna(axis=1, how='all')
-df = df.reset_index(drop=True)
+    df = data.copy()
 
-# Add two new columns
-df["Scope"] = "Scope 3"
-df["GHG Category"] = "Business Travel"
+    # Show shape and sample rows for verification
+    print("Original data shape:", df.shape, flush=True)
+    print("Original data columns:", df.columns.tolist(), flush=True)
+    print("First 5 rows:", flush=True)
+    print(df.head(), flush=True)
+    print("Last 5 rows:", flush=True)
+    print(df.tail(), flush=True)
 
-# Create output directory if it does not exist
-os.makedirs(output_dir, exist_ok=True)
+    # Remove only completely empty rows and columns (do not touch partially filled ones)
+    df = df.dropna(how='all')
+    df = df.dropna(axis=1, how='all')
+    df = df.reset_index(drop=True)
 
-# Save the new file
-df.to_excel(output_path, index=False, engine='openpyxl')
+    # Add two new columns
+    df["Scope"] = "Scope 3"
+    df["GHG Category"] = "Business Travel"
 
-print(f"Data successfully saved to: {output_path}")
-print("Final data shape:", df.shape) 
+    # Create output directory if it does not exist
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Save the new file
+    df.to_excel(output_path, index=False, engine='openpyxl')
+
+    print(f"Data successfully saved to: {output_path}", flush=True)
+    print("Final data shape:", df.shape, flush=True)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        print(f"ERROR: extract_and_standardize_raw_data.py failed: {exc}", file=sys.stderr, flush=True)
+        traceback.print_exc()
+        raise
