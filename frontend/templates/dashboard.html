@@ -231,6 +231,35 @@
         </div>
     </div>
 
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <h4 class="mb-0 d-flex align-items-center">
+                        {{ illu.illu_btn_bolt('me-2') }}Background Jobs
+                    </h4>
+                    <button class="btn btn-sm btn-ghost" type="button" id="refreshJobsBtn">Refresh</button>
+                </div>
+                <div class="card-body">
+                    <div id="activeJobPanel" class="mb-3" style="display:none;">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                            <div>
+                                <div class="fw-semibold" id="activeJobTitle">Background job</div>
+                                <small class="text-muted" id="activeJobMessage">Queued</small>
+                            </div>
+                            <button class="btn btn-sm btn-outline-danger" type="button" id="cancelActiveJobBtn">Cancel</button>
+                        </div>
+                        <div class="progress bg-secondary-subtle" style="height: 12px;">
+                            <div class="progress-bar" id="activeJobProgressBar" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                        <div class="small text-muted mt-1" id="activeJobProgressText">0%</div>
+                    </div>
+                    <div id="jobHistoryList" class="small text-muted">No background jobs yet.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Quick Stats -->
     <div class="row mt-4">
         <div class="col-md-4">
@@ -620,6 +649,14 @@ const elMappingResult = document.getElementById('mappingResult');
 const elMappingMeta = document.getElementById('mappingMeta');
 const elMappingDownload = document.getElementById('mappingDownload');
 const elMappingTable = document.getElementById('mappingTable');
+const elActiveJobPanel = document.getElementById('activeJobPanel');
+const elActiveJobTitle = document.getElementById('activeJobTitle');
+const elActiveJobMessage = document.getElementById('activeJobMessage');
+const elActiveJobProgressBar = document.getElementById('activeJobProgressBar');
+const elActiveJobProgressText = document.getElementById('activeJobProgressText');
+const elCancelActiveJob = document.getElementById('cancelActiveJobBtn');
+const elRefreshJobs = document.getElementById('refreshJobsBtn');
+const elJobHistoryList = document.getElementById('jobHistoryList');
 const table = document.getElementById('dataTable');
 const elTableShell = document.querySelector('.data-entry-table-shell');
 const elTableScroll = document.querySelector('.data-entry-table-scroll');
@@ -630,6 +667,8 @@ const elZoomReset = document.getElementById('zoomResetBtn');
 const GRID_ZOOM_LEVELS = [80, 90, 100, 110, 125, 150];
 const GRID_ZOOM_KEY = 'cts-data-entry-grid-zoom';
 let currentGridZoom = 100;
+let activeJobId = '';
+let activeJobPollTimer = null;
 
 function setStatus(msg) {
   elSaveStatus.textContent = msg || '';
@@ -1045,6 +1084,130 @@ async function fetchJson(url, options) {
   return data;
 }
 
+function jobTypeLabel(type) {
+  const t = String(type || '').toLowerCase();
+  if (t === 'translation') return 'Translation';
+  if (t === 'mapping') return 'Mapping';
+  return t || 'Job';
+}
+
+function formatJobTime(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString();
+}
+
+function renderActiveJob(job) {
+  if (!job || !elActiveJobPanel) return;
+  const progress = Math.max(0, Math.min(100, Number(job.progress || 0)));
+  elActiveJobPanel.style.display = 'block';
+  elActiveJobTitle.textContent = `${jobTypeLabel(job.type)} • ${job.company || ''}`;
+  elActiveJobMessage.textContent = job.error || job.message || job.status || '';
+  elActiveJobProgressBar.style.width = `${progress}%`;
+  elActiveJobProgressBar.setAttribute('aria-valuenow', String(progress));
+  elActiveJobProgressText.textContent = `${progress}% • ${job.status || ''}`;
+  if (elCancelActiveJob) {
+    const cancellable = ['pending', 'running'].includes(String(job.status || ''));
+    elCancelActiveJob.disabled = !cancellable;
+    elCancelActiveJob.style.display = cancellable ? '' : 'none';
+  }
+}
+
+function renderJobHistory(jobs) {
+  if (!elJobHistoryList) return;
+  if (!Array.isArray(jobs) || !jobs.length) {
+    elJobHistoryList.innerHTML = 'No background jobs yet.';
+    return;
+  }
+  elJobHistoryList.innerHTML = `
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Company</th>
+            <th>Status</th>
+            <th style="width: 30%;">Progress</th>
+            <th>Created</th>
+            <th class="text-end">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${jobs.map((job) => {
+            const progress = Math.max(0, Math.min(100, Number(job.progress || 0)));
+            const status = escapeHtml(job.status || '');
+            const cancellable = ['pending', 'running'].includes(String(job.status || ''));
+            return `<tr>
+              <td>${escapeHtml(jobTypeLabel(job.type))}</td>
+              <td>${escapeHtml(job.company || '')}</td>
+              <td><span class="badge text-bg-${status === 'completed' ? 'success' : status === 'failed' ? 'danger' : status === 'cancelled' ? 'secondary' : 'info'}">${status}</span></td>
+              <td>
+                <div class="progress bg-secondary-subtle" style="height: 10px;">
+                  <div class="progress-bar" style="width: ${progress}%;" role="progressbar" aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="100"></div>
+                </div>
+                <span class="text-muted">${progress}%</span>
+              </td>
+              <td>${escapeHtml(formatJobTime(job.created_at))}</td>
+              <td class="text-end">${cancellable ? `<button class="btn btn-sm btn-outline-danger" type="button" data-cancel-job="${escapeHtml(job.job_id || '')}">Cancel</button>` : ''}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+  elJobHistoryList.querySelectorAll('[data-cancel-job]').forEach((btn) => {
+    btn.addEventListener('click', () => cancelJob(btn.getAttribute('data-cancel-job') || ''));
+  });
+}
+
+async function refreshJobHistory() {
+  try {
+    const data = await fetchJson('/job-history');
+    renderJobHistory(data.jobs || []);
+  } catch (e) {
+    if (elJobHistoryList) elJobHistoryList.textContent = `Could not load jobs: ${e.message}`;
+  }
+}
+
+async function cancelJob(jobId) {
+  if (!jobId) return;
+  await fetchJson(`/cancel-job/${encodeURIComponent(jobId)}`, { method: 'POST' });
+  setStatus('Cancellation requested');
+  await refreshJobHistory();
+}
+
+async function pollJob(jobId, onCompleted) {
+  activeJobId = jobId || '';
+  if (activeJobPollTimer) window.clearInterval(activeJobPollTimer);
+  const tick = async () => {
+    if (!activeJobId) return;
+    try {
+      const job = await fetchJson(`/job-status/${encodeURIComponent(activeJobId)}`);
+      renderActiveJob(job);
+      await refreshJobHistory();
+      const status = String(job.status || '');
+      if (['completed', 'failed', 'cancelled'].includes(status)) {
+        window.clearInterval(activeJobPollTimer);
+        activeJobPollTimer = null;
+        activeJobId = '';
+        if (status === 'completed') {
+          await onCompleted?.(job.result || {});
+        } else if (status === 'failed') {
+          setStatus(`Job failed: ${job.error || job.message || 'Unknown error'}`);
+        } else {
+          setStatus('Job cancelled');
+        }
+      }
+    } catch (e) {
+      window.clearInterval(activeJobPollTimer);
+      activeJobPollTimer = null;
+      setStatus(`Job status failed: ${e.message}`);
+    }
+  };
+  await tick();
+  activeJobPollTimer = window.setInterval(tick, 2000);
+}
+
 function renderSheets(filterText = '') {
   const q = (filterText || '').trim().toLowerCase();
   const list = q ? allSheets.filter(s => s.toLowerCase().includes(q)) : allSheets.slice();
@@ -1263,14 +1426,18 @@ async function translateData() {
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({ company: currentCompany }),
     });
-    const rows = Number(data.rows_affected || 0);
-    const cells = Number(data.cells_updated || 0);
-    const subline = rows > 0 ? `${rows} rows affected, ${cells} cells updated` : (data.message || 'No rows required translation');
-    setStatus('Translation completed');
-    showDataEntryToast('Translation completed', subline);
-    if (currentSheet) {
-      await selectSheet(currentSheet);
-    }
+    if (!data.job_id) throw new Error('Translation job was not created');
+    setStatus('Translation job started');
+    await pollJob(data.job_id, async (result) => {
+      const rows = Number(result.rows_affected || 0);
+      const cells = Number(result.cells_updated || 0);
+      const subline = rows > 0 ? `${rows} rows affected, ${cells} cells updated` : (result.message || 'No rows required translation');
+      setStatus('Translation completed');
+      showDataEntryToast('Translation completed', subline);
+      if (currentSheet) {
+        await selectSheet(currentSheet);
+      }
+    });
   } catch (e) {
     setStatus(`Translation failed: ${e.message}`);
   } finally {
@@ -1301,12 +1468,16 @@ async function mapNow() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ company: currentCompany, sheet: currentSheet, rows }),
     });
-    elMappingMeta.textContent = `${data.company} • ${data.sheet} • preview ${data.preview_rows} rows`;
-    elMappingDownload.href = `/api/mapping/download/${encodeURIComponent(data.run_id)}`;
-    renderMappingPreview(data.mapped_columns || [], data.preview || []);
-    elMappingResult.style.display = 'block';
-    setStatus('Mapping complete.');
-    await selectSheet(currentSheet);
+    if (!data.job_id) throw new Error('Mapping job was not created');
+    setStatus('Mapping job started');
+    await pollJob(data.job_id, async (result) => {
+      elMappingMeta.textContent = `${result.company} • ${result.sheet} • preview ${result.preview_rows} rows`;
+      elMappingDownload.href = `/api/mapping/download/${encodeURIComponent(result.run_id)}`;
+      renderMappingPreview(result.mapped_columns || [], result.preview || []);
+      elMappingResult.style.display = 'block';
+      setStatus('Mapping complete.');
+      await selectSheet(currentSheet);
+    });
   } catch (e) {
     setStatus(`Mapping failed: ${e.message}`);
   } finally {
@@ -1327,6 +1498,8 @@ elClear?.addEventListener('click', () => clearRows());
 elSave?.addEventListener('click', () => saveCurrent());
 elTranslate?.addEventListener('click', () => translateData());
 if (elMap) elMap.addEventListener('click', () => mapNow());
+elCancelActiveJob?.addEventListener('click', () => cancelJob(activeJobId));
+elRefreshJobs?.addEventListener('click', () => refreshJobHistory());
 
 (async () => {
   try {
@@ -1344,6 +1517,7 @@ if (elMap) elMap.addEventListener('click', () => mapNow());
     await loadSheets();
     const preferred = allSheets[0];
     if (preferred) await selectSheet(preferred);
+    await refreshJobHistory();
   } catch (e) {
     setStatus(`Failed to load schema: ${e.message}`);
   }

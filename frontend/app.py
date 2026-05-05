@@ -499,6 +499,164 @@ def _restore_env_var(name: str, original_value: str | None) -> None:
 STAGE2_MAPPING_OUTPUT_DIR = STAGE2_OUTPUT_DIR
 _STAGE2_MAP_LOCK = threading.Lock()
 _MAPPING_RUNS: dict[str, dict[str, object]] = {}  # legacy in-memory (kept for backward compatibility)
+jobs: dict[str, dict[str, object]] = {}
+_JOBS_LOCK = threading.Lock()
+_JOB_RETENTION_MINUTES = 240
+
+
+class JobCancelled(Exception):
+    pass
+
+
+def _job_timestamp() -> str:
+    return datetime.utcnow().isoformat() + "Z"
+
+
+def _cleanup_old_jobs() -> None:
+    cutoff = datetime.utcnow() - timedelta(minutes=_JOB_RETENTION_MINUTES)
+    with _JOBS_LOCK:
+        stale: list[str] = []
+        for job_id, job in jobs.items():
+            completed_at = str(job.get("completed_at") or "")
+            if not completed_at:
+                continue
+            try:
+                completed_dt = datetime.fromisoformat(completed_at.replace("Z", ""))
+            except Exception:
+                continue
+            if completed_dt < cutoff:
+                stale.append(job_id)
+        for job_id in stale:
+            jobs.pop(job_id, None)
+
+
+def _job_snapshot(job_id: str) -> dict[str, object] | None:
+    with _JOBS_LOCK:
+        job = jobs.get(job_id)
+        return dict(job) if job is not None else None
+
+
+def _user_can_access_job(job: dict[str, object] | None, u: object | None) -> bool:
+    if not job:
+        return False
+    if bool(getattr(u, "is_admin", False)) or _is_owner_user(u):
+        return True
+    return int(job.get("user_id") or 0) == int(getattr(u, "id", 0) or 0)
+
+
+def _is_job_cancel_requested(job_id: str) -> bool:
+    with _JOBS_LOCK:
+        return bool(jobs.get(job_id, {}).get("cancel_requested"))
+
+
+def _raise_if_job_cancelled(job_id: str) -> None:
+    if _is_job_cancel_requested(job_id):
+        raise JobCancelled()
+
+
+def _update_job(job_id: str, **updates: object) -> None:
+    with _JOBS_LOCK:
+        job = jobs.get(job_id)
+        if not job:
+            return
+        job.update(updates)
+
+
+def _update_job_progress(job_id: str, progress: int, message: str | None = None) -> None:
+    safe_progress = max(0, min(100, int(progress or 0)))
+    payload: dict[str, object] = {"progress": safe_progress}
+    if message is not None:
+        payload["message"] = message
+    _update_job(job_id, **payload)
+    print(f"[JOB] Progress {job_id}: {safe_progress}%")
+
+
+def run_in_background(job_type: str, company: str, target, *args, **kwargs) -> str:
+    _cleanup_old_jobs()
+    job_id = uuid.uuid4().hex[:12]
+    user_id = kwargs.pop("job_user_id", None)
+    user_email = kwargs.pop("job_user_email", "")
+    now = _job_timestamp()
+    with _JOBS_LOCK:
+        jobs[job_id] = {
+            "job_id": job_id,
+            "type": job_type,
+            "company": company,
+            "status": "pending",
+            "progress": 0,
+            "message": "Queued",
+            "error": None,
+            "created_at": now,
+            "started_at": None,
+            "completed_at": None,
+            "cancel_requested": False,
+            "user_id": user_id,
+            "user_email": user_email,
+            "result": None,
+        }
+    print(f"[JOB] Created {job_id}")
+
+    def runner() -> None:
+        _update_job(job_id, status="running", started_at=_job_timestamp(), message="Running")
+        print(f"[JOB] Running {job_id}")
+        try:
+            _raise_if_job_cancelled(job_id)
+            with app.app_context():
+                result = target(job_id=job_id, *args, **kwargs)
+            if _is_job_cancel_requested(job_id):
+                _update_job(
+                    job_id,
+                    status="cancelled",
+                    message="Cancelled",
+                    completed_at=_job_timestamp(),
+                )
+                print(f"[JOB] Cancelled {job_id}")
+                return
+            _update_job(
+                job_id,
+                status="completed",
+                progress=100,
+                message="Completed",
+                completed_at=_job_timestamp(),
+                result=result,
+            )
+            print(f"[JOB] Completed {job_id}")
+        except JobCancelled:
+            try:
+                with app.app_context():
+                    db.session.rollback()
+            except Exception:
+                pass
+            _update_job(
+                job_id,
+                status="cancelled",
+                message="Cancelled",
+                completed_at=_job_timestamp(),
+            )
+            print(f"[JOB] Cancelled {job_id}")
+        except Exception as exc:
+            try:
+                with app.app_context():
+                    db.session.rollback()
+            except Exception:
+                pass
+            _update_job(
+                job_id,
+                status="failed",
+                error=str(exc),
+                message="Failed",
+                completed_at=_job_timestamp(),
+            )
+            print(f"[JOB] Failed {job_id}: {exc}")
+        finally:
+            try:
+                with app.app_context():
+                    db.session.remove()
+            except Exception:
+                pass
+
+    threading.Thread(target=runner, daemon=True).start()
+    return job_id
 
 # ---- Company canonical names + countries (web mapping) ----
 # User-provided source-of-truth list (deduplicated).
@@ -4367,6 +4525,7 @@ def _persist_translated_data_entry_columns(
     original_df: pd.DataFrame,
     translated_df: pd.DataFrame,
     columns: tuple[str, ...],
+    uploaded_by_user_id: int | None = None,
 ) -> tuple[int, int]:
     grid_rows = _load_data_entry_grid_rows(company_name, sheet_name, headers)
     changed_rows: set[int] = set()
@@ -4401,7 +4560,7 @@ def _persist_translated_data_entry_columns(
                     company_name=company_name,
                     sheet_name=sheet_name,
                     entry_group="" if is_legacy_group else entry_group,
-                    uploaded_by_user_id=getattr(current_user, "id", None),
+                    uploaded_by_user_id=uploaded_by_user_id,
                     row_index=row_index,
                     column_name=col,
                     created_at=datetime.utcnow(),
@@ -9817,6 +9976,152 @@ def api_excel_schema_save():
     )
 
 
+@app.route("/job-status/<job_id>", methods=["GET"])
+@login_required
+def api_job_status(job_id: str):
+    job = _job_snapshot(str(job_id or "").strip())
+    if not _user_can_access_job(job, current_user):
+        return jsonify({"error": "Job not found"}), 404
+    response = {
+        "job_id": job.get("job_id"),
+        "type": job.get("type"),
+        "company": job.get("company"),
+        "status": job.get("status"),
+        "progress": int(job.get("progress") or 0),
+        "message": job.get("message") or "",
+        "error": job.get("error"),
+        "created_at": job.get("created_at"),
+        "started_at": job.get("started_at"),
+        "completed_at": job.get("completed_at"),
+    }
+    if job.get("result") is not None:
+        response["result"] = job.get("result")
+    return jsonify(response)
+
+
+@app.route("/job-history", methods=["GET"])
+@login_required
+def api_job_history():
+    _cleanup_old_jobs()
+    with _JOBS_LOCK:
+        visible = [dict(job) for job in jobs.values() if _user_can_access_job(job, current_user)]
+    visible.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
+    history = [
+        {
+            "job_id": job.get("job_id"),
+            "type": job.get("type"),
+            "company": job.get("company"),
+            "status": job.get("status"),
+            "progress": int(job.get("progress") or 0),
+            "message": job.get("message") or "",
+            "error": job.get("error"),
+            "created_at": job.get("created_at"),
+            "started_at": job.get("started_at"),
+            "completed_at": job.get("completed_at"),
+            "cancel_requested": bool(job.get("cancel_requested")),
+        }
+        for job in visible[:50]
+    ]
+    return jsonify({"jobs": history})
+
+
+@app.route("/cancel-job/<job_id>", methods=["POST"])
+@login_required
+def api_cancel_job(job_id: str):
+    jid = str(job_id or "").strip()
+    job = _job_snapshot(jid)
+    if not _user_can_access_job(job, current_user):
+        return jsonify({"error": "Job not found"}), 404
+    with _JOBS_LOCK:
+        live = jobs.get(jid)
+        if not live:
+            return jsonify({"error": "Job not found"}), 404
+        if str(live.get("status") or "") in {"completed", "failed", "cancelled"}:
+            return jsonify({"ok": True, "job_id": jid, "status": live.get("status")})
+        live["cancel_requested"] = True
+        live["message"] = "Cancellation requested"
+    print(f"[JOB] Cancelled {jid}")
+    return jsonify({"ok": True, "job_id": jid, "status": "cancelling"})
+
+
+def _run_translation_job(*, job_id: str, resolved_company: str, user_id: int | None = None) -> dict[str, object]:
+    translation_mod = _import_translation_module()
+    target_companies = set(getattr(translation_mod, "TARGET_COMPANIES", set()))
+    columns_by_sheet = dict(getattr(translation_mod, "TRANSLATION_COLUMNS_BY_SHEET", {}))
+    run_translation_fn = getattr(translation_mod, "run_translation")
+
+    if resolved_company not in target_companies:
+        _update_job_progress(job_id, 100, "Translation skipped: company is not configured")
+        return {
+            "ok": True,
+            "company": resolved_company,
+            "message": "Translation skipped: company is not configured for translation",
+            "rows_affected": 0,
+            "cells_updated": 0,
+            "sheets": [],
+        }
+
+    print(f"[TRANSLATION] Started for {resolved_company}")
+    _update_job_progress(job_id, 5, f"Preparing translation for {resolved_company}")
+    total_rows_affected = 0
+    total_cells_updated = 0
+    translated_sheets: list[dict[str, object]] = []
+    items = list(columns_by_sheet.items())
+    total_items = max(1, len(items))
+
+    for idx, (sheet_name, columns) in enumerate(items, start=1):
+        _raise_if_job_cancelled(job_id)
+        resolved_sheet = _resolve_template_sheet_name(resolved_company, str(sheet_name))
+        if not resolved_sheet:
+            continue
+        headers, _rules = _get_data_entry_template_schema(resolved_company, resolved_sheet)
+        if not headers:
+            continue
+        df = _load_data_entries_dataframe(resolved_company, resolved_sheet, headers)
+        if df.empty:
+            continue
+
+        base_progress = 10 + int(((idx - 1) / total_items) * 75)
+        _update_job_progress(job_id, base_progress, f"Translating {resolved_sheet}...")
+        translated_df = run_translation_fn(df, resolved_sheet, resolved_company)
+        _raise_if_job_cancelled(job_id)
+        rows_affected = int(getattr(translated_df, "attrs", {}).get("translation_rows_affected", 0) or 0)
+        _update_job_progress(job_id, min(90, base_progress + 20), f"Saving translated {resolved_sheet}...")
+        changed_rows, changed_cells = _persist_translated_data_entry_columns(
+            company_name=resolved_company,
+            sheet_name=resolved_sheet,
+            headers=headers,
+            original_df=df,
+            translated_df=translated_df,
+            columns=tuple(columns),
+            uploaded_by_user_id=user_id,
+        )
+        total_rows_affected += rows_affected
+        total_cells_updated += changed_cells
+        translated_sheets.append(
+            {
+                "sheet": resolved_sheet,
+                "rows_affected": rows_affected,
+                "rows_updated": changed_rows,
+                "cells_updated": changed_cells,
+            }
+        )
+
+    _raise_if_job_cancelled(job_id)
+    db.session.commit()
+    _update_job_progress(job_id, 95, "Finalizing translation...")
+    print(f"[TRANSLATION] Rows affected: {total_rows_affected}")
+    print("[TRANSLATION] Completed")
+    return {
+        "ok": True,
+        "company": resolved_company,
+        "message": "Translation completed",
+        "rows_affected": total_rows_affected,
+        "cells_updated": total_cells_updated,
+        "sheets": translated_sheets,
+    }
+
+
 @app.route("/run-translation", methods=["POST"])
 @login_required
 def api_run_translation():
@@ -9835,81 +10140,143 @@ def api_run_translation():
     if not resolved_company:
         return jsonify({"error": "Company not found"}), 404
 
-    translation_mod = _import_translation_module()
-    target_companies = set(getattr(translation_mod, "TARGET_COMPANIES", set()))
-    columns_by_sheet = dict(getattr(translation_mod, "TRANSLATION_COLUMNS_BY_SHEET", {}))
-    run_translation_fn = getattr(translation_mod, "run_translation")
+    job_id = run_in_background(
+        "translation",
+        resolved_company,
+        _run_translation_job,
+        resolved_company=resolved_company,
+        user_id=int(getattr(current_user, "id", 0) or 0) or None,
+        job_user_id=int(getattr(current_user, "id", 0) or 0) or None,
+        job_user_email=str(getattr(current_user, "email", "") or ""),
+    )
+    return jsonify({"job_id": job_id, "status": "started"})
 
-    if resolved_company not in target_companies:
-        return jsonify(
-            {
-                "ok": True,
-                "company": resolved_company,
-                "message": "Translation skipped: company is not configured for translation",
-                "rows_affected": 0,
-                "cells_updated": 0,
-                "sheets": [],
-            }
+
+def _run_mapping_job(
+    *,
+    job_id: str,
+    user_id: int,
+    user_email: str,
+    resolved_company: str,
+    resolved_sheet: str,
+    entry_group_filter: str = "",
+) -> dict[str, object]:
+    _update_job_progress(job_id, 5, "Loading saved data...")
+    headers, _rules = _get_data_entry_template_schema(resolved_company, resolved_sheet)
+    if not headers:
+        raise RuntimeError("Sheet not found")
+
+    if entry_group_filter:
+        df = _load_data_entries_dataframe_for_entry_groups(
+            resolved_company, resolved_sheet, headers, {entry_group_filter}
         )
+        if df.empty:
+            raise RuntimeError("No saved rows found for this entry batch")
+    else:
+        df = _load_data_entries_dataframe(resolved_company, resolved_sheet, headers)
+        if df.empty:
+            raise RuntimeError("No saved rows found for this company and sheet")
 
-    print(f"[TRANSLATION] Started for {resolved_company}")
-    total_rows_affected = 0
-    total_cells_updated = 0
-    translated_sheets: list[dict[str, object]] = []
+    _raise_if_job_cancelled(job_id)
+    _update_job_progress(job_id, 15, "Creating mapping run...")
+    run_id = uuid.uuid4().hex[:12]
+    mr = MappingRun(
+        id=run_id,
+        user_id=int(user_id),
+        company_name=resolved_company,
+        sheet_name=resolved_sheet,
+        status="running",
+        created_at=datetime.utcnow(),
+        source_entry_group=entry_group_filter or None,
+    )
+    db.session.add(mr)
+    db.session.commit()
 
     try:
-        for sheet_name, columns in columns_by_sheet.items():
-            resolved_sheet = _resolve_template_sheet_name(resolved_company, str(sheet_name))
-            if not resolved_sheet:
-                continue
-            headers, _rules = _get_data_entry_template_schema(resolved_company, resolved_sheet)
-            if not headers:
-                continue
-            df = _load_data_entries_dataframe(resolved_company, resolved_sheet, headers)
-            if df.empty:
-                continue
-
-            translated_df = run_translation_fn(df, resolved_sheet, resolved_company)
-            rows_affected = int(getattr(translated_df, "attrs", {}).get("translation_rows_affected", 0) or 0)
-            changed_rows, changed_cells = _persist_translated_data_entry_columns(
-                company_name=resolved_company,
-                sheet_name=resolved_sheet,
-                headers=headers,
-                original_df=df,
-                translated_df=translated_df,
-                columns=tuple(columns),
-            )
-            total_rows_affected += rows_affected
-            total_cells_updated += changed_cells
-            translated_sheets.append(
-                {
-                    "sheet": resolved_sheet,
-                    "rows_affected": rows_affected,
-                    "rows_updated": changed_rows,
-                    "cells_updated": changed_cells,
-                }
-            )
-
+        _raise_if_job_cancelled(job_id)
+        _update_job_progress(job_id, 30, "Running mapping engine...")
+        mapped_df, out_path, input_path = run_mapping(resolved_company, resolved_sheet, df)
+    except JobCancelled:
+        mr.status = "cancelled"
         db.session.commit()
+        raise
     except Exception as e:
+        try:
+            mr.status = "failed"
+            mr.error_message = str(e)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        raise
+
+    if _is_job_cancel_requested(job_id):
+        mr.status = "cancelled"
+        db.session.commit()
+        raise JobCancelled()
+    _update_job_progress(job_id, 75, "Saving mapping output...")
+    mr.status = "succeeded"
+    mr.output_path = str(out_path)
+    mr.input_path = str(input_path)
+    db.session.commit()
+
+    unmapped_count = 0
+    _update_job_progress(job_id, 85, "Updating mapping summaries...")
+    try:
+        _upsert_mapping_run_summary(
+            run_id=run_id,
+            company_name=resolved_company,
+            sheet_name=resolved_sheet,
+            mapped_df=mapped_df,
+            output_path=out_path,
+        )
+        unmapped_count = _sync_unmapped_rows_for_mapping_run(
+            run_id=run_id,
+            user_id=int(user_id),
+            company_name=resolved_company,
+            sheet_name=resolved_sheet,
+            source_entry_group=entry_group_filter or None,
+            mapped_df=mapped_df,
+        )
+        db.session.commit()
+    except Exception:
+        unmapped_count = 0
         db.session.rollback()
-        return jsonify({"error": f"Translation failed: {e}"}), 500
 
-    print(f"[TRANSLATION] Rows affected: {total_rows_affected}")
-    print("[TRANSLATION] Completed")
-
-    return jsonify(
-        {
-            "ok": True,
-            "company": resolved_company,
-            "message": "Translation completed",
-            "rows_affected": total_rows_affected,
-            "cells_updated": total_cells_updated,
-            "sheets": translated_sheets,
-        }
+    if _is_job_cancel_requested(job_id):
+        mr.status = "cancelled"
+        db.session.commit()
+        raise JobCancelled()
+    _update_job_progress(job_id, 95, "Finalizing mapping...")
+    _create_user_notification(
+        int(user_id),
+        title="Mapping run completed",
+        message=f"{resolved_company} / {resolved_sheet} mapping finished successfully.",
+        notification_type="success",
+        link=url_for("home"),
+        feed_event="mapping_completed",
+        feed_company=resolved_company,
+        feed_timestamp=datetime.utcnow(),
     )
 
+    preview = mapped_df.head(40).fillna("").to_dict(orient="records")
+    resp: dict[str, object] = {
+        "ok": True,
+        "run_id": run_id,
+        "company": resolved_company,
+        "sheet": resolved_sheet,
+        "mapped_columns": list(mapped_df.columns),
+        "preview": preview,
+        "preview_rows": len(preview),
+        "mapped_at": mr.created_at.isoformat() + "Z" if getattr(mr, "created_at", None) else "",
+        "mapped_by": user_email,
+        "unmapped_count": int(unmapped_count or 0),
+    }
+    if entry_group_filter:
+        resp["entry_group"] = entry_group_filter
+    return resp
 
+
+@app.route("/run-mapping", methods=["POST"])
 @app.route("/api/mapping/run", methods=["POST"])
 @login_required
 def api_mapping_run():
@@ -9975,100 +10342,29 @@ def api_mapping_run():
             return jsonify({"error": f"Save failed: {e}"}), 500
 
     if entry_group_filter:
-        df = _load_data_entries_dataframe_for_entry_groups(
+        df_check = _load_data_entries_dataframe_for_entry_groups(
             resolved_company, resolved_sheet, headers, {entry_group_filter}
         )
-        if df.empty:
+        if df_check.empty:
             return jsonify({"error": "No saved rows found for this entry batch"}), 400
     else:
-        df = _load_data_entries_dataframe(resolved_company, resolved_sheet, headers)
-        if df.empty:
+        df_check = _load_data_entries_dataframe(resolved_company, resolved_sheet, headers)
+        if df_check.empty:
             return jsonify({"error": "No saved rows found for this company and sheet"}), 400
 
-    run_id = uuid.uuid4().hex[:12]
-    mr = MappingRun(
-        id=run_id,
-        user_id=current_user.id,
-        company_name=resolved_company,
-        sheet_name=resolved_sheet,
-        status="running",
-        created_at=datetime.utcnow(),
-        source_entry_group=entry_group_filter or None,
+    job_id = run_in_background(
+        "mapping",
+        resolved_company,
+        _run_mapping_job,
+        user_id=int(current_user.id),
+        user_email=str(getattr(current_user, "email", "") or ""),
+        resolved_company=resolved_company,
+        resolved_sheet=resolved_sheet,
+        entry_group_filter=entry_group_filter,
+        job_user_id=int(current_user.id),
+        job_user_email=str(getattr(current_user, "email", "") or ""),
     )
-    try:
-        db.session.add(mr)
-        db.session.commit()
-    except Exception:
-        pass
-
-    try:
-        mapped_df, out_path, input_path = run_mapping(resolved_company, resolved_sheet, df)
-    except Exception as e:
-        try:
-            mr.status = "failed"
-            mr.error_message = str(e)
-            db.session.commit()
-        except Exception:
-            pass
-        return jsonify({"error": f"Mapping failed: {e}"}), 500
-
-    try:
-        mr.status = "succeeded"
-        mr.output_path = str(out_path)
-        mr.input_path = str(input_path)
-        db.session.commit()
-    except Exception:
-        pass
-
-    # Persist summary totals for dashboards
-    try:
-        _upsert_mapping_run_summary(
-            run_id=run_id,
-            company_name=resolved_company,
-            sheet_name=resolved_sheet,
-            mapped_df=mapped_df,
-            output_path=out_path,
-        )
-        unmapped_count = _sync_unmapped_rows_for_mapping_run(
-            run_id=run_id,
-            user_id=int(current_user.id),
-            company_name=resolved_company,
-            sheet_name=resolved_sheet,
-            source_entry_group=entry_group_filter or None,
-            mapped_df=mapped_df,
-        )
-        db.session.commit()
-    except Exception:
-        unmapped_count = 0
-        pass
-
-    _create_user_notification(
-        current_user.id,
-        title="Mapping run completed",
-        message=f"{resolved_company} / {resolved_sheet} mapping finished successfully.",
-        notification_type="success",
-        link=url_for("home"),
-        feed_event="mapping_completed",
-        feed_company=resolved_company,
-        feed_timestamp=datetime.utcnow(),
-    )
-
-    preview = mapped_df.head(40).fillna("").to_dict(orient="records")
-    resp: dict[str, object] = {
-        "ok": True,
-        "run_id": run_id,
-        "company": resolved_company,
-        "sheet": resolved_sheet,
-        "mapped_columns": list(mapped_df.columns),
-        "preview": preview,
-        "preview_rows": len(preview),
-        "mapped_at": mr.created_at.isoformat() + "Z" if getattr(mr, "created_at", None) else "",
-        "mapped_by": str(getattr(current_user, "email", "") or ""),
-        "unmapped_count": int(unmapped_count or 0),
-    }
-    if entry_group_filter:
-        resp["entry_group"] = entry_group_filter
-    return jsonify(resp)
+    return jsonify({"job_id": job_id, "status": "started"})
 
 
 @app.route("/api/pipeline/append_run", methods=["POST"])

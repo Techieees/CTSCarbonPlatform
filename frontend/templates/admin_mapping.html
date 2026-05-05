@@ -219,7 +219,44 @@
     if (!res.ok) {
       return { ok: false, error: data.error || ('Request failed (' + res.status + ')'), data };
     }
+    if (data.job_id) {
+      return await pollMappingJob(data.job_id);
+    }
     return { ok: true, data };
+  }
+
+  function sleep(ms) {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
+  }
+
+  async function pollMappingJob(jobId) {
+    let lastData = {};
+    for (;;) {
+      const res = await fetch('/job-status/' + encodeURIComponent(jobId), {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      });
+      const data = await res.json().catch(() => ({}));
+      lastData = data;
+      if (!res.ok) {
+        return { ok: false, error: data.error || ('Job status failed (' + res.status + ')'), data };
+      }
+      const progress = Number(data.progress || 0);
+      const progressEl = document.getElementById('mapEverythingProgress');
+      if (progressEl) {
+        progressEl.textContent = (data.message || 'Mapping…') + ' ' + progress + '%';
+      }
+      if (data.status === 'completed') {
+        return { ok: true, data: data.result || data };
+      }
+      if (data.status === 'failed') {
+        return { ok: false, error: data.error || data.message || 'Mapping failed', data };
+      }
+      if (data.status === 'cancelled') {
+        return { ok: false, error: 'Mapping cancelled', data };
+      }
+      await sleep(2000);
+    }
   }
 
   async function callAppendRunApi(company, sheet, entryGroup) {
