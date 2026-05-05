@@ -4341,6 +4341,79 @@ def _load_data_entries_dataframe_for_entry_groups(
     return pd.DataFrame(values, columns=headers)
 
 
+def _import_translation_module():
+    import importlib
+    return importlib.import_module("engine.stage1_preprocess.Datas.translate_me_the_chosen_one_30Sep")
+
+
+def _user_can_run_translation(u: object | None) -> bool:
+    return normalize_user_role(getattr(u, "role", None)) in {"owner", "super_admin", "admin"}
+
+
+def _string_cell_value(value: object) -> str:
+    try:
+        if pd.isna(value):
+            return ""
+    except Exception:
+        pass
+    return "" if value is None else str(value)
+
+
+def _persist_translated_data_entry_columns(
+    *,
+    company_name: str,
+    sheet_name: str,
+    headers: list[str],
+    original_df: pd.DataFrame,
+    translated_df: pd.DataFrame,
+    columns: tuple[str, ...],
+) -> tuple[int, int]:
+    grid_rows = _load_data_entry_grid_rows(company_name, sheet_name, headers)
+    changed_rows: set[int] = set()
+    changed_cells = 0
+
+    for row_pos, row in enumerate(grid_rows):
+        if row_pos >= len(translated_df.index):
+            break
+        entry_group = str(row.get("entry_group") or "").strip()
+        row_index = int(row.get("row_index") or (row_pos + 1))
+        is_legacy_group = entry_group.startswith("legacy:")
+
+        for col in columns:
+            if col not in headers or col not in translated_df.columns:
+                continue
+            old_value = _string_cell_value(original_df.iloc[row_pos].get(col) if row_pos < len(original_df.index) else "")
+            new_value = _string_cell_value(translated_df.iloc[row_pos].get(col))
+            if new_value == old_value:
+                continue
+
+            query = DataEntry.query.filter_by(
+                company_name=company_name,
+                sheet_name=sheet_name,
+                row_index=row_index,
+                column_name=col,
+            )
+            if entry_group and not is_legacy_group:
+                query = query.filter_by(entry_group=entry_group)
+            entry = query.order_by(DataEntry.id.asc()).first()
+            if entry is None:
+                entry = DataEntry(
+                    company_name=company_name,
+                    sheet_name=sheet_name,
+                    entry_group="" if is_legacy_group else entry_group,
+                    uploaded_by_user_id=getattr(current_user, "id", None),
+                    row_index=row_index,
+                    column_name=col,
+                    created_at=datetime.utcnow(),
+                )
+                db.session.add(entry)
+            entry.value = new_value
+            changed_rows.add(row_pos)
+            changed_cells += 1
+
+    return len(changed_rows), changed_cells
+
+
 def _batch_action_type_for_sheet(sheet_name: str) -> str:
     sheet_key = str(sheet_name or "").strip().lower()
     if sheet_key in {KLARAKARBON_SHEET_NAME.lower(), TRAVEL_SHEET_NAME.lower()}:
@@ -9506,6 +9579,7 @@ def dashboard():
         company_logo_rel=company_logo_rel,
         klarakarbon_company=rk,
         klarakarbon_supported=klarakarbon_supported,
+        can_run_translation=_user_can_run_translation(current_user),
     )
 
 
@@ -9739,6 +9813,99 @@ def api_excel_schema_save():
             "duplicate_rows_count": duplicate_rows_count,
             "saved_entry_groups": saved_entry_groups,
             "message": f"{saved_rows_count} rows saved, {duplicate_rows_count} duplicates skipped",
+        }
+    )
+
+
+@app.route("/run-translation", methods=["POST"])
+@login_required
+def api_run_translation():
+    if not _user_can_run_translation(current_user):
+        return jsonify({"error": "Translation is only available for administrators and owners"}), 403
+
+    _ensure_db_tables()
+    payload = request.get_json(silent=True) or {}
+    company = str(payload.get("company") or "").strip()
+    if not company:
+        return jsonify({"error": "company is required"}), 400
+    if not _user_can_access_company(company):
+        return jsonify({"error": "Access denied"}), 403
+
+    resolved_company = _resolve_template_company_name(company)
+    if not resolved_company:
+        return jsonify({"error": "Company not found"}), 404
+
+    translation_mod = _import_translation_module()
+    target_companies = set(getattr(translation_mod, "TARGET_COMPANIES", set()))
+    columns_by_sheet = dict(getattr(translation_mod, "TRANSLATION_COLUMNS_BY_SHEET", {}))
+    run_translation_fn = getattr(translation_mod, "run_translation")
+
+    if resolved_company not in target_companies:
+        return jsonify(
+            {
+                "ok": True,
+                "company": resolved_company,
+                "message": "Translation skipped: company is not configured for translation",
+                "rows_affected": 0,
+                "cells_updated": 0,
+                "sheets": [],
+            }
+        )
+
+    print(f"[TRANSLATION] Started for {resolved_company}")
+    total_rows_affected = 0
+    total_cells_updated = 0
+    translated_sheets: list[dict[str, object]] = []
+
+    try:
+        for sheet_name, columns in columns_by_sheet.items():
+            resolved_sheet = _resolve_template_sheet_name(resolved_company, str(sheet_name))
+            if not resolved_sheet:
+                continue
+            headers, _rules = _get_data_entry_template_schema(resolved_company, resolved_sheet)
+            if not headers:
+                continue
+            df = _load_data_entries_dataframe(resolved_company, resolved_sheet, headers)
+            if df.empty:
+                continue
+
+            translated_df = run_translation_fn(df, resolved_sheet, resolved_company)
+            rows_affected = int(getattr(translated_df, "attrs", {}).get("translation_rows_affected", 0) or 0)
+            changed_rows, changed_cells = _persist_translated_data_entry_columns(
+                company_name=resolved_company,
+                sheet_name=resolved_sheet,
+                headers=headers,
+                original_df=df,
+                translated_df=translated_df,
+                columns=tuple(columns),
+            )
+            total_rows_affected += rows_affected
+            total_cells_updated += changed_cells
+            translated_sheets.append(
+                {
+                    "sheet": resolved_sheet,
+                    "rows_affected": rows_affected,
+                    "rows_updated": changed_rows,
+                    "cells_updated": changed_cells,
+                }
+            )
+
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Translation failed: {e}"}), 500
+
+    print(f"[TRANSLATION] Rows affected: {total_rows_affected}")
+    print("[TRANSLATION] Completed")
+
+    return jsonify(
+        {
+            "ok": True,
+            "company": resolved_company,
+            "message": "Translation completed",
+            "rows_affected": total_rows_affected,
+            "cells_updated": total_cells_updated,
+            "sheets": translated_sheets,
         }
     )
 

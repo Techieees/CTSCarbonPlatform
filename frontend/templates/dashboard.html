@@ -79,6 +79,12 @@
                                             <span class="save-btn__idle d-inline-flex align-items-center">{{ illu.illu_btn_save('me-1') }}Save</span>
                                             <span class="save-btn__busy d-none align-items-center"><span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Saving…</span>
                                         </button>
+                                        {% if can_run_translation %}
+                                        <button class="btn btn-ghost d-inline-flex align-items-center" type="button" id="translateBtn">
+                                            <span class="translate-btn__idle d-inline-flex align-items-center">{{ illu.illu_btn_bolt('me-1') }}Translate Data</span>
+                                            <span class="translate-btn__busy d-none align-items-center"><span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Translating…</span>
+                                        </button>
+                                        {% endif %}
                                         {% if user.is_admin %}
                                         <button class="btn btn-ghost d-inline-flex align-items-center" type="button" id="mapBtn" disabled>
                                             {{ illu.illu_btn_bolt('me-1') }}Map now
@@ -607,6 +613,7 @@ const elSaveStatus = document.getElementById('saveStatus');
 const elAddRow = document.getElementById('addRowBtn');
 const elClear = document.getElementById('clearBtn');
 const elSave = document.getElementById('saveBtn');
+const elTranslate = document.getElementById('translateBtn');
 const elMap = document.getElementById('mapBtn');
 const elDownload = document.getElementById('downloadBtn');
 const elMappingResult = document.getElementById('mappingResult');
@@ -742,6 +749,7 @@ function updateButtonState() {
   elAddRow.disabled = !hasSheet;
   elClear.disabled = !hasSheet || !hasEditable;
   elSave.disabled = !hasSheet || !hasEditable;
+  if (elTranslate) elTranslate.disabled = !currentCompany;
   if (elMap) elMap.disabled = !hasSheet || isKlarakarbon;
 }
 
@@ -1132,6 +1140,16 @@ function setSaveBusy(busy) {
   }
 }
 
+function setTranslateBusy(busy) {
+  const idle = elTranslate?.querySelector('.translate-btn__idle');
+  const bsy = elTranslate?.querySelector('.translate-btn__busy');
+  if (idle && bsy) {
+    idle.classList.toggle('d-none', busy);
+    bsy.classList.toggle('d-none', !busy);
+    bsy.classList.toggle('d-inline-flex', busy);
+  }
+}
+
 function showDataEntryToast(title, subline) {
   const body = document.getElementById('dataEntryToastBody');
   if (body) {
@@ -1231,6 +1249,39 @@ function renderMappingPreview(columns, previewRows) {
   elMappingTable.appendChild(tbody);
 }
 
+async function translateData() {
+  if (!elTranslate || !currentCompany) return;
+  setStatus('Translation started. This may take a while…');
+  elTranslate.disabled = true;
+  setTranslateBusy(true);
+  if (typeof showCtsBusyOverlay === 'function') {
+    showCtsBusyOverlay('Translating stored data before mapping…');
+  }
+  try {
+    const data = await fetchJson('/run-translation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ company: currentCompany }),
+    });
+    const rows = Number(data.rows_affected || 0);
+    const cells = Number(data.cells_updated || 0);
+    const subline = rows > 0 ? `${rows} rows affected, ${cells} cells updated` : (data.message || 'No rows required translation');
+    setStatus('Translation completed');
+    showDataEntryToast('Translation completed', subline);
+    if (currentSheet) {
+      await selectSheet(currentSheet);
+    }
+  } catch (e) {
+    setStatus(`Translation failed: ${e.message}`);
+  } finally {
+    if (typeof hideCtsBusyOverlay === 'function') {
+      hideCtsBusyOverlay();
+    }
+    setTranslateBusy(false);
+    updateButtonState();
+  }
+}
+
 async function mapNow() {
   if (!elMap || !currentCompany || !currentSheet) return;
   const v = validateGridForSave();
@@ -1274,6 +1325,7 @@ elSheetFilter?.addEventListener('input', () => renderSheets(elSheetFilter.value)
 elAddRow?.addEventListener('click', () => addRow());
 elClear?.addEventListener('click', () => clearRows());
 elSave?.addEventListener('click', () => saveCurrent());
+elTranslate?.addEventListener('click', () => translateData());
 if (elMap) elMap.addEventListener('click', () => mapNow());
 
 (async () => {
