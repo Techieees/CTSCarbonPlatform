@@ -503,6 +503,7 @@ jobs: dict[str, dict[str, object]] = {}
 job_store = jobs
 _JOBS_LOCK = threading.Lock()
 _JOB_RETENTION_MINUTES = 240
+_SUBPROCESS_TIMEOUT_SECONDS = 300
 
 
 class JobCancelled(Exception):
@@ -7671,6 +7672,7 @@ def _run_pipeline_background(run_id: int) -> None:
                     stdout=f,
                     stderr=subprocess.STDOUT,
                     text=True,
+                    timeout=_SUBPROCESS_TIMEOUT_SECONDS,
                     env={
                         **os.environ,
                         "PYTHONUTF8": os.environ.get("PYTHONUTF8", "1"),
@@ -10737,6 +10739,30 @@ def api_mapping_run():
     return jsonify({"job_id": job_id, "status": "started"})
 
 
+def _run_append_pipeline_job(
+    *,
+    job_id: str,
+    user_id: int,
+    resolved_company: str,
+    resolved_sheet: str,
+) -> dict[str, object]:
+    _update_job_progress(job_id, 10, "Starting append & run pipeline...")
+    result = _run_append_and_pipeline(resolved_company, resolved_sheet)
+    _update_job_progress(job_id, 90, "Creating completion notification...")
+    _create_user_notification(
+        int(user_id),
+        title="Pipeline run completed",
+        message=f"Data pipeline executed successfully for {resolved_company}.",
+        notification_type="success",
+        link="/",
+        feed_event="pipeline_completed",
+        feed_company=resolved_company,
+        feed_timestamp=datetime.utcnow(),
+    )
+    _update_job_progress(job_id, 100, "Pipeline completed")
+    return result
+
+
 @app.route("/api/pipeline/append_run", methods=["POST"])
 @login_required
 def api_pipeline_append_run():
@@ -10765,21 +10791,17 @@ def api_pipeline_append_run():
     else:
         return jsonify({"error": "Unsupported pipeline category."}), 400
 
-    try:
-        result = _run_append_and_pipeline(resolved_company, resolved_sheet)
-    except Exception as e:
-        return jsonify({"error": f"Pipeline failed: {e}"}), 500
-    _create_user_notification(
-        current_user.id,
-        title="Pipeline run completed",
-        message=f"Data pipeline executed successfully for {resolved_company}.",
-        notification_type="success",
-        link=url_for("home"),
-        feed_event="pipeline_completed",
-        feed_company=resolved_company,
-        feed_timestamp=datetime.utcnow(),
+    job_id = run_in_background(
+        "pipeline",
+        resolved_company,
+        _run_append_pipeline_job,
+        user_id=int(current_user.id),
+        resolved_company=resolved_company,
+        resolved_sheet=resolved_sheet,
+        job_user_id=int(current_user.id),
+        job_user_email=str(getattr(current_user, "email", "") or ""),
     )
-    return jsonify(result)
+    return jsonify({"job_id": job_id, "status": "started"})
 
 
 def _find_latest_merged_mapping_workbook() -> Path | None:
@@ -13951,6 +13973,7 @@ def _run_append_and_pipeline(company_name: str, sheet_name: str) -> dict[str, ob
             text=True,
             encoding="utf-8",
             errors="replace",
+            timeout=_SUBPROCESS_TIMEOUT_SECONDS,
         )
     if proc.returncode != 0:
         detail = (proc.stdout or proc.stderr or "").strip()

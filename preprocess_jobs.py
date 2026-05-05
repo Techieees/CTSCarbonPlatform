@@ -49,6 +49,7 @@ _KLARAKARBON_SCRIPT_3 = _KLARAKARBON_SCRIPT_DIR / "Klarakarbon_category_change_1
 _TRAVEL_SCRIPT_1 = _TRAVEL_SCRIPT_DIR / "extract_and_standardize_raw_data.py"
 _TRAVEL_SCRIPT_2 = _TRAVEL_SCRIPT_DIR / "clean_source_data.py"
 _TRAVEL_SCRIPT_3 = _TRAVEL_SCRIPT_DIR / "analysis_report.py"
+_SUBPROCESS_TIMEOUT_SECONDS = 300
 
 
 def _read_klarakarbon_templates() -> dict[str, dict[str, list[str]]]:
@@ -198,6 +199,7 @@ def _run_script(script_path: Path, run_dir: Path, env: dict[str, str] | None = N
         encoding="utf-8",
         errors="replace",
         env=proc_env,
+        timeout=_SUBPROCESS_TIMEOUT_SECONDS,
     )
     if proc.stdout:
         _append_log(run_dir, proc.stdout)

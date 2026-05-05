@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 from typing import Iterable, Sequence
 
+_SUBPROCESS_TIMEOUT_SECONDS = 300
+
 
 def run_python_script(
     script_path: Path,
@@ -33,7 +35,7 @@ def run_python_script(
     env.setdefault("PYTHONIOENCODING", "utf-8")
     env.setdefault("PYTHONUNBUFFERED", "1")
 
-    completed = subprocess.run(cmd, cwd=str(cwd), env=env)
+    completed = subprocess.run(cmd, cwd=str(cwd), env=env, timeout=_SUBPROCESS_TIMEOUT_SECONDS)
     return int(completed.returncode)
 
 

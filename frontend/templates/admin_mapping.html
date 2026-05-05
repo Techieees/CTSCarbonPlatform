@@ -272,6 +272,9 @@
     if (!res.ok) {
       return { ok: false, error: data.error || ('Request failed (' + res.status + ')'), data };
     }
+    if (data.job_id) {
+      return await pollMappingJob(data.job_id);
+    }
     return { ok: true, data };
   }
 
