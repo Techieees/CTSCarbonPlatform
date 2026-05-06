@@ -697,7 +697,18 @@ body.dark-mode .app-topbar .dropdown-item:focus-visible {
   }
 }
 
-@media (max-width: 767.98px) {
+@media (max-width: 768px) {
+  html,
+  body,
+  .app-shell,
+  .app-layout {
+    overflow-x: hidden;
+  }
+
+  body.app-mobile-sidebar-open {
+    overflow: hidden;
+  }
+
   .app-layout {
     min-width: 0;
   }
@@ -738,11 +749,11 @@ body.dark-mode .app-topbar .dropdown-item:focus-visible {
     inset: 0;
     border: 0;
     padding: 0;
-    background: rgba(15, 23, 42, 0.46);
+    background: rgba(15, 23, 42, 0.58);
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
-    transition: opacity 0.2s ease, visibility 0.2s ease;
+    transition: opacity 0.22s ease, visibility 0.22s ease;
   }
 
   .app-layout--mobile-drawer.is-sidebar-mobile-open .app-sidebar__backdrop {
@@ -754,65 +765,198 @@ body.dark-mode .app-topbar .dropdown-item:focus-visible {
   .app-layout--mobile-drawer .app-sidebar__shell,
   .app-layout--mobile-drawer .app-sidebar.is-secondary-open .app-sidebar__shell {
     position: relative;
-    display: grid;
-    grid-template-columns: 1fr;
-    width: min(260px, calc(100vw - 2rem));
-    max-width: 260px;
-    height: 100vh;
-    max-height: 100vh;
-    padding-top: max(0px, env(safe-area-inset-top));
-    overflow-y: auto;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    width: min(82vw, 340px);
+    max-width: min(82vw, 340px);
+    min-width: 0;
+    height: 100dvh;
+    max-height: 100dvh;
+    padding-top: max(10px, env(safe-area-inset-top));
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+    overflow-y: hidden;
     overflow-x: hidden;
     background: var(--app-sidebar-bg);
     border-right: 1px solid var(--app-sidebar-border);
     box-shadow: var(--app-sidebar-shadow);
-    transform: translateX(calc(-100% - 24px));
-    transition: transform 0.24s ease;
+    transform: translate3d(calc(-100% - 18px), 0, 0);
+    transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+    will-change: transform;
   }
 
   .app-layout--mobile-drawer.is-sidebar-mobile-open .app-sidebar__shell,
   .app-layout--mobile-drawer.is-sidebar-mobile-open .app-sidebar.is-secondary-open .app-sidebar__shell {
-    transform: translateX(0);
+    transform: translate3d(0, 0, 0);
   }
 
   .app-layout--mobile-drawer .app-sidebar__rail {
-    position: sticky;
+    position: relative;
     top: 0;
-    z-index: 2;
+    z-index: 3;
+    flex: 0 0 auto;
     width: 100%;
-    flex-direction: row;
+    max-height: min(42dvh, 430px);
+    flex-direction: column;
+    align-items: stretch;
     justify-content: flex-start;
-    padding-inline: 10px;
+    gap: 6px;
+    padding: 8px 10px 10px;
     background: var(--app-sidebar-rail);
-    overflow-x: auto;
-    overflow-y: hidden;
+    border-bottom: 1px solid var(--app-sidebar-border);
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .app-layout--mobile-drawer .app-sidebar__rail-item {
+    min-height: 42px;
+    width: 100%;
+    padding: 9px 12px;
+    gap: 10px;
+    border-radius: 12px;
+    flex: 0 0 auto;
+  }
+
+  .app-layout--mobile-drawer .app-sidebar__label,
+  .app-layout--mobile-drawer .app-sidebar .label {
+    display: inline-flex;
+    min-width: 0;
+    width: auto;
+    opacity: 1;
+    margin-left: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .app-layout--mobile-drawer .app-sidebar__toggle {
     display: none;
   }
 
-  .app-layout--mobile-drawer .app-sidebar__primary,
-  .app-layout--mobile-drawer .app-sidebar__secondary {
+  .app-layout--mobile-drawer .app-sidebar__primary {
     position: static;
+    flex: 1 1 auto;
     width: 100%;
     transform: none;
     box-shadow: none;
     display: flex;
+    flex-direction: column;
     opacity: 1;
     pointer-events: auto;
     min-height: 0;
     height: auto;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
   }
 
   .app-layout--mobile-drawer .app-sidebar__secondary {
+    position: static;
+    flex: 0 0 auto;
+    width: 100%;
+    max-height: min(34dvh, 260px);
+    transform: none;
+    box-shadow: none;
+    display: none;
+    flex-direction: column;
+    opacity: 1;
+    pointer-events: auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .app-layout--mobile-drawer .app-sidebar__secondary.is-active {
+    display: flex;
     border-top: 1px solid var(--app-sidebar-border);
     box-shadow: none;
   }
 
+  .app-layout--mobile-drawer .app-sidebar__primary-panel,
+  .app-layout--mobile-drawer .app-sidebar__secondary-panel {
+    min-width: 0;
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  .app-layout--mobile-drawer .app-sidebar__primary-panel.is-active {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .app-layout--mobile-drawer .app-sidebar__secondary-panel.is-active {
+    display: flex;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .app-layout--mobile-drawer .app-sidebar__panel-header,
+  .app-layout--mobile-drawer .app-sidebar__secondary-header {
+    flex: 0 0 auto;
+    min-height: 48px;
+    padding-inline: 14px;
+  }
+
   .app-layout--mobile-drawer .app-sidebar__panel-menu {
     max-height: none;
+    min-width: 0;
+    width: 100%;
+    gap: 6px;
+    padding: 10px;
     padding-bottom: calc(14px + env(safe-area-inset-bottom));
+    overflow-x: hidden;
+  }
+
+  .app-layout--mobile-drawer .app-sidebar__menu-item {
+    width: 100%;
+    min-height: 42px;
+    padding: 8px 12px;
+    gap: 10px;
+    overflow: hidden;
+  }
+
+  .app-layout--mobile-drawer .app-sidebar__menu-item span:not(.app-sidebar__icon):not(.app-sidebar__menu-arrow),
+  .app-layout--mobile-drawer .app-sidebar__utility-header span,
+  .app-layout--mobile-drawer .theme-toggle__label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .app-layout--mobile-drawer .app-sidebar__icon,
+  .app-layout--mobile-drawer .app-sidebar__rail-item .app-sidebar__icon,
+  .app-layout--mobile-drawer .app-sidebar__menu-item .app-sidebar__icon {
+    width: 24px;
+    min-width: 24px;
+    height: 24px;
+    flex: 0 0 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .app-layout--mobile-drawer .app-sidebar__icon svg,
+  .app-layout--mobile-drawer .app-sidebar__icon img,
+  .app-layout--mobile-drawer .app-sidebar__icon .animated-icon,
+  .app-layout--mobile-drawer .app-sidebar__rail-item img,
+  .app-layout--mobile-drawer .app-sidebar__menu-item img {
+    width: 22px !important;
+    height: 22px !important;
+    max-width: 22px !important;
+    max-height: 22px !important;
+    object-fit: contain;
+    transform: none !important;
+  }
+
+  .app-layout--mobile-drawer .app-sidebar__utility-card {
+    flex: 0 0 auto;
+    margin: auto 10px 10px;
+    padding: 12px;
+    overflow: hidden;
   }
 
   .app-topbar {

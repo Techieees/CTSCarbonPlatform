@@ -1,6 +1,6 @@
 (function () {
   const desktopMq = window.matchMedia("(min-width: 992px)");
-  const mobileMq = window.matchMedia("(max-width: 767.98px)");
+  const mobileMq = window.matchMedia("(max-width: 768px)");
 
   function init() {
     const layout = document.getElementById("appLayout");
