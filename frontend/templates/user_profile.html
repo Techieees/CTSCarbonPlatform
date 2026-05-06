@@ -33,17 +33,21 @@
       </div>
       <div class="profile-hero-card__body">
         <div class="profile-hero-card__identity">
-          <img class="profile-hero-card__avatar" src="{{ url_for('static', filename=profile_user.profile_photo_path) if profile_user.profile_photo_path else url_for('mouse_symbol_image') }}" alt="{{ profile_name }}">
+          <img class="profile-hero-card__avatar" src="{{ profile_avatar_url }}" alt="{{ profile_name }}">
           <div class="profile-hero-card__copy">
             <div class="profile-hero-card__name-row">
               <h1 class="profile-hero-card__name">{{ profile_name }}</h1>
+              {% if profile_role_label %}
               <span class="feed-role-badge feed-role-badge--profile">{{ profile_role_label }}</span>
+              {% endif %}
             </div>
+            {% if profile_title %}
             <p class="profile-hero-card__title">{{ profile_title }}</p>
+            {% endif %}
             <p class="profile-hero-card__meta">
               <span>{{ profile_company }}</span>
-              {% if profile_location %}
-              <span>&middot; {{ profile_location }}</span>
+              {% if profile_country_flag %}
+              <span class="profile-country-flag" aria-label="{{ profile_location }}">{{ profile_country_flag }}</span>
               {% endif %}
             </p>
             <div class="profile-hero-card__social">
@@ -72,6 +76,28 @@
         </div>
       </div>
     </section>
+
+    {% if is_own_profile and can_profile_interact %}
+    <div class="profile-cover-editor" data-profile-cover-editor hidden>
+      <div class="profile-cover-editor__dialog" role="dialog" aria-modal="true" aria-label="Cover image editor">
+        <div class="profile-cover-editor__header">
+          <h2>Reposition cover</h2>
+          <button type="button" class="profile-cover-editor__close" data-profile-cover-cancel aria-label="Close">&times;</button>
+        </div>
+        <div class="profile-cover-editor__viewport" data-profile-cover-viewport>
+          <img src="" alt="" data-profile-cover-preview draggable="false">
+        </div>
+        <label class="profile-cover-editor__control">
+          <span>Zoom</span>
+          <input type="range" min="1" max="2.6" step="0.01" value="1" data-profile-cover-zoom>
+        </label>
+        <div class="profile-cover-editor__actions">
+          <button type="button" class="btn btn-ghost" data-profile-cover-cancel>Cancel</button>
+          <button type="button" class="btn btn-primary" data-profile-cover-save>Save</button>
+        </div>
+      </div>
+    </div>
+    {% endif %}
 
     <section class="feed-card profile-tabs-card" aria-label="Profile sections">
       <div class="profile-tabs" data-profile-tabs role="tablist" aria-label="Profile tabs">
@@ -188,10 +214,12 @@
                   <dt>Email</dt>
                   <dd>{{ profile_user.email }}</dd>
                 </div>
+                {% if profile_role_label %}
                 <div>
                   <dt>Role</dt>
                   <dd>{{ profile_role_label }}</dd>
                 </div>
+                {% endif %}
                 <div>
                   <dt>Company</dt>
                   <dd>{{ profile_company }}</dd>

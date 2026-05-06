@@ -28,7 +28,7 @@
             <img class="feed-avatar-image" src="{{ feed_profile.avatar_url }}" alt="{{ feed_profile.name }}">
             <div>
               <h3 id="feedPostModalLabel" class="feed-modal__name">{{ feed_profile.name }}</h3>
-              <p class="feed-modal__meta">{{ feed_profile.title }} &middot; {{ feed_profile.company_name }}</p>
+              <p class="feed-modal__meta">{% if feed_profile.title %}{{ feed_profile.title }} &middot; {% endif %}{{ feed_profile.company_name }}</p>
             </div>
           </div>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>

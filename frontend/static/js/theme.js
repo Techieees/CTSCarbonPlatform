@@ -28,6 +28,7 @@
 
     body.classList.toggle("dark-mode", isDark);
     document.documentElement.classList.toggle("theme-preload-dark", isDark);
+    document.documentElement.classList.add("theme-ready");
     document.documentElement.style.colorScheme = isDark ? "dark" : "light";
 
     const toggles = document.querySelectorAll("#darkModeToggle");

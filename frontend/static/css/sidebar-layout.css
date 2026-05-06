@@ -545,12 +545,30 @@ body.dark-mode .app-topbar__company {
 }
 
 .app-topbar .dropdown-menu {
+  top: calc(100% + 10px) !important;
   min-width: 200px;
+  margin-top: 0;
   padding: 8px;
   border-radius: 10px;
   background: var(--surface-elevated);
   border: 1px solid var(--border-subtle);
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.16);
+  z-index: 1200;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.app-topbar .dropdown-menu.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.app-topbar .app-account-dropdown:hover > .dropdown-menu,
+.app-topbar .app-account-dropdown:focus-within > .dropdown-menu {
+  display: block;
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .app-topbar .dropdown-item {
@@ -702,13 +720,16 @@ body.dark-mode .app-topbar .dropdown-item:focus-visible {
     width: 100%;
     max-width: none;
     border-right: 0;
+    background: transparent;
     box-shadow: none;
     pointer-events: none;
+    visibility: hidden;
     z-index: 1085;
   }
 
   .app-layout--mobile-drawer.is-sidebar-mobile-open .app-sidebar {
     pointer-events: auto;
+    visibility: visible;
   }
 
   .app-layout--mobile-drawer .app-sidebar__backdrop {

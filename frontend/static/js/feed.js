@@ -237,7 +237,7 @@
           '<div class="feed-comment__bubble">' +
             '<div class="feed-comment__meta">' +
               '<a href="' + escapeHtml(comment.author_profile_url || "#") + '" class="feed-comment__author">' + escapeHtml(comment.author_name || "User") + '</a>' +
-              '<span class="feed-role-badge">' + escapeHtml(comment.author_role_label || "User") + '</span>' +
+              (comment.author_role_label ? '<span class="feed-role-badge">' + escapeHtml(comment.author_role_label) + '</span>' : '') +
               '<time class="feed-comment__time" datetime="' + escapeHtml(comment.created_at_iso || "") + '">' + escapeHtml(comment.created_at_label || "") + '</time>' +
             '</div>' +
             '<div class="feed-comment__content">' + nl2br(String(comment.content_html || "")) + '</div>' +
@@ -590,9 +590,114 @@
   Array.from(document.querySelectorAll("[data-profile-cover-trigger]")).forEach(function (button) {
     const banner = document.querySelector("[data-profile-cover-banner]");
     const input = document.querySelector("[data-profile-cover-input]");
+    const editor = document.querySelector("[data-profile-cover-editor]");
+    const viewport = editor ? editor.querySelector("[data-profile-cover-viewport]") : null;
+    const preview = editor ? editor.querySelector("[data-profile-cover-preview]") : null;
+    const zoomInput = editor ? editor.querySelector("[data-profile-cover-zoom]") : null;
+    const saveButton = editor ? editor.querySelector("[data-profile-cover-save]") : null;
+    const cancelButtons = editor ? Array.from(editor.querySelectorAll("[data-profile-cover-cancel]")) : [];
     const endpoint = String(button.dataset.uploadUrl || "").trim();
     if (!banner || !input || !endpoint) {
       return;
+    }
+    const coverState = {
+      file: null,
+      imageUrl: "",
+      imageNaturalWidth: 0,
+      imageNaturalHeight: 0,
+      baseScale: 1,
+      zoom: 1,
+      offsetX: 0,
+      offsetY: 0,
+      dragging: false,
+      dragStartX: 0,
+      dragStartY: 0,
+      startOffsetX: 0,
+      startOffsetY: 0
+    };
+
+    function closeCoverEditor() {
+      if (editor) {
+        editor.hidden = true;
+      }
+      document.body.classList.remove("modal-open", "overflow-hidden");
+      if (coverState.imageUrl) {
+        URL.revokeObjectURL(coverState.imageUrl);
+      }
+      coverState.file = null;
+      coverState.imageUrl = "";
+      input.value = "";
+    }
+
+    function clampCoverOffsets() {
+      if (!viewport) {
+        return;
+      }
+      const rect = viewport.getBoundingClientRect();
+      const renderedWidth = coverState.imageNaturalWidth * coverState.baseScale * coverState.zoom;
+      const renderedHeight = coverState.imageNaturalHeight * coverState.baseScale * coverState.zoom;
+      const maxX = Math.max(0, (renderedWidth - rect.width) / 2);
+      const maxY = Math.max(0, (renderedHeight - rect.height) / 2);
+      coverState.offsetX = Math.min(maxX, Math.max(-maxX, coverState.offsetX));
+      coverState.offsetY = Math.min(maxY, Math.max(-maxY, coverState.offsetY));
+    }
+
+    function renderCoverPreview() {
+      if (!preview || !viewport) {
+        return;
+      }
+      const rect = viewport.getBoundingClientRect();
+      coverState.baseScale = Math.max(
+        rect.width / Math.max(1, coverState.imageNaturalWidth),
+        rect.height / Math.max(1, coverState.imageNaturalHeight)
+      );
+      clampCoverOffsets();
+      preview.style.width = (coverState.imageNaturalWidth * coverState.baseScale * coverState.zoom) + "px";
+      preview.style.height = (coverState.imageNaturalHeight * coverState.baseScale * coverState.zoom) + "px";
+      preview.style.transform = "translate(calc(-50% + " + coverState.offsetX + "px), calc(-50% + " + coverState.offsetY + "px))";
+    }
+
+    function cropCoverToBlob() {
+      return new Promise(function (resolve, reject) {
+        if (!preview || !viewport || !coverState.file) {
+          reject(new Error("Cover image is not ready."));
+          return;
+        }
+        const rect = viewport.getBoundingClientRect();
+        const outputWidth = 1600;
+        const outputHeight = Math.round(outputWidth * rect.height / Math.max(1, rect.width));
+        const canvas = document.createElement("canvas");
+        canvas.width = outputWidth;
+        canvas.height = outputHeight;
+        const context = canvas.getContext("2d");
+        if (!context) {
+          reject(new Error("Cover image could not be cropped."));
+          return;
+        }
+        const scale = coverState.baseScale * coverState.zoom;
+        const sourceX = ((coverState.imageNaturalWidth * scale - rect.width) / 2 - coverState.offsetX) / scale;
+        const sourceY = ((coverState.imageNaturalHeight * scale - rect.height) / 2 - coverState.offsetY) / scale;
+        const sourceWidth = rect.width / scale;
+        const sourceHeight = rect.height / scale;
+        context.drawImage(
+          preview,
+          Math.max(0, sourceX),
+          Math.max(0, sourceY),
+          Math.min(coverState.imageNaturalWidth, sourceWidth),
+          Math.min(coverState.imageNaturalHeight, sourceHeight),
+          0,
+          0,
+          outputWidth,
+          outputHeight
+        );
+        canvas.toBlob(function (blob) {
+          if (!blob) {
+            reject(new Error("Cover image could not be cropped."));
+            return;
+          }
+          resolve(blob);
+        }, "image/jpeg", 0.92);
+      });
     }
 
     button.addEventListener("click", function () {
@@ -604,37 +709,105 @@
       if (!file) {
         return;
       }
-      const formData = new FormData();
-      formData.append("cover_image", file);
-      setProfileCoverBusy(button, true);
-      fetch(endpoint, {
-        method: "POST",
-        body: formData,
-        headers: {
-          Accept: "application/json",
-          "X-Requested-With": "XMLHttpRequest"
-        }
-      })
-        .then(function (response) {
-          return response.json().catch(function () {
-            return {};
-          }).then(function (payload) {
-            if (!response.ok || !payload.ok || !payload.cover_url) {
-              throw new Error(String(payload.error || "Could not upload cover image."));
-            }
-            return payload;
-          });
-        })
-        .then(function (payload) {
-          banner.style.backgroundImage = 'url("' + String(payload.cover_url) + '")';
-          banner.classList.add("has-custom-cover");
-        })
-        .catch(function () {})
-        .finally(function () {
-          input.value = "";
-          setProfileCoverBusy(button, false);
-        });
+      if (!editor || !preview || !viewport || !zoomInput || !saveButton) {
+        return;
+      }
+      if (coverState.imageUrl) {
+        URL.revokeObjectURL(coverState.imageUrl);
+      }
+      coverState.file = file;
+      coverState.imageUrl = URL.createObjectURL(file);
+      coverState.zoom = 1;
+      coverState.offsetX = 0;
+      coverState.offsetY = 0;
+      zoomInput.value = "1";
+      preview.onload = function () {
+        coverState.imageNaturalWidth = preview.naturalWidth || 1;
+        coverState.imageNaturalHeight = preview.naturalHeight || 1;
+        editor.hidden = false;
+        document.body.classList.add("modal-open", "overflow-hidden");
+        renderCoverPreview();
+      };
+      preview.src = coverState.imageUrl;
     });
+
+    if (zoomInput) {
+      zoomInput.addEventListener("input", function () {
+        coverState.zoom = Number(zoomInput.value) || 1;
+        renderCoverPreview();
+      });
+    }
+
+    if (viewport) {
+      viewport.addEventListener("pointerdown", function (event) {
+        coverState.dragging = true;
+        coverState.dragStartX = event.clientX;
+        coverState.dragStartY = event.clientY;
+        coverState.startOffsetX = coverState.offsetX;
+        coverState.startOffsetY = coverState.offsetY;
+        viewport.classList.add("is-dragging");
+        viewport.setPointerCapture(event.pointerId);
+      });
+      viewport.addEventListener("pointermove", function (event) {
+        if (!coverState.dragging) {
+          return;
+        }
+        coverState.offsetX = coverState.startOffsetX + event.clientX - coverState.dragStartX;
+        coverState.offsetY = coverState.startOffsetY + event.clientY - coverState.dragStartY;
+        renderCoverPreview();
+      });
+      viewport.addEventListener("pointerup", function (event) {
+        coverState.dragging = false;
+        viewport.classList.remove("is-dragging");
+        viewport.releasePointerCapture(event.pointerId);
+      });
+    }
+
+    cancelButtons.forEach(function (cancelButton) {
+      cancelButton.addEventListener("click", closeCoverEditor);
+    });
+
+    if (saveButton) {
+      saveButton.addEventListener("click", function () {
+        setProfileCoverBusy(button, true);
+        saveButton.disabled = true;
+        cropCoverToBlob()
+          .then(function (blob) {
+            const formData = new FormData();
+            formData.append("cover_image", blob, "cover.jpg");
+            return fetch(endpoint, {
+              method: "POST",
+              body: formData,
+              headers: {
+                Accept: "application/json",
+                "X-Requested-With": "XMLHttpRequest"
+              }
+            });
+          })
+          .then(function (response) {
+            return response.json().catch(function () {
+              return {};
+            }).then(function (payload) {
+              if (!response.ok || !payload.ok || !payload.cover_url) {
+                throw new Error(String(payload.error || "Could not upload cover image."));
+              }
+              return payload;
+            });
+          })
+          .then(function (payload) {
+            banner.style.backgroundImage = 'url("' + String(payload.cover_url) + '")';
+            banner.classList.add("has-custom-cover");
+            closeCoverEditor();
+          })
+          .catch(function () {})
+          .finally(function () {
+            saveButton.disabled = false;
+            setProfileCoverBusy(button, false);
+          });
+      });
+    }
+
+    window.addEventListener("resize", renderCoverPreview);
   });
 
   Array.from(document.querySelectorAll(".feed-comment-form")).forEach(initCommentForm);

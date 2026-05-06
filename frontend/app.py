@@ -1076,31 +1076,31 @@ def _user_display_name(u: User | None) -> str:
 def _role_badge_label(raw_role: object) -> str:
     role = normalize_user_role(str(raw_role or ""))
     return {
-        "owner": "Owner",
-        "super_admin": "Super Admin",
-        "admin": "Admin",
-        "manager": "Manager",
-        "auditor": "Auditor",
-        "user": "User",
-    }.get(role, "User")
+        "owner": "",
+        "super_admin": "",
+        "admin": "",
+        "manager": "",
+        "auditor": "",
+        "user": "",
+    }.get(role, "")
 
 
 def _user_role_label(u: User | None) -> str:
     if u is None:
-        return "User"
+        return ""
     raw_role = str(getattr(u, "role", None) or "").strip()
     if raw_role:
         return _role_badge_label(raw_role)
-    return "Admin" if bool(getattr(u, "is_admin", False)) else "User"
+    return ""
 
 
 def _user_professional_title(u: User | None) -> str:
     if u is None:
-        return "User"
+        return ""
     title = (getattr(u, "job_title", None) or "").strip()
     if title:
         return title
-    return _user_role_label(u) or "User"
+    return ""
 
 
 def _profile_photo_url_for_user(u: User | None) -> str | None:
@@ -2623,6 +2623,8 @@ def _user_avatar_url(u: User | None) -> str:
     photo = _profile_photo_url_for_user(u)
     if photo:
         return photo
+    if bool(getattr(u, "is_admin", False)):
+        return url_for("static", filename="images/logo.svg.png")
     return _default_avatar_url(_user_display_name(u))
 
 
@@ -9197,6 +9199,13 @@ def _country_label_from_code(raw_code: object) -> str:
     return code
 
 
+def _country_flag_emoji(raw_code: object) -> str:
+    code = str(raw_code or "").strip().upper()
+    if not re.fullmatch(r"[A-Z]{2}", code):
+        return ""
+    return "".join(chr(0x1F1E6 + ord(char) - ord("A")) for char in code)
+
+
 def _profile_location_label(u: User | None) -> str:
     if u is None:
         return ""
@@ -9312,7 +9321,9 @@ def public_profile(user_id: int):
         profile_name=_user_display_name(user_row),
         profile_title=_user_professional_title(user_row),
         profile_role_label=_user_role_label(user_row),
+        profile_avatar_url=_user_avatar_url(user_row),
         profile_company=company_name or "CTS Carbon Platform",
+        profile_country_flag=_country_flag_emoji(getattr(user_row, "company_country", None)),
         profile_cover_url=url_for("static", filename=user_row.cover_image) if getattr(user_row, "cover_image", None) else "",
         profile_location=_profile_location_label(user_row),
         profile_about=_profile_about_text(user_row),
@@ -14408,6 +14419,73 @@ def update_emission_factor_mapping():
         flash(f"Update failed: {e}")
 
     return redirect(url_for("manage_emission_factors", search=request.args.get("search",""), sheet=request.args.get("sheet",""), scope=request.args.get("scope",""), ef_source=request.args.get("ef_source","")))
+
+
+@app.route("/admin/emission_factors/mapping/create", methods=["POST"])
+@login_required
+def create_emission_factor_mapping():
+    if not current_user.is_admin:
+        flash("Access denied")
+        return redirect(url_for("dashboard"))
+
+    sheet = (request.form.get("sheet") or "").strip()
+    payload = {k: (request.form.get(k) or "").strip() for k in _ef_expected_headers()}
+    required = ("ef_name", "scope", "ef_category", "ef_id", "ef_value", "ef_unit", "ef_source")
+    missing_values = [field for field in required if not payload.get(field)]
+    if not sheet or missing_values:
+        flash("Please complete all required emission factor fields.")
+        return redirect(url_for("manage_emission_factors"))
+
+    try:
+        ef_value = float(payload["ef_value"])
+    except Exception:
+        flash("ef_value must be numeric.")
+        return redirect(url_for("manage_emission_factors"))
+
+    try:
+        wb = load_workbook(STAGE2_EF_XLSX, keep_links=False)
+        if sheet not in wb.sheetnames:
+            flash("Sheet not found in mapping workbook")
+            return redirect(url_for("manage_emission_factors"))
+        ws = wb[sheet]
+
+        headers = [("" if v is None else str(v).strip()) for v in (next(ws.iter_rows(min_row=1, max_row=1, values_only=True), None) or [])]
+        while headers and headers[-1] == "":
+            headers.pop()
+
+        missing_headers = [h for h in _ef_expected_headers() if h not in headers]
+        if missing_headers:
+            flash(f"Mapping sheet headers are missing: {', '.join(missing_headers)}")
+            return redirect(url_for("manage_emission_factors"))
+
+        if _find_ef_row_in_sheet(ws, payload["ef_id"]) is not None:
+            flash("An emission factor with this ef_id already exists on the selected sheet.")
+            return redirect(url_for("manage_emission_factors"))
+
+        backup_dir = STAGE2_EF_XLSX.parent / "_ef_backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = backup_dir / f"{STAGE2_EF_XLSX.stem}_before_create_{ts}{STAGE2_EF_XLSX.suffix}"
+        try:
+            shutil.copy2(STAGE2_EF_XLSX, backup_path)
+        except Exception:
+            pass
+
+        row_idx = ws.max_row + 1
+        for h in _ef_expected_headers():
+            col = headers.index(h) + 1
+            value = ef_value if h == "ef_value" else (payload.get(h) or None)
+            ws.cell(row=row_idx, column=col).value = value
+
+        wb.save(STAGE2_EF_XLSX)
+        _clear_ef_cache()
+        flash("Emission factor created in mapping workbook.")
+    except PermissionError:
+        flash("Mapping workbook is open/locked. Close Excel and try again.")
+    except Exception as e:
+        flash(f"Create failed: {e}")
+
+    return redirect(url_for("manage_emission_factors", sheet=sheet))
 
 
 @app.route("/admin/emission_factors/mapping/delete", methods=["POST"])

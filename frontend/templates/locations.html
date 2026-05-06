@@ -32,6 +32,7 @@
             <div class="legend-box__item"><span class="legend-box__swatch legend-box__swatch--production"></span>Sites</div>
           </div>
           <div id="locationsLayerPanel" class="locations-side-panel__card locations-layer-panel" aria-label="Layer controls"></div>
+          <div id="locationsClimatePanelSlot" class="locations-side-panel__climate-slot" aria-label="Climate information"></div>
         </aside>
       </div>
     </div>
@@ -45,7 +46,7 @@
   window.OPENWEATHER_API_KEY = "{{ OPENWEATHER_API_KEY | default('', true) }}";
   window.__locationsMapConfig = {
     dataUrl: "{{ url_for('static', filename='data/locations.json') }}",
-    style: "mapbox://styles/mapbox/streets-v12",
+    style: "mapbox://styles/mapbox/outdoors-v12",
     center: [15, 35],
     zoom: 1.6
   };

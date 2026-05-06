@@ -194,12 +194,12 @@
       data-feed-comment-toggle
       aria-expanded="false"
     >
-      <span class="feed-action__icon" aria-hidden="true">&#9998;</span>
+        <img src="{{ url_for('static', filename='images/animated_icons_gif/eco.gif') }}" class="animated-icon animated-icon-sm feed-action__icon" loading="lazy" alt="">
       <span>{% if post.challenge %}Respond{% else %}Comment{% endif %}</span>
     </button>
     {% endif %}
     <button class="feed-action" type="button" data-feed-ui="share" data-share-url="{{ post.share_url }}">
-      <span class="feed-action__icon" aria-hidden="true">&#8599;</span>
+      <img src="{{ url_for('static', filename='images/animated_icons_gif/save-the-world.gif') }}" class="animated-icon animated-icon-sm feed-action__icon" loading="lazy" alt="">
       <span>Share</span>
     </button>
   </footer>
@@ -236,7 +236,9 @@
           <div class="feed-comment__bubble">
             <div class="feed-comment__meta">
               <a href="{{ comment.author_profile_url }}" class="feed-comment__author">{{ comment.author_name }}</a>
+              {% if comment.author_role_label %}
               <span class="feed-role-badge">{{ comment.author_role_label }}</span>
+              {% endif %}
               <time class="feed-comment__time" datetime="{{ comment.created_at_iso }}">{{ comment.created_at_label }}</time>
             </div>
             <div class="feed-comment__content">{{ comment.content_html|safe }}</div>

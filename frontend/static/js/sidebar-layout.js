@@ -202,6 +202,11 @@
       syncExpandedState();
     }
 
+    window.addEventListener("load", () => {
+      setMobileOpen(false);
+      closeSecondary();
+    }, { once: true });
+
     if (desktopMq.addEventListener) {
       desktopMq.addEventListener("change", applyResponsiveState);
     } else if (desktopMq.addListener) {
