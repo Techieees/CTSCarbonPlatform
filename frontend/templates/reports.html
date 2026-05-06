@@ -84,7 +84,7 @@
           {% if can_manage %}
           <p class="text-muted">Admin users can create categories and upload reports from here.</p>
           {% else %}
-          <p class="text-muted mb-0">This page is read-only for non-admin users.</p>
+          <p class="text-muted mb-0">This page is available in <strong>read only</strong> mode for users without administrative access.</p>
           {% endif %}
         </div>
       </div>
@@ -123,7 +123,7 @@
             <div>
               <label class="form-label" for="reportFile">File</label>
               <input id="reportFile" name="file" type="file" class="form-control" accept=".pdf,.docx" required>
-              <div class="form-text">Allowed file types: PDF and DOCX.</div>
+              <div class="form-text">Supported document formats include <strong>PDF</strong> and <strong>DOCX</strong>.</div>
             </div>
             <button type="submit" class="btn btn-primary">Upload</button>
           </form>

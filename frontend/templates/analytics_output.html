@@ -16,7 +16,7 @@
         <p class="analytics-output-hero__lead mb-0">{{ page_summary }}</p>
       </div>
       {% if output_exists and download_url %}
-      <a class="btn btn-primary analytics-output-hero__action" href="{{ download_url }}">Download latest output</a>
+      <a class="btn btn-primary analytics-output-hero__action" href="{{ download_url }}">Download Latest Output</a>
       {% endif %}
     </div>
   </section>
@@ -26,7 +26,7 @@
     <form method="post" class="analytics-output-form js-analytics-run-form" data-loading-message="Running calculation..." id="forecastingRunForm">
       <div class="row g-3 align-items-end">
         <div class="col-sm-6 col-lg-3">
-          <label class="form-label" for="forecastTargetYear">Target year</label>
+          <label class="form-label" for="forecastTargetYear">Target Year</label>
           <input
             id="forecastTargetYear"
             class="form-control"
@@ -39,7 +39,7 @@
         </div>
         <div class="col-sm-6 col-lg-3">
           <button class="btn btn-primary w-100 js-analytics-run-button" type="submit">
-            <span class="js-analytics-run-label">Run forecasting</span>
+            <span class="js-analytics-run-label">Run Forecasting</span>
             <span class="analytics-output-spinner" aria-hidden="true"></span>
           </button>
         </div>
@@ -54,7 +54,7 @@
     <div class="analytics-output-ccc-status row g-3 mb-4">
       <div class="col-md-3">
         <article class="analytics-output-stat">
-          <span class="analytics-output-stat__label">Connection status</span>
+          <span class="analytics-output-stat__label">Connection Status</span>
           <strong class="analytics-output-stat__value">
             <span class="analytics-output-status analytics-output-status--{{ ccc_connection_status.tone }}">{{ ccc_connection_status.label }}</span>
           </strong>
@@ -433,9 +433,7 @@
   <section class="analytics-output-sheets mt-4">
     <div class="analytics-output-sheets__header">
       <h2 class="analytics-output-sheets__title">Workbook previews</h2>
-      <p class="analytics-output-sheets__subtitle mb-0">
-        Showing selected pipeline-generated sheets only. No calculations are recreated in the UI.
-      </p>
+      <p class="analytics-output-sheets__subtitle mb-0"> Displaying selected <strong>pipeline-generated sheets</strong> directly from the processing output, without recreating or recalculating any values inside the UI.</p>
     </div>
 
     {% for preview in sheet_previews %}

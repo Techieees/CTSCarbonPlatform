@@ -128,7 +128,7 @@
                             {% endif %}
                         </div>
                         <h1 class="profile-page__name">{{ ((current_user.first_name or '') ~ ' ' ~ (current_user.last_name or ''))|trim or current_user.email }}</h1>
-                        <p class="profile-page__meta">Company is set during onboarding and cannot be changed here.</p>
+                        <p class="profile-page__meta"><strong>Company assignment</strong> is configured during onboarding and cannot be changed from this section.</p>
                     </div>
 
                     <form method="POST" enctype="multipart/form-data" data-profile-form>

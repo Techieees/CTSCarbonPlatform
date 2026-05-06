@@ -12,7 +12,7 @@
             <h1 class="h4 mb-0">Awards Builder</h1>
             <a class="btn btn-outline-primary btn-sm" href="{{ url_for('awards_admin') }}">New form</a>
           </div>
-          <p class="text-muted">Create and edit sustainability award forms.</p>
+          <p class="text-muted">Create and edit <strong> CTS Group sustainability award forms</strong>.</p>
           <div class="d-flex flex-column gap-2 mt-3">
             {% for form in forms %}
             <a
@@ -51,7 +51,7 @@
             <div>
               <label class="form-label" for="awardsHeaderImage">Header Image</label>
               <input id="awardsHeaderImage" name="header_image" type="file" class="form-control" accept=".jpg,.jpeg,.png">
-              <div class="form-text">Allowed file types: JPG and PNG.</div>
+              <div class="form-text">Supported file formats include <strong>JPG</strong> and <strong>PNG</strong>.</div>
               {% if edit_form and edit_form.header_image_url %}
               <img src="{{ edit_form.header_image_url }}" alt="{{ edit_form.title }}" class="img-fluid rounded-3 mt-3" style="max-height: 180px; object-fit: cover;">
               {% endif %}
@@ -60,7 +60,7 @@
             <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
               <div>
                 <h3 class="h5 mb-1">Questions</h3>
-                <p class="text-muted mb-0">Add, edit, remove, and reorder questions before publishing.</p>
+                <p class="text-muted mb-0">Add, edit, remove, and reorganize <strong>questions</strong> before publishing.</p>
               </div>
               <button type="button" class="btn btn-outline-primary" id="awardsAddQuestion">Add question</button>
             </div>

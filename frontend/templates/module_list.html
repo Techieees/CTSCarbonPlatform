@@ -71,7 +71,7 @@
           {% if can_manage %}
           <p class="text-muted">You can publish new {{ page_title|lower }} from this page.</p>
           {% else %}
-          <p class="text-muted mb-0">This page is read-only for non-admin users.</p>
+          <p class="text-muted mb-0">This page is available in <strong>read only</strong> mode for users without admin access.</p>
           {% endif %}
         </div>
       </div>
@@ -108,7 +108,7 @@
             <div>
               <label class="form-label" for="{{ module_key }}File">File</label>
               <input id="{{ module_key }}File" name="file" type="file" class="form-control" accept=".pdf,.docx" required>
-              <div class="form-text">Allowed file types: PDF and DOCX.</div>
+              <div class="form-text">Supported file formats include <strong>PDF</strong> and <strong>DOCX</strong>.</div>
             </div>
             <button type="submit" class="btn btn-primary">Upload</button>
           </form>

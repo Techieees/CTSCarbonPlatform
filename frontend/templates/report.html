@@ -12,7 +12,7 @@
                     <h2 class="card-title mb-2 d-flex align-items-center">
                         {{ illu.illu_header_chart() }}<span class="ms-2">Emission Report for {{ user.company_name }}</span>
                     </h2>
-                    <p class="text-muted mb-0">Visualize your GHG emissions by category and reporting output</p>
+                    <p class="text-muted mb-0">Explore and visualize <strong>GHG emissions data</strong> across categories, reporting outputs, and emissions summaries.</p>
                 </div>
             </div>
         </div>
@@ -33,7 +33,7 @@
         <div class="report-kpi-card">
             <span class="report-kpi-card__label">Total emissions</span>
             <strong class="report-kpi-card__value" id="reportMetricTotal">--</strong>
-            <small class="report-kpi-card__meta">Aggregated tCO₂e across current filters</small>
+            <small class="report-kpi-card__meta">Aggregated CO₂e(t) across current filters</small>
         </div>
         <div class="report-kpi-card">
             <span class="report-kpi-card__label">Categories</span>
@@ -48,7 +48,7 @@
         <div class="report-kpi-card">
             <span class="report-kpi-card__label">Peak month</span>
             <strong class="report-kpi-card__value" id="reportMetricPeak">--</strong>
-            <small class="report-kpi-card__meta">Highest emissions point in the current view</small>
+            <small class="report-kpi-card__meta"><strong>Largest emissions contributor</strong>.</small>
         </div>
     </div>
 
@@ -70,7 +70,7 @@
                 <div class="report-panel__header">
                     <div>
                         <h4 class="report-panel__title">Emissions Heatmap</h4>
-                        <p class="report-panel__subtitle">Spot seasonality and month-level intensity across the reporting dataset.</p>
+                        <p class="report-panel__subtitle">Analyze <strong>seasonality</strong> and monthly emissions intensity patterns across the reporting dataset.</p>
                     </div>
                 </div>
                 <div id="emissionsHeatmap" class="chart-host chart-host--lg"></div>

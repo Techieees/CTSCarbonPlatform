@@ -25,9 +25,9 @@
                 <path d="M6 22 L11 16 L16 18 L21 11 L26 13 V26 H6 Z" fill="url(#adm-trend-fill)"/>
               </svg>
             </span>
-            <span>Admin Analytics Dashboard</span>
+            <span>Admin Dashboard</span>
           </h2>
-          <p class="text-muted mb-0">Company / category / month / year breakdown of latest mapping results.</p>
+          <p class="text-muted mb-0">View the latest <strong>mapping results</strong> grouped by company, category, month, and reporting year.</p>
         </div>
       </div>
     </div>
@@ -132,7 +132,7 @@
               <path d="M4 20 Q10 12 16 18 T28 16 V22 H4 Z" fill="url(#adm-wave)"/>
             </svg>
           </span>
-          <h4 class="mt-2">{{ grand.total }} tCO₂e</h4>
+          <h4 class="mt-2">{{ grand.total }} CO₂e(t)</h4>
           <p class="text-muted mb-0">Total Emissions</p>
         </div>
       </div>
@@ -191,7 +191,7 @@
     </div>
     <div class="col-lg-6 mb-4">
       <div class="card h-100">
-        <div class="card-header"><strong>Top Categories (Sum of by_category)</strong></div>
+        <div class="card-header"><strong>Top Categories</strong></div>
         <div class="card-body">
           {% if filters.include_categories != '0' %}
           <div class="chart-surface">
@@ -209,7 +209,7 @@
   <div class="row g-3 mb-4">
     <div class="col-lg-6">
       <div class="card h-100">
-        <div class="card-header py-2"><strong>Monthly emissions (scope share)</strong></div>
+        <div class="card-header py-2"><strong>Monthly Emissions</strong></div>
         <div class="card-body">
           <div class="chart-surface"><div id="dashEntMonthlyScopeStack" class="chart-host chart-host--md"></div></div>
         </div>
@@ -217,7 +217,7 @@
     </div>
     <div class="col-lg-6">
       <div class="card h-100">
-        <div class="card-header py-2"><strong>Scope evolution (multi-line)</strong></div>
+        <div class="card-header py-2"><strong>Scope Evolution </strong></div>
         <div class="card-body">
           <div class="chart-surface"><div id="dashEntScopeLines" class="chart-host chart-host--md"></div></div>
         </div>
@@ -227,7 +227,7 @@
   <div class="row g-3 mb-4">
     <div class="col-lg-4">
       <div class="card h-100">
-        <div class="card-header py-2"><strong>Category treemap</strong></div>
+        <div class="card-header py-2"><strong>Category Treemap</strong></div>
         <div class="card-body">
           <div class="chart-surface"><div id="dashEntCategoryTreemap" class="chart-host chart-host--md"></div></div>
         </div>
@@ -235,7 +235,7 @@
     </div>
     <div class="col-lg-4">
       <div class="card h-100">
-        <div class="card-header py-2"><strong>Monthly intensity heatmap</strong></div>
+        <div class="card-header py-2"><strong>Monthly Submission Heatmap</strong></div>
         <div class="card-body">
           <div class="chart-surface"><div id="dashEntMonthIntensity" class="chart-host chart-host--sm"></div></div>
         </div>
@@ -243,7 +243,7 @@
     </div>
     <div class="col-lg-4">
       <div class="card h-100">
-        <div class="card-header py-2"><strong>Category contribution (stacked)</strong></div>
+        <div class="card-header py-2"><strong>Category Contribution</strong></div>
         <div class="card-body">
           <div class="chart-surface"><div id="dashEntCategoryMonthStack" class="chart-host chart-host--md"></div></div>
         </div>
@@ -271,7 +271,7 @@
         <thead class="table-light">
           <tr>
             <th>Company</th>
-            <th class="text-end">Total (tCO₂e)</th>
+            <th class="text-end">Total CO₂e(t)</th>
             <th class="text-end">Scope 1</th>
             <th class="text-end">Scope 2</th>
             <th class="text-end">Scope 3</th>

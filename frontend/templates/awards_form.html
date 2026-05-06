@@ -60,7 +60,7 @@
               </div>
               {% elif question.question_type == 'file' %}
               <input id="question_{{ question.id }}" name="question_{{ question.id }}" type="file" class="form-control" {% if question.required %}required{% endif %}>
-              <div class="form-text">Allowed file types: PDF, DOCX, PNG, JPG, JPEG, WEBP.</div>
+              <div class="form-text">Supported file formats include <strong>PDF</strong>, <strong>DOCX</strong>, <strong>PNG</strong>, <strong>JPG</strong>, <strong>JPEG</strong>, and <strong>WEBP</strong>.</div>
               {% else %}
               <input id="question_{{ question.id }}" name="question_{{ question.id }}" type="text" class="form-control" {% if question.required %}required{% endif %}>
               {% endif %}

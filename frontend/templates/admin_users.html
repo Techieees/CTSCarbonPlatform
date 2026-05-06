@@ -37,7 +37,7 @@
           </h4>
         </div>
         <div class="card-body">
-          <p class="text-muted small mb-3">Only owner accounts can create new users. New accounts use the existing authentication system and can sign in immediately.</p>
+          <p class="text-muted small mb-3">Only <strong>owner</strong> accounts can create new users within the platform. Newly created accounts are automatically integrated into the existing authentication system and can access the platform immediately after setup.</p>
           <form method="post" action="{{ url_for('admin_create_user') }}" novalidate>
             <div class="row g-3">
               <div class="col-md-6">
@@ -133,7 +133,7 @@
           </h4>
         </div>
         <div class="card-body">
-          <p class="text-muted small mb-3">Owner only. Change roles for platform users. Changes apply immediately.</p>
+          <p class="text-muted small mb-3">Restricted to <strong>owner</strong> accounts only. User roles can be updated directly from this panel, with all permission changes applied instantly across the platform.</p>
           <div class="mb-3">
             <label for="adminUsersSearch" class="visually-hidden">Search users</label>
             <input type="search" id="adminUsersSearch" class="form-control form-control-sm admin-users-search" placeholder="Search users..." autocomplete="off">

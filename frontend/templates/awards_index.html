@@ -8,8 +8,8 @@
     <div class="col-lg-8">
       <div class="card shadow-sm border-0">
         <div class="card-body p-4">
-          <h1 class="h3 mb-2">Sustainability Awards</h1>
-          <p class="text-muted mb-0">Browse active award forms and submit your entries.</p>
+          <h1 class="h3 mb-2"> CTS Group Sustainability Awards</h1>
+          <p class="text-muted mb-0">Browse active <strong>award forms</strong> and submit your entries directly through the platform.</p>
         </div>
       </div>
 
@@ -47,7 +47,7 @@
         <div class="card shadow-sm border-0">
           <div class="card-body p-4">
             <h2 class="h5 mb-2">No awards forms yet</h2>
-            <p class="text-muted mb-0">New sustainability award forms will appear here when published.</p>
+            <p class="text-muted mb-0">New <strong>sustainability award forms</strong> will appear here once they are published.</p>
           </div>
         </div>
         {% endif %}
@@ -57,12 +57,12 @@
     <div class="col-lg-4">
       <div class="card shadow-sm border-0">
         <div class="card-body p-4">
-          <h2 class="h5 mb-2">Access</h2>
+          <h2 class="h5 mb-2">Sustainability Awards Builder</h2>
           {% if can_manage %}
-          <p class="text-muted">Admins can build and publish custom awards forms.</p>
+          <p class="text-muted"><strong>Admins</strong> can create, configure, and publish new award application forms directly from this section.</p
           <a class="btn btn-outline-primary" href="{{ url_for('awards_admin') }}">Open awards builder</a>
           {% else %}
-          <p class="text-muted mb-0">All users can view and submit award forms from this page.</p>
+          <p class="text-muted mb-0">All <strong>users</strong> can access available award forms and participate through this page.</p>
           {% endif %}
         </div>
       </div>

@@ -10,11 +10,11 @@
             <div class="card">
                 <div class="card-header">
                     <h4 class="mb-0 d-flex align-items-center">
-                        {{ illu.illu_header_cog() }}<span class="ms-2">Administration Panel</span>
+                        {{ illu.illu_header_cog() }}<span class="ms-2">Platform Oversight Panel</span>
                     </h4>
                 </div>
                 <div class="card-body">
-                    <p class="text-muted">Manage users, review mapping activity, and monitor platform usage.<br></p>
+                    <p class="text-muted">Centralized <strong>administration panel</strong> for managing <strong>users</strong>, reviewing <strong>mapping activity</strong>, monitoring <strong>platform operations</strong>, and overseeing system-wide usage, permissions, and access control.</p>
                 </div>
             </div>
         </div>
@@ -35,7 +35,7 @@
                             {{ illu.illu_btn_save('me-1') }}Start preprocess
                         </button>
                     </form>
-                    <p class="text-muted small mb-0 mt-2">Admin only. Upload a Travel Management file (.xlsb or .xlsx) to refresh `analysis_summary.xlsx` for Stage 2 source appending.</p>
+                    <p class="text-muted small mb-0 mt-2"><strong>Admin only.</strong> Upload a <strong>Travel Management</strong> file to automatically process and prepare source data for the Stage 2 pipeline.</p>
                     <div class="small text-muted mt-2" id="adminLatestJob">Last job: loading...</div>
                 </div>
             </div>

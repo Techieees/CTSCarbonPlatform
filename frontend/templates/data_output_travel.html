@@ -20,7 +20,7 @@
   {% if error_message %}
   <div class="alert alert-danger">{{ error_message }}</div>
   {% elif not output_exists %}
-  <div class="alert alert-info">If no travel data processed yet, please run preprocessing.</div>
+  <div class="alert alert-info">No <strong>travel data</strong> has been processed yet. Run preprocessing to generate the latest results.</div>
   {% else %}
   <div class="card shadow-sm border-secondary-subtle">
     <div class="card-header d-flex flex-column flex-md-row justify-content-between gap-2">

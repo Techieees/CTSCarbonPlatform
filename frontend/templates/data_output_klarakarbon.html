@@ -20,7 +20,7 @@
   {% if error_message %}
   <div class="alert alert-danger">{{ error_message }}</div>
   {% elif not output_exists %}
-  <div class="alert alert-info">If no Klarakarbon data has been processed yet, please upload and run preprocessing.</div>
+  <div class="alert alert-info">No <strong>Klarakarbon</strong> data has been processed yet. Upload a source file and run preprocessing to continue.</div>
   {% else %}
   <div class="card shadow-sm border-secondary-subtle">
     <div class="card-header">

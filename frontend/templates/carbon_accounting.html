@@ -17,8 +17,8 @@
       <div class="card h-100">
         <div class="card-body">
           <div class="text-muted">Total emissions</div>
-          <div class="display-6 mt-1">{{ totals.total }} <span class="text-muted fs-5">tCO₂e</span></div>
-          <div class="small text-muted mt-2">Computed from latest mapping outputs per category (sheet).</div>
+          <div class="display-6 mt-1">{{ totals.total }} <span class="text-muted fs-5">CO₂e(t)</span></div>
+          <div class="small text-muted mt-2">Generated from the latest <strong>mapping outputs</strong> for each category.</div>
         </div>
       </div>
     </div>
@@ -27,7 +27,7 @@
         <div class="card-body">
           <div class="d-flex align-items-center justify-content-between">
             <h5 class="mb-0">Emissions by scope</h5>
-            <span class="badge bg-light text-dark">tCO₂e</span>
+            <span class="badge bg-light text-dark">CO₂e(t)</span>
           </div>
           <div class="mt-3 chart-surface">
             <div id="scopeChart" class="chart-host chart-host--sm"></div>
@@ -42,7 +42,7 @@
       <div class="card">
         <div class="card-body">
           <div class="text-muted">Scope 1</div>
-          <div class="h2 mb-0">{{ totals.scope1 }} <span class="text-muted fs-6">tCO₂e</span></div>
+          <div class="h2 mb-0">{{ totals.scope1 }} <span class="text-muted fs-6">CO₂e(t)</span></div>
           <div class="small text-muted mt-1">Direct emissions from owned or controlled sources.</div>
         </div>
       </div>
@@ -51,7 +51,7 @@
       <div class="card">
         <div class="card-body">
           <div class="text-muted">Scope 2</div>
-          <div class="h2 mb-0">{{ totals.scope2 }} <span class="text-muted fs-6">tCO₂e</span></div>
+          <div class="h2 mb-0">{{ totals.scope2 }} <span class="text-muted fs-6">CO₂e(t)</span></div>
           <div class="small text-muted mt-1">Indirect emissions from purchased energy generation.</div>
         </div>
       </div>
@@ -60,7 +60,7 @@
       <div class="card">
         <div class="card-body">
           <div class="text-muted">Scope 3</div>
-          <div class="h2 mb-0">{{ totals.scope3 }} <span class="text-muted fs-6">tCO₂e</span></div>
+          <div class="h2 mb-0">{{ totals.scope3 }} <span class="text-muted fs-6">CO₂e(t)</span></div>
           <div class="small text-muted mt-1">Other indirect value chain emissions.</div>
         </div>
       </div>
@@ -81,7 +81,7 @@
                 <tr>
                   <th>Category (sheet)</th>
                   <th>Scope</th>
-                  <th class="text-end">tCO₂e</th>
+                  <th class="text-end">CO₂e(t)</th>
                   <th class="text-muted text-end">Updated</th>
                 </tr>
               </thead>
@@ -98,7 +98,7 @@
             </table>
           </div>
           {% else %}
-          <div class="text-muted">No mapping results yet. Go to Dashboard and run “Map now”.</div>
+          <div class="text-muted">No <strong>mapping results</strong> available yet. Open the Dashboard and run <strong>“Map Now”</strong> to generate results.</div>
           {% endif %}
         </div>
       </div>

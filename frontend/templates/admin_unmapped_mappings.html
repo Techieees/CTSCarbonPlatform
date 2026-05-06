@@ -7,10 +7,9 @@
 <div class="container-fluid py-4 px-3 px-md-4">
   <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
     <div>
-      <h2 class="mb-1">Admin • Unmapped Rows</h2>
+      <h2 class="mb-1">Unmapped Rows</h2>
       <p class="text-muted mb-0 small">
-        Rows with mapping result <span class="font-monospace">status = No match</span>. Mapped rows still continue into the normal system; this queue is only for owner review and later EF/manual mapping work.
-      </p>
+        Rows with mapping result <span class="font-monospace">status = No match</span> are collected here for manual review and emission factor assignment. Successfully mapped rows continue through the standard processing pipeline automatically, while this queue is reserved for unresolved entries requiring additional validation or owner input.</p>
     </div>
     <div class="d-flex flex-wrap gap-2">
       <a class="btn {% if dedupe_mode == 'description' %}btn-primary{% else %}btn-ghost{% endif %} d-inline-flex align-items-center" href="{{ url_for('admin_unmapped_mappings', status=status_filter, company=company_filter, sheet=sheet_filter, search=search, dedupe='description') }}">
