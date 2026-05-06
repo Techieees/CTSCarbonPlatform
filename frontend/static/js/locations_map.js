@@ -616,16 +616,16 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
   const CLIMATE_YEAR_RANGES = ["1970-2000", "2021-2040", "2041-2060", "2061-2080", "2081-2100"];
   const CLIMATE_MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const CLIMATE_SCENARIOS = [
-    { value: "SSP1-2.6", label: "Strong climate action", description: "Represents aggressive global mitigation and lower warming outcomes." },
-    { value: "SSP2-4.5", label: "Moderate", description: "Represents a middle pathway with partial mitigation and moderate warming outcomes." },
-    { value: "SSP3-7.0", label: "Limited", description: "Represents limited climate cooperation and higher regional climate pressure." },
-    { value: "SSP5-8.5", label: "High emissions", description: "Represents a future with continued fossil fuel use and limited climate mitigation." }
+    { value: "SSP1-2.6", label: "Strong climate action" },
+    { value: "SSP2-4.5", label: "Moderate" },
+    { value: "SSP3-7.0", label: "Limited" },
+    { value: "SSP5-8.5", label: "High emissions" }
   ];
   const CLIMATE_MODELS = [
-    { value: "ensemble", label: "Ensemble Mean", description: "Blends multiple model outputs to reduce single-model bias." },
-    { value: "ACCESS-CM2", label: "ACCESS-CM2", description: "Australian climate model used for global atmosphere and ocean projections." },
-    { value: "EC-Earth3", label: "EC-Earth3", description: "European climate model designed for earth-system projection analysis." },
-    { value: "GFDL-ESM4", label: "GFDL-ESM4", description: "NOAA climate model focused on atmosphere-ocean interactions." }
+    { value: "ensemble", label: "Ensemble Mean" },
+    { value: "ACCESS-CM2", label: "ACCESS-CM2" },
+    { value: "EC-Earth3", label: "EC-Earth3" },
+    { value: "GFDL-ESM4", label: "GFDL-ESM4" }
   ];
   const OWM_API_KEY = String(window.OPENWEATHER_API_KEY || "").trim();
 
@@ -696,25 +696,6 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
       return "";
     }
     return "https://tile.openweathermap.org/map/" + mapName + "/{z}/{x}/{y}.png?appid=" + OWM_API_KEY;
-  }
-
-  function withClimateCacheKey(tileUrl, layerKey, month, yearRange, scenario, model) {
-    if (!tileUrl) {
-      return "";
-    }
-    const separator = tileUrl.indexOf("?") === -1 ? "?" : "&";
-    return tileUrl + separator + "cts_layer=" + encodeURIComponent(layerKey) +
-      "&cts_month=" + encodeURIComponent(String(normalizeMonth(month))) +
-      "&cts_year=" + encodeURIComponent(sanitizeYearRange(yearRange)) +
-      "&cts_scenario=" + encodeURIComponent(sanitizeScenario(scenario)) +
-      "&cts_model=" + encodeURIComponent(sanitizeModel(model));
-  }
-
-  function optionDescription(options, value) {
-    const match = options.find(function (item) {
-      return item.value === value;
-    });
-    return match ? match.description : "";
   }
 
   const CLIMATE_LAYERS = {
@@ -829,7 +810,6 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
     const state = mapInstance.__climateLayerState;
     const layerPanel = document.getElementById("locationsLayerPanel");
     const mapWrap = root.parentElement;
-    const climatePanelSlot = document.getElementById("locationsClimatePanelSlot");
 
     function setStatus(message, isError) {
       const statusNode = document.getElementById(CLIMATE_STATUS_ID);
@@ -1048,7 +1028,7 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
           '<div class="locations-climate-data-panel__chart-wrap"><canvas id="' + CLIMATE_PRECIP_CHART_ID + '"></canvas></div>',
           "</div>"
         ].join("");
-        (climatePanelSlot || mapWrap).appendChild(panel);
+        mapWrap.appendChild(panel);
 
         const closeButton = document.getElementById(CLIMATE_PANEL_CLOSE_ID);
         if (closeButton) {
@@ -1359,8 +1339,6 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
       const scenarioSelect = document.getElementById(CLIMATE_SCENARIO_SELECT_ID);
       const modelSelect = document.getElementById(CLIMATE_MODEL_SELECT_ID);
       const visibilityToggle = document.getElementById(CLIMATE_VISIBILITY_TOGGLE_ID);
-      const scenarioTooltip = document.querySelector("[data-climate-scenario-tooltip]");
-      const modelTooltip = document.querySelector("[data-climate-model-tooltip]");
       const activeConfig = state.activeLayer ? CLIMATE_LAYERS[state.activeLayer] : null;
 
       if (monthSlider) {
@@ -1382,12 +1360,6 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
       }
       if (modelSelect) {
         modelSelect.value = state.model;
-      }
-      if (scenarioTooltip) {
-        scenarioTooltip.textContent = optionDescription(CLIMATE_SCENARIOS, state.scenario);
-      }
-      if (modelTooltip) {
-        modelTooltip.textContent = optionDescription(CLIMATE_MODELS, state.model);
       }
       if (visibilityToggle) {
         visibilityToggle.classList.toggle("is-active", state.visible);
@@ -1451,14 +1423,7 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
 
       const sourceId = climateSourceId(layerKey);
       const layerId = climateLayerId(layerKey);
-      const tileUrl = withClimateCacheKey(
-        layerConfig.getTileUrl(state.month, state.yearRange, state.scenario, state.model),
-        layerKey,
-        state.month,
-        state.yearRange,
-        state.scenario,
-        state.model
-      );
+      const tileUrl = layerConfig.getTileUrl(state.month, state.yearRange, state.scenario, state.model);
       const beforeLayerId = getInsertBeforeLayerId();
       const climatePaint = {
         "raster-opacity": 0.95,
@@ -1559,7 +1524,7 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
           "</select>",
           "</label>",
           '<label id="' + CLIMATE_SCENARIO_FIELD_ID + '" class="locations-climate-panel__field is-hidden" for="' + CLIMATE_SCENARIO_SELECT_ID + '">',
-          '<span class="locations-climate-panel__label-row"><span class="locations-climate-panel__label">Climate scenario</span><button type="button" class="locations-climate-panel__tooltip-trigger" aria-label="Climate scenario information">?</button><span class="locations-climate-panel__tooltip" data-climate-scenario-tooltip></span></span>',
+          '<span class="locations-climate-panel__label">Climate scenario</span>',
           '<select id="' + CLIMATE_SCENARIO_SELECT_ID + '" class="locations-climate-panel__select">',
           CLIMATE_SCENARIOS.map(function (scenario) {
             return '<option value="' + scenario.value + '">' + escapeHtml(scenario.label) + "</option>";
@@ -1567,7 +1532,7 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
           "</select>",
           "</label>",
           '<label id="' + CLIMATE_MODEL_FIELD_ID + '" class="locations-climate-panel__field is-hidden" for="' + CLIMATE_MODEL_SELECT_ID + '">',
-          '<span class="locations-climate-panel__label-row"><span class="locations-climate-panel__label">Climate model</span><button type="button" class="locations-climate-panel__tooltip-trigger" aria-label="Climate model information">?</button><span class="locations-climate-panel__tooltip" data-climate-model-tooltip></span></span>',
+          '<span class="locations-climate-panel__label">Climate model</span>',
           '<select id="' + CLIMATE_MODEL_SELECT_ID + '" class="locations-climate-panel__select">',
           CLIMATE_MODELS.map(function (model) {
             return '<option value="' + model.value + '">' + escapeHtml(model.label) + "</option>";
@@ -1739,28 +1704,6 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
   addLocationSearchControl(map);
   map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
 
-  function simplifyBasemap(mapInstance) {
-    const style = mapInstance && mapInstance.getStyle ? mapInstance.getStyle() : null;
-    const layers = Array.isArray(style && style.layers) ? style.layers : [];
-    layers.forEach(function (layer) {
-      const id = String(layer.id || "");
-      const sourceLayer = String(layer["source-layer"] || "");
-      const textField = layer.layout && layer.layout["text-field"];
-      const isRoadDetail = (
-        layer.type === "line" &&
-        /minor|street|service|path|track|pedestrian|road-label|road-number-shield/i.test(id + " " + sourceLayer)
-      );
-      const isMinorRoadLabel = (
-        layer.type === "symbol" &&
-        textField &&
-        /road-label|street|minor|service|path|track/i.test(id + " " + sourceLayer)
-      );
-      if ((isRoadDetail || isMinorRoadLabel) && mapInstance.getLayer(id)) {
-        mapInstance.setLayoutProperty(id, "visibility", "none");
-      }
-    });
-  }
-
   function bindLayerInteractions(layerId, popupLabel) {
     map.on("click", layerId, function (event) {
       const feature = event.features && event.features[0];
@@ -1784,7 +1727,6 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
   }
 
   map.on("load", function () {
-    simplifyBasemap(map);
     fetchLocations()
       .then(function (locations) {
         const geojson = {
