@@ -5,6 +5,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from sqlalchemy import and_, exists, func, or_
+from sqlalchemy.exc import IntegrityError
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from openpyxl import load_workbook, Workbook
@@ -922,6 +923,9 @@ def _enforce_readonly_auditor_access():
         "api_excel_schema_save",
         "api_averages_save",
         "api_scenarios_save",
+        "api_evidence_upload",
+        "api_evidence_link",
+        "api_evidence_unlink",
         "api_mapping_run",
         "api_pipeline_append_run",
         "analytics_forecasting",
@@ -1514,6 +1518,56 @@ class DataEntry(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
+class EvidenceFile(db.Model):
+    __tablename__ = "evidence_files"
+    __table_args__ = (
+        db.UniqueConstraint("company_name", "sha256_hash", name="uq_evidence_company_sha256"),
+        db.Index("ix_evidence_files_company_uploaded", "company_name", "uploaded_at"),
+        db.Index("ix_evidence_files_sha256", "sha256_hash"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    company_name = db.Column(db.String(200), nullable=False, index=True)
+    original_filename = db.Column(db.String(500), nullable=False)
+    stored_filename = db.Column(db.String(220), nullable=False)
+    file_extension = db.Column(db.String(16), nullable=False)
+    mime_type = db.Column(db.String(120), nullable=False)
+    sha256_hash = db.Column(db.String(64), nullable=False)
+    file_size_original = db.Column(db.BigInteger, nullable=False, default=0)
+    file_size_optimized = db.Column(db.BigInteger, nullable=True)
+    storage_path = db.Column(db.String(600), nullable=False, default="")
+    thumbnail_storage_path = db.Column(db.String(600), nullable=True)
+    uploaded_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    upload_source = db.Column(db.String(64), nullable=False, default="data_entry")
+    processing_status = db.Column(db.String(32), nullable=False, default="pending")
+    processing_error = db.Column(db.Text, nullable=True)
+    is_deleted = db.Column(db.Boolean, nullable=False, default=False)
+    deleted_at = db.Column(db.DateTime, nullable=True)
+
+
+class DataEntryEvidence(db.Model):
+    __tablename__ = "data_entry_evidence"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "company_name",
+            "sheet_name",
+            "entry_group",
+            "evidence_file_id",
+            name="uq_data_entry_evidence_row_file",
+        ),
+        db.Index("ix_data_entry_evidence_row", "company_name", "sheet_name", "entry_group"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    company_name = db.Column(db.String(200), nullable=False)
+    sheet_name = db.Column(db.String(200), nullable=False)
+    entry_group = db.Column(db.String(128), nullable=False)
+    evidence_file_id = db.Column(db.Integer, db.ForeignKey("evidence_files.id"), nullable=False)
+    linked_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    linked_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
 class ProductMonthlyEntry(db.Model):
     __tablename__ = "product_monthly_entry"
     __table_args__ = (
@@ -1942,6 +1996,7 @@ def _ensure_db_tables() -> None:
         _ensure_report_category_columns()
         _ensure_awards_form_columns()
         _ensure_mapping_unmapped_row_columns()
+        _ensure_evidence_tables_columns()
     except Exception:
         pass
 
@@ -4350,6 +4405,185 @@ def _validate_data_entry_row_requirements(headers: list[str], rows: list[dict[st
     return errors
 
 
+def _norm_evidence_header_key(x: str) -> str:
+    return "".join(ch.lower() for ch in (x or "") if ch.isalnum())
+
+
+def _header_matches_evidence_column(header: str) -> bool:
+    priority_exact = (
+        "Source_File",
+        "Source file",
+        "source_file",
+        "Source File",
+        "Data Source",
+        "Data source",
+        "Datasource",
+        "Source",
+    )
+    if (header or "").strip() in priority_exact:
+        return True
+    n = _norm_evidence_header_key(header)
+    return n in ("sourcefile", "sourcefilename", "datasources")
+
+
+def _delete_evidence_links_for_grid_row(company_name: str, sheet_name: str, grid_row_key: str | None) -> None:
+    key = str(grid_row_key or "").strip()
+    if not key:
+        return
+    DataEntryEvidence.query.filter_by(
+        company_name=company_name,
+        sheet_name=sheet_name,
+        entry_group=key,
+    ).delete(synchronize_session=False)
+
+
+def _safe_evidence_disk_path(rel: str | None) -> Path | None:
+    if not rel:
+        return None
+    raw = str(rel).replace("\\", "/").strip().lstrip("/")
+    if not raw or ".." in raw.split("/"):
+        return None
+    root = FRONTEND_UPLOAD_DIR.resolve()
+    candidate = (FRONTEND_UPLOAD_DIR / raw).resolve()
+    try:
+        candidate.relative_to(root)
+    except Exception:
+        return None
+    return candidate
+
+
+def _data_entry_grid_row_exists(company_name: str, sheet_name: str, headers: list[str], grid_row_key: str) -> bool:
+    want = str(grid_row_key or "").strip()
+    if not want:
+        return False
+    for row in _load_data_entry_grid_rows(company_name, sheet_name, headers):
+        if str(row.get("entry_group") or "").strip() == want:
+            return True
+    return False
+
+
+def _evidence_row_attachment_counts(company_name: str, sheet_name: str) -> dict[str, int]:
+    rows = (
+        db.session.query(DataEntryEvidence.entry_group, func.count(DataEntryEvidence.id))
+        .filter(DataEntryEvidence.company_name == company_name, DataEntryEvidence.sheet_name == sheet_name)
+        .group_by(DataEntryEvidence.entry_group)
+        .all()
+    )
+    return {str(eg or ""): int(n or 0) for eg, n in rows}
+
+
+def _serialize_evidence_public(
+    ef: EvidenceFile,
+    *,
+    link_id: int | None = None,
+    link_meta: dict[str, object] | None = None,
+) -> dict[str, object]:
+    pid = int(ef.id)
+    base: dict[str, object] = {
+        "id": pid,
+        "original_filename": ef.original_filename,
+        "mime_type": ef.mime_type,
+        "file_extension": ef.file_extension,
+        "processing_status": ef.processing_status,
+        "uploaded_at": ef.uploaded_at.isoformat() if ef.uploaded_at else "",
+        "file_size_original": int(ef.file_size_original or 0),
+        "file_size_optimized": int(ef.file_size_optimized or 0) if ef.file_size_optimized is not None else None,
+        "thumbnail_url": url_for("api_evidence_thumbnail", evidence_id=pid) if ef.thumbnail_storage_path else None,
+        "preview_url": url_for("api_evidence_preview", evidence_id=pid),
+        "download_url": url_for("api_evidence_download", evidence_id=pid),
+    }
+    if link_id is not None:
+        base["link_id"] = link_id
+    if link_meta:
+        base.update(link_meta)
+    return base
+
+
+def _user_can_access_evidence_file(ef: EvidenceFile | None) -> bool:
+    if ef is None or ef.is_deleted:
+        return False
+    return bool(_user_can_access_company(ef.company_name))
+
+
+def _run_evidence_processing_job(
+    *,
+    job_id: str,
+    evidence_file_id: int,
+    staging_abs: str,
+    upload_company: str,
+) -> dict[str, object]:
+    from pathlib import Path
+
+    from frontend.evidence_processing import evidence_destination_dirs, process_evidence_file
+
+    staging_path = Path(staging_abs)
+    _update_job_progress(job_id, 10, "Optimizing evidence file")
+    ef = db.session.get(EvidenceFile, evidence_file_id)
+    if ef is None:
+        raise RuntimeError("Evidence record missing")
+    if not staging_path.is_file():
+        ef.processing_status = "failed"
+        ef.processing_error = "Staging file missing"
+        db.session.commit()
+        raise RuntimeError("Staging file missing")
+
+    ef.processing_status = "processing"
+    ef.processing_error = None
+    db.session.commit()
+
+    try:
+        base_ts = ef.uploaded_at or datetime.utcnow()
+        final_dir, thumb_dir = evidence_destination_dirs(FRONTEND_UPLOAD_DIR, base_ts)
+        result = process_evidence_file(
+            upload_root=FRONTEND_UPLOAD_DIR,
+            staging_path=staging_path,
+            sha256_hex=ef.sha256_hash,
+            normalized_ext=str(ef.file_extension or "").lower(),
+            final_dir=final_dir,
+            thumb_dir=thumb_dir,
+        )
+        _raise_if_job_cancelled(job_id)
+        ef.stored_filename = str(result["stored_filename"])
+        ef.storage_path = str(result["storage_path"]).replace("\\", "/")
+        ef.thumbnail_storage_path = (
+            str(result["thumbnail_storage_path"]).replace("\\", "/") if result.get("thumbnail_storage_path") else None
+        )
+        ef.file_extension = str(result["file_extension"])
+        ef.mime_type = str(result["mime_type"])
+        ef.file_size_original = int(result["original_size"])
+        ef.file_size_optimized = int(result["optimized_size"])
+        ef.processing_status = "ready"
+        ef.processing_error = None
+        db.session.commit()
+        try:
+            staging_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        _update_job_progress(job_id, 100, "Evidence ready")
+        return {
+            "ok": True,
+            "evidence_file_id": evidence_file_id,
+            "company": upload_company,
+            "processing_status": "ready",
+        }
+    except JobCancelled:
+        raise
+    except Exception as exc:
+        try:
+            ef2 = db.session.get(EvidenceFile, evidence_file_id)
+            if ef2 is not None:
+                ef2.processing_status = "failed"
+                ef2.processing_error = str(exc)
+                db.session.commit()
+        except Exception:
+            db.session.rollback()
+        try:
+            staging_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise
+
+
 def _delete_data_entry_group(
     company_name: str,
     sheet_name: str,
@@ -4357,6 +4591,8 @@ def _delete_data_entry_group(
     created_at: datetime | None,
     row_index: int,
 ) -> None:
+    _delete_evidence_links_for_grid_row(company_name, sheet_name, entry_group)
+
     if entry_group and not entry_group.startswith("legacy:"):
         DataEntry.query.filter_by(
             company_name=company_name,
@@ -5158,6 +5394,32 @@ def _ensure_data_entry_columns() -> None:
             alters.append("ALTER TABLE data_entry ADD COLUMN entry_group VARCHAR(32) DEFAULT ''")
         if "uploaded_by_user_id" not in existing_columns:
             alters.append("ALTER TABLE data_entry ADD COLUMN uploaded_by_user_id INTEGER")
+        if not alters:
+            return
+        with db.engine.begin() as conn:
+            for stmt in alters:
+                conn.execute(text(stmt))
+    except Exception:
+        pass
+
+
+def _ensure_evidence_tables_columns() -> None:
+    """SQLite-friendly additive DDL for evidence tables."""
+    try:
+        from sqlalchemy import inspect, text
+
+        inspector = inspect(db.engine)
+        if not inspector.has_table("evidence_files"):
+            return
+
+        existing = {col["name"] for col in inspector.get_columns("evidence_files")}
+        alters: list[str] = []
+        if "thumbnail_storage_path" not in existing:
+            alters.append("ALTER TABLE evidence_files ADD COLUMN thumbnail_storage_path VARCHAR(600)")
+        if "processing_status" not in existing:
+            alters.append("ALTER TABLE evidence_files ADD COLUMN processing_status VARCHAR(32) DEFAULT 'pending'")
+        if "processing_error" not in existing:
+            alters.append("ALTER TABLE evidence_files ADD COLUMN processing_error TEXT")
         if not alters:
             return
         with db.engine.begin() as conn:
@@ -10344,6 +10606,359 @@ def api_data_entry_rows():
             "rows": _load_data_entry_grid_rows(resolved_company, resolved_sheet, headers),
         }
     )
+
+
+@app.route("/api/evidence/row-summary", methods=["GET"])
+@login_required
+def api_evidence_row_summary():
+    company = request.args.get("company", "").strip()
+    sheet = request.args.get("sheet", "").strip()
+    if not company or not sheet:
+        return jsonify({"error": "company and sheet are required"}), 400
+    if not _user_can_access_company(company):
+        return jsonify({"error": "Access denied"}), 403
+    resolved_company = _resolve_template_company_name(company)
+    if not resolved_company:
+        return jsonify({"error": "Company not found"}), 404
+    resolved_sheet = _resolve_template_sheet_name(resolved_company, sheet)
+    if not resolved_sheet:
+        return jsonify({"error": "Sheet not found"}), 404
+    counts = _evidence_row_attachment_counts(resolved_company, resolved_sheet)
+    return jsonify({"company": resolved_company, "sheet": resolved_sheet, "counts": counts})
+
+
+@app.route("/api/evidence/for-row", methods=["GET"])
+@login_required
+def api_evidence_for_row():
+    company = request.args.get("company", "").strip()
+    sheet = request.args.get("sheet", "").strip()
+    entry_group = str(request.args.get("entry_group") or "").strip()
+    if not company or not sheet or not entry_group:
+        return jsonify({"error": "company, sheet, and entry_group are required"}), 400
+    if not _user_can_access_company(company):
+        return jsonify({"error": "Access denied"}), 403
+    resolved_company = _resolve_template_company_name(company)
+    if not resolved_company:
+        return jsonify({"error": "Company not found"}), 404
+    resolved_sheet = _resolve_template_sheet_name(resolved_company, sheet)
+    if not resolved_sheet:
+        return jsonify({"error": "Sheet not found"}), 404
+    headers, _rules = _get_data_entry_template_schema(resolved_company, resolved_sheet)
+    if not _data_entry_grid_row_exists(resolved_company, resolved_sheet, headers, entry_group):
+        return jsonify({"error": "Row not found"}), 404
+
+    links = (
+        db.session.query(DataEntryEvidence, EvidenceFile)
+        .join(EvidenceFile, EvidenceFile.id == DataEntryEvidence.evidence_file_id)
+        .filter(
+            DataEntryEvidence.company_name == resolved_company,
+            DataEntryEvidence.sheet_name == resolved_sheet,
+            DataEntryEvidence.entry_group == entry_group,
+            EvidenceFile.is_deleted.is_(False),
+        )
+        .order_by(DataEntryEvidence.linked_at.desc())
+        .all()
+    )
+    items = [_serialize_evidence_public(ef, link_id=int(link.id)) for link, ef in links]
+    return jsonify({"company": resolved_company, "sheet": resolved_sheet, "entry_group": entry_group, "items": items})
+
+
+@app.route("/api/evidence/search", methods=["GET"])
+@login_required
+def api_evidence_search():
+    company = request.args.get("company", "").strip()
+    q_raw = (request.args.get("q") or "").strip()
+    if not company:
+        return jsonify({"error": "company is required"}), 400
+    if not _user_can_access_company(company):
+        return jsonify({"error": "Access denied"}), 403
+    resolved_company = _resolve_template_company_name(company)
+    if not resolved_company:
+        return jsonify({"error": "Company not found"}), 404
+    try:
+        limit = int(request.args.get("limit") or 25)
+    except Exception:
+        limit = 25
+    limit = max(1, min(limit, 100))
+
+    query = EvidenceFile.query.filter(
+        EvidenceFile.company_name == resolved_company,
+        EvidenceFile.is_deleted.is_(False),
+        EvidenceFile.processing_status == "ready",
+    )
+    q_lower = q_raw.lower()
+    if q_lower:
+        safe_frag = q_raw.replace("\\", "").replace("%", "").replace("_", "")
+        if safe_frag.strip():
+            query = query.filter(func.lower(EvidenceFile.original_filename).like(f"%{safe_frag.lower()}%"))
+    items = query.order_by(EvidenceFile.uploaded_at.desc()).limit(limit).all()
+
+    uploader_ids = sorted({int(e.uploaded_by) for e in items if e.uploaded_by})
+    uploaders: dict[int, str] = {}
+    if uploader_ids:
+        for u in User.query.filter(User.id.in_(uploader_ids)).all():
+            uploaders[int(u.id)] = str(u.email or "").strip()
+
+    enriched = []
+    for ef in items:
+        row = _serialize_evidence_public(ef)
+        uid = int(ef.uploaded_by or 0)
+        row["uploaded_by_email"] = uploaders.get(uid, "")
+        enriched.append(row)
+
+    return jsonify({"company": resolved_company, "items": enriched})
+
+
+@app.route("/api/evidence/upload", methods=["POST"])
+@login_required
+def api_evidence_upload():
+    from frontend.evidence_processing import MAX_UPLOAD_BYTES, sha256_file, validate_upload_file
+
+    company = (request.form.get("company") or "").strip()
+    if not company:
+        return jsonify({"error": "company is required"}), 400
+    if not _user_can_access_company(company):
+        return jsonify({"error": "Access denied"}), 403
+    resolved_company = _resolve_template_company_name(company)
+    if not resolved_company:
+        return jsonify({"error": "Company not found"}), 404
+    if "file" not in request.files:
+        return jsonify({"error": "file is required"}), 400
+    uf = request.files["file"]
+    raw_name = secure_filename(uf.filename or "") or "upload"
+    suffix = Path(raw_name).suffix.lower()[:12]
+
+    staging_dir = FRONTEND_UPLOAD_DIR / "evidence" / "_staging"
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    sid = uuid.uuid4().hex
+    staging_path = staging_dir / (sid + suffix if suffix else sid)
+    uf.save(staging_path)
+
+    try:
+        sz = staging_path.stat().st_size
+        if sz > MAX_UPLOAD_BYTES:
+            staging_path.unlink(missing_ok=True)
+            return jsonify({"error": "File exceeds 25 MB limit"}), 400
+        normalized_ext, mime = validate_upload_file(staging_path, suffix.lstrip("."), sz)
+    except ValueError as exc:
+        staging_path.unlink(missing_ok=True)
+        return jsonify({"error": str(exc)}), 400
+
+    digest = sha256_file(staging_path)
+    existing = EvidenceFile.query.filter_by(
+        sha256_hash=digest, company_name=resolved_company, is_deleted=False
+    ).first()
+    if existing is not None:
+        if existing.processing_status == "ready":
+            staging_path.unlink(missing_ok=True)
+            return jsonify(
+                {
+                    "ok": True,
+                    "deduplicated": True,
+                    "evidence_file": _serialize_evidence_public(existing),
+                    "processing_job_id": None,
+                }
+            )
+        if existing.processing_status == "pending":
+            staging_path.unlink(missing_ok=True)
+            return jsonify(
+                {
+                    "ok": True,
+                    "deduplicated": True,
+                    "pending": True,
+                    "evidence_file": _serialize_evidence_public(existing),
+                    "processing_job_id": None,
+                }
+            )
+        if existing.processing_status == "failed":
+            existing.processing_status = "pending"
+            existing.processing_error = None
+            db.session.commit()
+            jid = run_in_background(
+                "evidence_processing",
+                resolved_company,
+                _run_evidence_processing_job,
+                evidence_file_id=int(existing.id),
+                staging_abs=str(staging_path.resolve()),
+                upload_company=resolved_company,
+                job_user_id=current_user.id,
+                job_user_email=str(getattr(current_user, "email", "") or ""),
+            )
+            return jsonify(
+                {
+                    "ok": True,
+                    "retry": True,
+                    "evidence_file": _serialize_evidence_public(existing),
+                    "processing_job_id": jid,
+                }
+            )
+
+    ef = EvidenceFile(
+        company_name=resolved_company,
+        original_filename=str(raw_name)[:500],
+        stored_filename=f"{digest}.pending",
+        file_extension=normalized_ext,
+        mime_type=mime,
+        sha256_hash=digest,
+        file_size_original=int(sz),
+        uploaded_by=current_user.id,
+        upload_source="data_entry",
+        processing_status="pending",
+        storage_path="",
+    )
+    db.session.add(ef)
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        staging_path.unlink(missing_ok=True)
+        dup = EvidenceFile.query.filter_by(sha256_hash=digest, company_name=resolved_company).first()
+        if dup is None:
+            return jsonify({"error": "Duplicate handling failed"}), 409
+        return jsonify(
+            {
+                "ok": True,
+                "deduplicated": True,
+                "evidence_file": _serialize_evidence_public(dup),
+                "processing_job_id": None,
+            }
+        )
+
+    jid = run_in_background(
+        "evidence_processing",
+        resolved_company,
+        _run_evidence_processing_job,
+        evidence_file_id=int(ef.id),
+        staging_abs=str(staging_path.resolve()),
+        upload_company=resolved_company,
+        job_user_id=current_user.id,
+        job_user_email=str(getattr(current_user, "email", "") or ""),
+    )
+    return jsonify({"ok": True, "evidence_file": _serialize_evidence_public(ef), "processing_job_id": jid})
+
+
+@app.route("/api/evidence/link", methods=["POST"])
+@login_required
+def api_evidence_link():
+    payload = request.get_json(silent=True) or {}
+    company = (payload.get("company") or "").strip()
+    sheet = (payload.get("sheet") or "").strip()
+    entry_group = str(payload.get("entry_group") or "").strip()
+    try:
+        evidence_file_id = int(payload.get("evidence_file_id") or 0)
+    except Exception:
+        evidence_file_id = 0
+    if not company or not sheet or not entry_group or evidence_file_id <= 0:
+        return jsonify({"error": "company, sheet, entry_group, and evidence_file_id are required"}), 400
+    if not _user_can_access_company(company):
+        return jsonify({"error": "Access denied"}), 403
+    resolved_company = _resolve_template_company_name(company)
+    if not resolved_company:
+        return jsonify({"error": "Company not found"}), 404
+    resolved_sheet = _resolve_template_sheet_name(resolved_company, sheet)
+    if not resolved_sheet:
+        return jsonify({"error": "Sheet not found"}), 404
+    headers, _rules = _get_data_entry_template_schema(resolved_company, resolved_sheet)
+    if not _data_entry_grid_row_exists(resolved_company, resolved_sheet, headers, entry_group):
+        return jsonify({"error": "Row not found"}), 404
+
+    ef = db.session.get(EvidenceFile, evidence_file_id)
+    if not _user_can_access_evidence_file(ef) or str(ef.company_name).strip() != resolved_company:
+        return jsonify({"error": "Evidence not found"}), 404
+    if ef.processing_status != "ready":
+        return jsonify({"error": "Evidence is not ready yet"}), 409
+
+    exists_link = DataEntryEvidence.query.filter_by(
+        company_name=resolved_company,
+        sheet_name=resolved_sheet,
+        entry_group=entry_group,
+        evidence_file_id=evidence_file_id,
+    ).first()
+    if exists_link:
+        return jsonify({"ok": True, "link_id": int(exists_link.id), "deduplicated": True})
+
+    link = DataEntryEvidence(
+        company_name=resolved_company,
+        sheet_name=resolved_sheet,
+        entry_group=entry_group,
+        evidence_file_id=evidence_file_id,
+        linked_by=current_user.id,
+    )
+    db.session.add(link)
+    db.session.commit()
+    return jsonify({"ok": True, "link_id": int(link.id)})
+
+
+def _api_evidence_unlink_impl() -> tuple[dict, int]:
+    payload = request.get_json(silent=True) or {}
+    try:
+        link_id = int(payload.get("link_id") or 0)
+    except Exception:
+        link_id = 0
+    if link_id <= 0:
+        return {"error": "link_id is required"}, 400
+    link = db.session.get(DataEntryEvidence, link_id)
+    if link is None:
+        return {"error": "Link not found"}, 404
+    if not _user_can_access_company(link.company_name):
+        return {"error": "Access denied"}, 403
+    db.session.delete(link)
+    db.session.commit()
+    return {"ok": True}, 200
+
+
+@app.route("/api/evidence/unlink", methods=["DELETE", "POST"])
+@login_required
+def api_evidence_unlink():
+    body, status = _api_evidence_unlink_impl()
+    return jsonify(body), status
+
+
+@app.route("/api/evidence/<int:evidence_id>", methods=["GET"])
+@login_required
+def api_evidence_detail(evidence_id: int):
+    ef = db.session.get(EvidenceFile, evidence_id)
+    if not _user_can_access_evidence_file(ef):
+        return jsonify({"error": "Not found"}), 404
+    return jsonify({"evidence_file": _serialize_evidence_public(ef)})
+
+
+@app.route("/api/evidence/<int:evidence_id>/download", methods=["GET"])
+@login_required
+def api_evidence_download(evidence_id: int):
+    ef = db.session.get(EvidenceFile, evidence_id)
+    if not _user_can_access_evidence_file(ef) or ef.processing_status != "ready":
+        abort(404)
+    disk = _safe_evidence_disk_path(ef.storage_path)
+    if not disk or not disk.is_file():
+        abort(404)
+    mt = str(ef.mime_type or "application/octet-stream")
+    return send_file(disk, as_attachment=True, download_name=ef.original_filename or ef.stored_filename, mimetype=mt)
+
+
+@app.route("/api/evidence/<int:evidence_id>/preview", methods=["GET"])
+@login_required
+def api_evidence_preview(evidence_id: int):
+    ef = db.session.get(EvidenceFile, evidence_id)
+    if not _user_can_access_evidence_file(ef) or ef.processing_status != "ready":
+        abort(404)
+    disk = _safe_evidence_disk_path(ef.storage_path)
+    if not disk or not disk.is_file():
+        abort(404)
+    mt = str(ef.mime_type or "application/octet-stream")
+    return send_file(disk, as_attachment=False, mimetype=mt, download_name=ef.original_filename or ef.stored_filename)
+
+
+@app.route("/api/evidence/<int:evidence_id>/thumbnail", methods=["GET"])
+@login_required
+def api_evidence_thumbnail(evidence_id: int):
+    ef = db.session.get(EvidenceFile, evidence_id)
+    if not _user_can_access_evidence_file(ef) or ef.processing_status != "ready":
+        abort(404)
+    thumb = _safe_evidence_disk_path(ef.thumbnail_storage_path)
+    if not thumb or not thumb.is_file():
+        abort(404)
+    return send_file(thumb, as_attachment=False, mimetype="image/webp")
 
 
 @app.route("/api/excel_schema/download", methods=["GET"])

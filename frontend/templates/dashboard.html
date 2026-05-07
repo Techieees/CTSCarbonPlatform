@@ -291,6 +291,52 @@
         </div>
     </div>
 
+    <div class="modal fade" id="evidenceAttachmentsModal" tabindex="-1" aria-labelledby="evidenceAttachmentsModalTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+            <div class="modal-content border-0 shadow-lg evidence-modal">
+                <div class="modal-header border-0 pb-0">
+                    <div>
+                        <h5 class="modal-title fw-semibold" id="evidenceAttachmentsModalTitle">Evidence & invoices</h5>
+                        <small class="text-muted d-block">Attach invoices or evidence files to this row.</small>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body pt-2">
+                    <div id="evidenceModalLockedNotice" class="alert alert-warning py-2 small d-none" role="status">
+                        Save the row first, then you can attach documents.
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div class="fw-semibold small mb-2">Linked to this row</div>
+                            <div id="evidenceModalLinkedList" class="list-group list-group-flush evidence-modal-list border rounded-3"></div>
+                            <div id="evidenceModalLinkedEmpty" class="text-muted small py-3 d-none">No documents linked yet.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="fw-semibold small mb-2">Upload new</div>
+                            <div id="evidenceDropZone" class="evidence-drop-zone rounded-3 p-3 mb-2 text-center">
+                                <div class="small text-muted mb-2">Drag and drop or browse (PDF, images, DOCX, XLSX · max 25&nbsp;MB)</div>
+                                <input type="file" id="evidenceFileInput" class="d-none" accept=".pdf,.png,.jpg,.jpeg,.webp,.docx,.xlsx" multiple />
+                                <button type="button" class="btn btn-primary btn-sm" id="evidencePickFilesBtn">Choose files</button>
+                            </div>
+                            <div id="evidenceUploadStatus" class="small text-muted mb-3"></div>
+                            <div class="fw-semibold small mb-2">Attach existing</div>
+                            <div class="input-group input-group-sm mb-2">
+                                <input type="search" class="form-control" id="evidenceSearchInput" placeholder="Search by filename…" autocomplete="off" />
+                                <button class="btn btn-outline-secondary" type="button" id="evidenceSearchBtn">Search</button>
+                            </div>
+                            <div id="evidenceSearchResults" class="list-group list-group-flush evidence-modal-list border rounded-3" style="max-height: 220px; overflow:auto;"></div>
+                            <div class="fw-semibold small mt-3 mb-2">Recent uploads</div>
+                            <div id="evidenceRecentList" class="list-group list-group-flush evidence-modal-list border rounded-3" style="max-height: 180px; overflow:auto;"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-ghost btn-sm" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1090;">
         <div id="dataEntryToast" class="toast text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
             <div class="d-flex">
@@ -542,6 +588,89 @@ body.dark-mode .data-grid__input::placeholder {
   color: rgba(255, 255, 255, 0.58);
 }
 
+.data-grid__evidence-btn.is-invalid {
+  border-color: var(--bs-danger) !important;
+  box-shadow: inset 0 0 0 1px rgba(220, 53, 69, 0.35);
+}
+
+.data-grid__cell--evidence {
+  vertical-align: middle;
+}
+
+.data-grid__evidence-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-height: 2.25rem;
+  justify-content: center;
+}
+
+.data-grid__evidence-btn {
+  width: 100%;
+  text-align: left;
+  border-radius: 12px !important;
+  border: 1px dashed var(--bs-border-color) !important;
+  background: var(--bs-tertiary-bg);
+  color: var(--bs-body-color);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.5rem !important;
+  font-size: calc(0.78rem * var(--data-grid-zoom));
+}
+
+.data-grid__evidence-btn:not(:disabled):hover {
+  border-style: solid !important;
+  background: rgba(13, 110, 253, 0.06);
+}
+
+.data-grid__evidence-btn:disabled {
+  opacity: 0.55;
+}
+
+.data-grid__evidence-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.data-grid__evidence-preview-hint {
+  opacity: 0.65;
+  font-size: 0.85em;
+}
+
+.evidence-modal .evidence-modal-list .list-group-item {
+  padding: 0.5rem 0.65rem;
+}
+
+.evidence-drop-zone {
+  border: 1px dashed var(--bs-border-color);
+  background: var(--bs-tertiary-bg);
+}
+
+.evidence-drop-zone.evidence-drop-zone--hover {
+  border-style: solid;
+  background: rgba(13, 110, 253, 0.08);
+}
+
+body.dark-mode .data-grid__evidence-btn {
+  background: #1a1a1a;
+  color: #f5f5f5;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+body.dark-mode .evidence-drop-zone {
+  background: #141414;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+body.dark-mode .evidence-modal .modal-content {
+  background: #121212;
+  color: #f0f0f0;
+}
+
 .data-entry-toolbar__chip--zoom {
   margin-left: auto;
 }
@@ -724,6 +853,45 @@ function getRuleForHeader(header) {
   return currentRules?.[header] || { type: 'text' };
 }
 
+function isEvidenceSourceHeader(header) {
+  const s = String(header || '').trim();
+  const priority = ['Source_File', 'Source file', 'source_file', 'Source File', 'Data Source', 'Data source', 'Datasource', 'Source'];
+  if (priority.includes(s)) return true;
+  const n = s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  return n === 'sourcefile' || n === 'sourcefilename' || n === 'datasources';
+}
+
+function getEvidenceColumnIndex() {
+  return currentHeaders.findIndex((h) => isEvidenceSourceHeader(h));
+}
+
+function evidenceCountLabel(n) {
+  const k = Number(n) || 0;
+  if (!k) return 'Attach';
+  if (k === 1) return '1 file';
+  return `${k} files`;
+}
+
+function buildEvidenceCell(row, rowIndex, colIndex) {
+  const n = row.evidence_count || 0;
+  const canAttach = Boolean(row.is_persisted);
+  const disabledAttr = canAttach ? '' : 'disabled';
+  const eye = n ? '<span class="data-grid__evidence-preview-hint" title="Open for preview">◉</span>' : '';
+  return `<td class="data-grid__cell data-grid__cell--evidence" data-row="${rowIndex}" data-col="${colIndex}">
+    <div class="data-grid__cell-inner data-grid__evidence-inner">
+      <button type="button" class="btn btn-sm data-grid__evidence-btn" ${disabledAttr}
+        data-evidence-cell="${rowIndex}-${colIndex}"
+        data-row="${rowIndex}" data-col="${colIndex}"
+        title="${canAttach ? 'Evidence & invoices' : 'Save row first'}">
+        <span class="data-grid__evidence-clip" aria-hidden="true">\u{1F4CE}</span>
+        <span class="data-grid__evidence-label">${escapeHtml(evidenceCountLabel(n))}</span>
+        ${eye}
+      </button>
+      <div class="data-grid__inline-error" data-error-for="${rowIndex}-${colIndex}"></div>
+    </div>
+  </td>`;
+}
+
 function isRequiredRule(rule) {
   return rule?.required === '1' || rule?.required === 1 || rule?.required === true;
 }
@@ -773,6 +941,7 @@ function createBlankRow() {
     created_at: '',
     is_editable: true,
     is_persisted: false,
+    evidence_count: 0,
     cells: currentHeaders.map(() => ''),
   };
 }
@@ -807,6 +976,10 @@ function formatCreatedAt(value) {
 }
 
 function buildInputCell(row, rowIndex, header, colIndex) {
+  const evIdx = getEvidenceColumnIndex();
+  if (colIndex === evIdx && evIdx >= 0) {
+    return buildEvidenceCell(row, rowIndex, colIndex);
+  }
   const rule = getRuleForHeader(header);
   // Date columns use type="text" so Excel paste (DD/MM/YYYY etc.) is visible until converted; validation still enforces YYYY-MM-DD.
   const type = rule.type === 'date' ? 'text' : rule.type === 'number' ? 'number' : 'text';
@@ -884,6 +1057,17 @@ function renderGrid() {
     input.addEventListener('paste', handleGridPaste);
   });
 
+  tbody.querySelectorAll('.data-grid__evidence-btn').forEach((btn) => {
+    btn.addEventListener('focus', () => setActiveEvidenceCell(btn));
+    btn.addEventListener('click', (ev) => {
+      setActiveEvidenceCell(btn);
+      if (btn.disabled) return;
+      ev.preventDefault();
+      openEvidenceModal(Number(btn.getAttribute('data-row')));
+    });
+    btn.addEventListener('keydown', handleEvidenceKeydown);
+  });
+
   updateButtonState();
 }
 
@@ -893,7 +1077,65 @@ function setActiveCell(input) {
   if (td) td.classList.add('is-active');
 }
 
+function setActiveEvidenceCell(btn) {
+  table.querySelectorAll('.data-grid__cell.is-active').forEach((cell) => cell.classList.remove('is-active'));
+  const td = btn.closest('.data-grid__cell');
+  if (td) td.classList.add('is-active');
+}
+
+function handleEvidenceKeydown(e) {
+  const btn = e.currentTarget;
+  if (!(btn instanceof HTMLButtonElement) || btn.disabled) return;
+  const rowIndex = Number(btn.getAttribute('data-row'));
+  const colIndex = Number(btn.getAttribute('data-col'));
+
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    openEvidenceModal(rowIndex);
+    return;
+  }
+
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    let nextRow = rowIndex;
+    let nextCol = colIndex + (e.shiftKey ? -1 : 1);
+    if (nextCol >= currentHeaders.length) {
+      nextCol = 0;
+      nextRow = ensureEditableRowIndex(rowIndex + 1);
+      renderGrid();
+    } else if (nextCol < 0) {
+      nextRow = Math.max(0, rowIndex - 1);
+      nextCol = currentHeaders.length - 1;
+    }
+    focusCell(nextRow, nextCol);
+    return;
+  }
+
+  if (['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+    e.preventDefault();
+    let nextRow = rowIndex;
+    let nextCol = colIndex;
+    if (e.key === 'ArrowRight') nextCol += 1;
+    if (e.key === 'ArrowLeft') nextCol -= 1;
+    if (e.key === 'ArrowDown') nextRow += 1;
+    if (e.key === 'ArrowUp') nextRow -= 1;
+    if (nextCol < 0 || nextCol >= currentHeaders.length || nextRow < 0) return;
+    nextRow = ensureEditableRowIndex(nextRow);
+    renderGrid();
+    focusCell(nextRow, nextCol);
+  }
+}
+
 function focusCell(rowIndex, colIndex) {
+  const evIdx = getEvidenceColumnIndex();
+  if (colIndex === evIdx && evIdx >= 0) {
+    const btn = table.querySelector(`button[data-evidence-cell="${rowIndex}-${colIndex}"]`);
+    if (btn instanceof HTMLButtonElement && !btn.disabled) {
+      btn.focus();
+      return;
+    }
+    return;
+  }
   const input = table.querySelector(`.data-grid__input[data-row="${rowIndex}"][data-col="${colIndex}"]`);
   if (input instanceof HTMLInputElement && !input.readOnly) {
     input.focus();
@@ -969,6 +1211,8 @@ function handleGridPaste(e) {
   const isMultiCell = text.includes('\t') || text.includes('\n');
 
   if (!isMultiCell) {
+    const evIdxEarly = getEvidenceColumnIndex();
+    if (startCol === evIdxEarly && evIdxEarly >= 0) return;
     const rule = getRuleForHeader(currentHeaders[startCol]);
     if (rule.type === 'date') {
       const trimmed = text.trim();
@@ -993,6 +1237,8 @@ function handleGridPaste(e) {
     rowValues.forEach((cellValue, cIdx) => {
       const targetCol = startCol + cIdx;
       if (targetCol >= currentHeaders.length) return;
+      const evIdx = getEvidenceColumnIndex();
+      if (targetCol === evIdx && evIdx >= 0) return;
       gridRows[targetRow].cells[targetCol] = normalizePastedCellValueForColumn(cellValue, targetCol);
     });
   });
@@ -1030,6 +1276,7 @@ function collectRows() {
 
 function clearGridValidationMarks() {
   table.querySelectorAll('.data-grid__input.is-invalid').forEach((el) => el.classList.remove('is-invalid'));
+  table.querySelectorAll('.data-grid__evidence-btn.is-invalid').forEach((el) => el.classList.remove('is-invalid'));
   table.querySelectorAll('.data-grid__inline-error').forEach((el) => { el.textContent = ''; });
 }
 
@@ -1042,6 +1289,17 @@ function validateGridForSave() {
     if (!participates) return;
 
     currentHeaders.forEach((header, colIndex) => {
+      const evIdx = getEvidenceColumnIndex();
+      if (colIndex === evIdx && evIdx >= 0) {
+        const rule = getRuleForHeader(header);
+        const raw = String(row.cells?.[colIndex] ?? '').trim();
+        const hasEv = (row.evidence_count || 0) > 0;
+        if (!participates) return;
+        if (isRequiredRule(rule) && !raw && !hasEv) {
+          issues.push({ rowIndex, colIndex, msg: `${header}: value or attached evidence required` });
+        }
+        return;
+      }
       const rule = getRuleForHeader(header);
       const raw = String(row.cells?.[colIndex] ?? '').trim();
       if (isRequiredRule(rule) && !raw) {
@@ -1063,12 +1321,27 @@ function validateGridForSave() {
 
   issues.forEach(({ rowIndex, colIndex, msg }) => {
     const input = table.querySelector(`.data-grid__input[data-row="${rowIndex}"][data-col="${colIndex}"]`);
+    const evBtn = table.querySelector(`button[data-evidence-cell="${rowIndex}-${colIndex}"]`);
     if (input) input.classList.add('is-invalid');
+    if (evBtn) evBtn.classList.add('is-invalid');
     const errEl = table.querySelector(`[data-error-for="${rowIndex}-${colIndex}"]`);
     if (errEl) errEl.textContent = msg;
   });
 
   const first = issues[0];
+  const evIdx = getEvidenceColumnIndex();
+  if (first.colIndex === evIdx && evIdx >= 0) {
+    const btn = table.querySelector(`button[data-evidence-cell="${first.rowIndex}-${first.colIndex}"]`);
+    if (btn) {
+      btn.focus();
+      const tr = btn.closest('tr');
+      tr?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+      const td = btn.closest('td');
+      td?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+    return { ok: false, issues };
+  }
+
   const firstInput = table.querySelector(`.data-grid__input[data-row="${first.rowIndex}"][data-col="${first.colIndex}"]`);
   if (firstInput) {
     firstInput.focus();
@@ -1095,6 +1368,7 @@ function jobTypeLabel(type) {
   const t = String(type || '').toLowerCase();
   if (t === 'translation') return 'Translation';
   if (t === 'mapping') return 'Mapping';
+  if (t === 'evidence_processing') return 'Evidence processing';
   return t || 'Job';
 }
 
@@ -1273,6 +1547,22 @@ function flashSavedEntryGroups(groupIds) {
   });
 }
 
+async function attachEvidenceCountsToRows() {
+  if (!currentCompany || !currentSheet || !gridRows.length) return;
+  try {
+    const data = await fetchJson(`/api/evidence/row-summary?company=${encodeURIComponent(currentCompany)}&sheet=${encodeURIComponent(currentSheet)}`);
+    const counts = data.counts || {};
+    gridRows.forEach((row) => {
+      const eg = row.entry_group || '';
+      if (Object.prototype.hasOwnProperty.call(counts, eg)) {
+        row.evidence_count = counts[eg];
+      }
+    });
+  } catch (e) {
+    console.warn('Evidence counts failed', e);
+  }
+}
+
 async function selectSheet(sheet, flashEntryGroups = null) {
   if (!sheet) return;
   currentSheet = sheet;
@@ -1289,6 +1579,7 @@ async function selectSheet(sheet, flashEntryGroups = null) {
     created_at: row.created_at || '',
     is_editable: Boolean(row.is_editable),
     is_persisted: Boolean(row.is_persisted),
+    evidence_count: 0,
     cells: Array.isArray(row.cells) ? row.cells.slice() : currentHeaders.map(() => ''),
   }));
   ensureAppendRow();
@@ -1296,6 +1587,7 @@ async function selectSheet(sheet, flashEntryGroups = null) {
   elMeta.textContent = sheet === 'Klarakarbon'
     ? `${currentHeaders.length} columns • sticky headers • paste from Excel • saved like booklet entries`
     : `${currentHeaders.length} columns • sticky headers • last 7 days editable`;
+  await attachEvidenceCountsToRows();
   renderGrid();
   if (flashEntryGroups?.length) flashSavedEntryGroups(flashEntryGroups);
   setStatus('');
@@ -1509,6 +1801,234 @@ elTranslate?.addEventListener('click', () => translateData());
 if (elMap) elMap.addEventListener('click', () => mapNow());
 elCancelActiveJob?.addEventListener('click', () => cancelJob(activeJobId));
 elRefreshJobs?.addEventListener('click', () => refreshJobHistory());
+
+let evidenceModalCtx = { rowIndex: -1 };
+let evidenceModalPollTimer = null;
+const evidenceModalEl = document.getElementById('evidenceAttachmentsModal');
+const evidenceBsModal = evidenceModalEl && typeof bootstrap !== 'undefined'
+  ? bootstrap.Modal.getOrCreateInstance(evidenceModalEl)
+  : null;
+
+function openEvidenceModal(rowIndex) {
+  if (!evidenceBsModal) return;
+  evidenceModalCtx.rowIndex = rowIndex;
+  const row = gridRows[rowIndex];
+  const locked = document.getElementById('evidenceModalLockedNotice');
+  if (locked) locked.classList.toggle('d-none', Boolean(row?.is_persisted));
+  evidenceBsModal.show();
+  refreshEvidenceModalContent();
+  loadEvidenceSearch('');
+  if (evidenceModalPollTimer) window.clearInterval(evidenceModalPollTimer);
+  evidenceModalPollTimer = window.setInterval(() => {
+    if (!evidenceModalEl?.classList.contains('show')) return;
+    refreshEvidenceModalContent();
+  }, 4000);
+}
+
+evidenceModalEl?.addEventListener('hidden.bs.modal', () => {
+  if (evidenceModalPollTimer) {
+    window.clearInterval(evidenceModalPollTimer);
+    evidenceModalPollTimer = null;
+  }
+});
+
+async function waitEvidenceReady(evidenceId) {
+  for (let i = 0; i < 120; i++) {
+    const meta = await fetchJson(`/api/evidence/${evidenceId}`);
+    const st = meta.evidence_file?.processing_status;
+    if (st === 'ready') return;
+    if (st === 'failed') throw new Error(meta.evidence_file?.processing_error || 'Processing failed');
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  throw new Error('Processing timed out');
+}
+
+async function linkEvidenceToCurrentRow(evidenceFileId, jobId, initialStatus) {
+  const row = gridRows[evidenceModalCtx.rowIndex];
+  if (!row?.entry_group) throw new Error('Row identifier missing');
+  if (jobId) {
+    await pollJob(jobId, async () => {});
+  }
+  if (initialStatus !== 'ready') {
+    await waitEvidenceReady(evidenceFileId);
+  }
+  await fetchJson('/api/evidence/link', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      company: currentCompany,
+      sheet: currentSheet,
+      entry_group: row.entry_group,
+      evidence_file_id: evidenceFileId,
+    }),
+  });
+}
+
+async function refreshEvidenceModalContent() {
+  const row = gridRows[evidenceModalCtx.rowIndex];
+  const listEl = document.getElementById('evidenceModalLinkedList');
+  const emptyEl = document.getElementById('evidenceModalLinkedEmpty');
+  if (!listEl || !row?.entry_group || !currentCompany || !currentSheet) return;
+  try {
+    const data = await fetchJson(`/api/evidence/for-row?company=${encodeURIComponent(currentCompany)}&sheet=${encodeURIComponent(currentSheet)}&entry_group=${encodeURIComponent(row.entry_group)}`);
+    const items = data.items || [];
+    listEl.innerHTML = items.map((it) => {
+      const st = it.processing_status || '';
+      const badge = st === 'ready' ? '' : `<span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">${escapeHtml(st)}</span>`;
+      const ready = st === 'ready';
+      const prev = ready && it.preview_url ? escapeHtml(it.preview_url) : '';
+      const dl = ready && it.download_url ? escapeHtml(it.download_url) : '';
+      const prevCtl = ready && prev
+        ? `<a class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener" href="${prev}">Preview</a>`
+        : `<span class="btn btn-sm btn-outline-secondary disabled opacity-50">Preview</span>`;
+      const dlCtl = ready && dl
+        ? `<a class="btn btn-outline-secondary btn-sm" href="${dl}">Download</a>`
+        : `<span class="btn btn-sm btn-outline-secondary disabled opacity-50">Download</span>`;
+      return `<div class="list-group-item d-flex flex-column gap-1 align-items-start">
+        <div class="d-flex w-100 justify-content-between gap-2 align-items-start">
+          <span class="small text-break">${escapeHtml(it.original_filename || '')}${badge}</span>
+          <div class="btn-group btn-group-sm flex-shrink-0">
+            ${prevCtl}
+            ${dlCtl}
+            <button type="button" class="btn btn-outline-danger btn-sm" data-unlink-evidence="${it.link_id}">Remove</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+    emptyEl?.classList.toggle('d-none', items.length > 0);
+    listEl.querySelectorAll('[data-unlink-evidence]').forEach((b) => {
+      b.addEventListener('click', async () => {
+        const lid = Number(b.getAttribute('data-unlink-evidence'));
+        await fetchJson('/api/evidence/unlink', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ link_id: lid }),
+        });
+        await refreshEvidenceModalContent();
+        await attachEvidenceCountsToRows();
+        renderGrid();
+      });
+    });
+  } catch (e) {
+    console.warn(e);
+  }
+}
+
+async function loadEvidenceSearch(q) {
+  const target = document.getElementById('evidenceSearchResults');
+  const recent = document.getElementById('evidenceRecentList');
+  if (!target || !recent || !currentCompany) return;
+  try {
+    const qs = q.trim()
+      ? `company=${encodeURIComponent(currentCompany)}&q=${encodeURIComponent(q)}&limit=25`
+      : `company=${encodeURIComponent(currentCompany)}&limit=15`;
+    const data = await fetchJson(`/api/evidence/search?${qs}`);
+    const renderBtn = (it) => `
+      <button type="button" class="list-group-item list-group-item-action small text-start" data-attach-evidence="${it.id}">
+        <div class="fw-semibold text-truncate">${escapeHtml(it.original_filename || '')}</div>
+        <div class="text-muted">${escapeHtml(it.uploaded_by_email || '')} · ${escapeHtml(it.uploaded_at || '')}</div>
+      </button>`;
+    target.innerHTML = (data.items || []).map(renderBtn).join('');
+    if (!q.trim()) recent.innerHTML = (data.items || []).slice(0, 12).map(renderBtn).join('');
+    const bind = (root) => {
+      root.querySelectorAll('[data-attach-evidence]').forEach((b) => {
+        b.addEventListener('click', async () => {
+          const id = Number(b.getAttribute('data-attach-evidence'));
+          try {
+            await fetchJson('/api/evidence/link', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                company: currentCompany,
+                sheet: currentSheet,
+                entry_group: gridRows[evidenceModalCtx.rowIndex].entry_group,
+                evidence_file_id: id,
+              }),
+            });
+            await refreshEvidenceModalContent();
+            await attachEvidenceCountsToRows();
+            renderGrid();
+          } catch (err) {
+            showDataEntryToast('Link failed', err.message);
+          }
+        });
+      });
+    };
+    bind(target);
+    if (!q.trim()) bind(recent);
+  } catch (e) {
+    console.warn(e);
+  }
+}
+
+async function postEvidenceUploadSingle(file) {
+  const statusEl = document.getElementById('evidenceUploadStatus');
+  const fd = new FormData();
+  fd.append('company', currentCompany);
+  fd.append('file', file);
+  const res = await fetch('/api/evidence/upload', { method: 'POST', body: fd });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  const ef = data.evidence_file;
+  const jobId = data.processing_job_id || null;
+  await linkEvidenceToCurrentRow(ef.id, jobId, ef.processing_status);
+  if (statusEl) statusEl.textContent = 'Upload complete';
+}
+
+async function runEvidenceUploadQueue(files) {
+  const statusEl = document.getElementById('evidenceUploadStatus');
+  const row = gridRows[evidenceModalCtx.rowIndex];
+  if (!row?.is_persisted) {
+    if (statusEl) statusEl.textContent = 'Save the row first.';
+    return;
+  }
+  for (const file of Array.from(files || [])) {
+    try {
+      if (statusEl) statusEl.textContent = `Uploading: ${file.name}…`;
+      await postEvidenceUploadSingle(file);
+    } catch (err) {
+      if (statusEl) statusEl.textContent = err.message || 'Hata';
+      showDataEntryToast('Upload error', err.message);
+    }
+  }
+  await refreshEvidenceModalContent();
+  await attachEvidenceCountsToRows();
+  renderGrid();
+}
+
+document.getElementById('evidencePickFilesBtn')?.addEventListener('click', () => document.getElementById('evidenceFileInput')?.click());
+document.getElementById('evidenceFileInput')?.addEventListener('change', async (e) => {
+  const files = e.target.files;
+  if (!files?.length) return;
+  await runEvidenceUploadQueue(files);
+  e.target.value = '';
+});
+
+document.getElementById('evidenceSearchBtn')?.addEventListener('click', () => {
+  const q = document.getElementById('evidenceSearchInput')?.value || '';
+  loadEvidenceSearch(q);
+});
+document.getElementById('evidenceSearchInput')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const q = document.getElementById('evidenceSearchInput')?.value || '';
+    loadEvidenceSearch(q);
+  }
+});
+
+const evidenceDropZone = document.getElementById('evidenceDropZone');
+evidenceDropZone?.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  evidenceDropZone.classList.add('evidence-drop-zone--hover');
+});
+evidenceDropZone?.addEventListener('dragleave', () => evidenceDropZone.classList.remove('evidence-drop-zone--hover'));
+evidenceDropZone?.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  evidenceDropZone.classList.remove('evidence-drop-zone--hover');
+  const fl = e.dataTransfer?.files;
+  if (!fl?.length) return;
+  await runEvidenceUploadQueue(fl);
+});
 
 (async () => {
   try {
