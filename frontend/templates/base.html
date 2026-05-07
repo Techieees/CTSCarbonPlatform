@@ -97,7 +97,7 @@
                         <span class="visually-hidden">Open account menu</span>
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="accountDropdownTop">
-                        <li><button class="dropdown-item d-inline-flex align-items-center" type="button" data-open-notifications>{{ illu.illu_nav_file('me-2') }}Notifications</button></li>
+                        <li><button class="dropdown-item d-inline-flex align-items-center" type="button" data-open-notifications>{{ illu.illu_nav_notifications('me-2') }}Notifications</button></li>
                         <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('settings_profile_page') }}">{{ illu.illu_nav_file('me-2') }}Profile Settings</a></li>
                         {% if current_user.is_admin %}
                         <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('owner_analytics') }}">{{ illu.illu_nav_chart_pie('me-2') }}Owner Analytics</a></li>
@@ -125,7 +125,7 @@
                 <ul class="navbar-nav ms-auto align-items-lg-center gap-lg-2">
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}">Home</a></li>
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('platform') }}">Platform</a></li>
-                    <li class="nav-item"><a class="nav-link text-nowrap d-inline-flex align-items-center gap-1" href="{{ url_for('locations') }}"><img src="{{ url_for('static', filename='images/animated_icons_gif/map.gif') }}" class="animated-icon animated-icon-sm" loading="lazy" alt="Map">Climate Risk Map</a></li>
+                    <li class="nav-item"><a class="nav-link text-nowrap d-inline-flex align-items-center gap-1" href="{{ url_for('locations') }}">{{ illu.illu_nav_map('') }}Climate Risk Map</a></li>
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('methodology') }}">Methodology</a></li>
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('trust') }}">Trust</a></li>
                     <li class="nav-item"><a class="nav-link text-nowrap" href="{{ url_for('who_we_are') }}">Who We Are</a></li>
@@ -185,7 +185,7 @@
                             <span class="d-none d-sm-inline">{{ account_display_name or 'Account' }}</span>
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="accountDropdownMarketingAuth">
-                            <li><button class="dropdown-item d-inline-flex align-items-center" type="button" data-open-notifications>{{ illu.illu_nav_file('me-2') }}Notifications</button></li>
+                            <li><button class="dropdown-item d-inline-flex align-items-center" type="button" data-open-notifications>{{ illu.illu_nav_notifications('me-2') }}Notifications</button></li>
                             <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('settings_profile_page') }}">{{ illu.illu_nav_file('me-2') }}Profile Settings</a></li>
                             {% if current_user.is_admin %}
                             <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('owner_analytics') }}">{{ illu.illu_nav_chart_pie('me-2') }}Owner Analytics</a></li>
@@ -337,6 +337,8 @@
     {% endif %}
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lottie-web@5.12.2/build/player/lottie.min.js"></script>
+    <script src="{{ url_for('static', filename='js/lottie-init.js') }}"></script>
     <script src="{{ url_for('static', filename='js/busy-overlay.js') }}"></script>
     <script src="{{ url_for('static', filename='js/saas.js') }}"></script>
     <script src="{{ url_for('static', filename='js/global-effects.js') }}"></script>

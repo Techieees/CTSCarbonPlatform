@@ -59,7 +59,7 @@
         <span class="label app-sidebar__label">Dashboard</span>
       </button>
       <button type="button" class="app-sidebar__rail-item nav-item {% if selected_section == 'feed' %}is-active active{% endif %}" data-sidebar-section-trigger data-section-id="feed" data-section="feed" aria-label="Feed">
-        <div class="icon app-sidebar__icon">{{ illu.illu_nav_file('') }}</div>
+        <div class="icon app-sidebar__icon">{{ illu.illu_nav_feed('') }}</div>
         <span class="label app-sidebar__label">Feed</span>
       </button>
       <button type="button" class="app-sidebar__rail-item nav-item {% if selected_section == 'resources' %}is-active active{% endif %}" data-sidebar-section-trigger data-section-id="resources" data-section="resources" aria-label="Resources">
@@ -117,7 +117,7 @@
         </div>
         <nav class="app-sidebar__panel-menu">
           <a href="{{ url_for('feed') }}" class="app-sidebar__menu-item {% if feed_active %}is-active{% endif %}" {% if feed_active %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_file('app-sidebar__icon') }}
+            {{ illu.illu_nav_feed('app-sidebar__icon') }}
             <span>Feed</span>
           </a>
         </nav>

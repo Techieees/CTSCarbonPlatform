@@ -1,4 +1,6 @@
+{% import 'macros/ui_illustrations.html' as illu %}
 <article class="feed-card feed-post" id="post-{{ post.id }}" data-feed-post-id="{{ post.id }}">
+{% set feed_comment_icon_alt = 'Respond' if post.challenge else 'Comment' %}
   <header class="feed-post__header">
     <a href="{{ post.author_profile_url }}" class="feed-post__header-link" aria-label="{{ post.author_name }} profile">
       <span class="feed-post__avatar-link">
@@ -194,12 +196,12 @@
       data-feed-comment-toggle
       aria-expanded="false"
     >
-        <img src="{{ url_for('static', filename='images/animated_icons_gif/eco.gif') }}" class="animated-icon animated-icon-sm feed-action__icon" loading="lazy" alt="">
+        {{ illu.illu_nav_feed('feed-action__icon', feed_comment_icon_alt) }}
       <span>{% if post.challenge %}Respond{% else %}Comment{% endif %}</span>
     </button>
     {% endif %}
     <button class="feed-action" type="button" data-feed-ui="share" data-share-url="{{ post.share_url }}">
-      <img src="{{ url_for('static', filename='images/animated_icons_gif/save-the-world.gif') }}" class="animated-icon animated-icon-sm feed-action__icon" loading="lazy" alt="">
+      {{ illu.illu_feed_share('feed-action__icon') }}
       <span>Share</span>
     </button>
   </footer>

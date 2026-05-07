@@ -1,3 +1,4 @@
+{% import 'macros/ui_illustrations.html' as illu %}
 <div class="dropdown collab-notification notification-wrapper" data-collab-notifications>
   <button
     class="btn collab-icon-button collab-icon-button--notification notification-icon"
@@ -8,7 +9,7 @@
     aria-expanded="false"
     aria-label="Notifications"
   >
-    <img src="{{ url_for('static', filename='images/animated_icons_gif/eco.gif') }}" class="animated-icon animated-icon-sm collab-icon-button__icon" loading="lazy" alt="">
+    {{ illu.illu_nav_notifications('collab-icon-button__icon') }}
     <span class="collab-badge notification-badge" data-collab-notification-badge hidden>0</span>
   </button>
   <div class="dropdown-menu dropdown-menu-end collab-dropdown-panel" aria-labelledby="collabNotificationDropdown">

@@ -194,6 +194,23 @@ canvas{
   height: 3rem;
 }
 
+/* Lottie replaces GIF icons; keeps sizing aligned with .animated-icon */
+.lottie-icon {
+  display: inline-block;
+  vertical-align: middle;
+  flex: 0 0 auto;
+  line-height: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.lottie-icon svg {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  pointer-events: none;
+}
+
 .btn .animated-icon,
 .dropdown-item .animated-icon,
 .nav-link .animated-icon {
@@ -201,8 +218,21 @@ canvas{
   height: 1.15rem;
 }
 
+.btn .lottie-icon,
+.dropdown-item .lottie-icon,
+.nav-link .lottie-icon {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
 .app-sidebar__icon.animated-icon,
 .app-sidebar__icon .animated-icon {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.app-sidebar__icon.lottie-icon,
+.app-sidebar__icon .lottie-icon {
   width: 1.35rem;
   height: 1.35rem;
 }

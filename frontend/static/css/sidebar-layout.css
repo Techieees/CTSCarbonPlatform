@@ -942,6 +942,7 @@ body.dark-mode .app-topbar .dropdown-item:focus-visible {
   .app-layout--mobile-drawer .app-sidebar__icon svg,
   .app-layout--mobile-drawer .app-sidebar__icon img,
   .app-layout--mobile-drawer .app-sidebar__icon .animated-icon,
+  .app-layout--mobile-drawer .app-sidebar__icon .lottie-icon,
   .app-layout--mobile-drawer .app-sidebar__rail-item img,
   .app-layout--mobile-drawer .app-sidebar__menu-item img {
     width: 22px !important;
