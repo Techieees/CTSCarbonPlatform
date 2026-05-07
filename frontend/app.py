@@ -628,6 +628,21 @@ def _serialize_job(job: dict[str, object]) -> dict[str, object]:
     return response
 
 
+def _active_job_id_for_job_type(job_type: str) -> str | None:
+    """job_id if a background job of this type is pending or running (in-process registry only)."""
+    jt = str(job_type or "").strip()
+    if not jt:
+        return None
+    with _JOBS_LOCK:
+        for job in jobs.values():
+            if str(job.get("type") or "") != jt:
+                continue
+            if str(job.get("status") or "") in {"pending", "running"}:
+                jid = str(job.get("job_id") or "").strip()
+                return jid or None
+    return None
+
+
 def run_in_background(job_type: str, company: str, target, *args, **kwargs) -> str:
     _cleanup_old_jobs()
     job_id = uuid.uuid4().hex[:12]
@@ -4404,6 +4419,15 @@ def _normalize_data_entry_rows(headers: list[str], rows: list[object]) -> tuple[
     return normalized_rows, validation_errors
 
 
+def _existing_ccc_import_dedup_keys(company_name: str, sheet_name: str, dedup_column: str) -> set[str]:
+    rows = db.session.query(DataEntry.value).filter(
+        DataEntry.company_name == company_name,
+        DataEntry.sheet_name == sheet_name,
+        DataEntry.column_name == dedup_column,
+    )
+    return {str(v or "").strip().lower() for (v,) in rows.all() if str(v or "").strip()}
+
+
 def _data_entry_content_fingerprint(headers: list[str], cells: list[str]) -> str:
     """Stable fingerprint for duplicate detection (full row vector, trimmed)."""
     padded = list(cells[: len(headers)])
@@ -4942,6 +4966,11 @@ def _import_translation_module():
 
 
 def _user_can_run_translation(u: object | None) -> bool:
+    return normalize_user_role(getattr(u, "role", None)) in {"owner", "super_admin", "admin"}
+
+
+def _user_can_run_ccc_data_entry_import(u: object | None) -> bool:
+    """CCC → Data Entry bulk import (internal procurement tool)."""
     return normalize_user_role(getattr(u, "role", None)) in {"owner", "super_admin", "admin"}
 
 
@@ -10742,6 +10771,100 @@ def api_data_entry_rows():
     )
 
 
+@app.route("/api/data-entry/site-tags", methods=["GET"])
+@login_required
+def api_data_entry_site_tags():
+    from frontend.services.site_tag_service import get_site_tags_for_company
+
+    company = request.args.get("company", "").strip()
+    if not company:
+        return jsonify({"error": "company is required"}), 400
+    if not _user_can_access_company(company):
+        return jsonify({"error": "Access denied"}), 403
+    resolved_company = _resolve_template_company_name(company) or company
+    tags = get_site_tags_for_company(resolved_company)
+    if not tags:
+        tags = get_site_tags_for_company(company)
+    return jsonify({"ok": True, "site_tags": tags})
+
+
+@app.route("/api/data-entry/reporting-periods", methods=["GET"])
+@login_required
+def api_data_entry_reporting_periods():
+    from frontend.services.reporting_period_service import get_reporting_period_options_2026
+
+    return jsonify({"ok": True, "periods": get_reporting_period_options_2026()})
+
+
+@app.route("/api/ccc/import-to-data-entry", methods=["POST"])
+@login_required
+def api_ccc_import_to_data_entry():
+    """Queue background job: CCC purchase orders → Data Entry (Scope 3 Cat 1)."""
+    if not _user_can_run_ccc_data_entry_import(current_user):
+        return jsonify({"error": "Forbidden", "detail": "CCC Data Entry import requires admin, super_admin, or owner role."}), 403
+    from frontend.services.ccc_data_entry_import_service import CCC_TARGET_SHEET
+    from frontend.services.site_tag_service import resolve_registered_project
+
+    payload = request.get_json(silent=True) or {}
+    projects = payload.get("projects")
+    if not isinstance(projects, list) or not projects:
+        return jsonify({"error": "projects must be a non-empty array"}), 400
+
+    labels = [str(p).strip() for p in projects if str(p).strip()]
+    if not labels:
+        return jsonify({"error": "No valid project labels"}), 400
+
+    unknown: list[str] = []
+    for lab in labels:
+        reg = resolve_registered_project(lab)
+        if not reg:
+            unknown.append(lab)
+            continue
+        rc = str(reg.get("responsible_company") or "").strip()
+        resolved_company = _resolve_template_company_name(rc) or rc
+        if not resolved_company:
+            unknown.append(lab)
+            continue
+        if not _user_can_access_company(resolved_company):
+            return jsonify({"error": "Access denied for one or more target companies", "project": lab}), 403
+
+        resolved_sheet = _resolve_template_sheet_name(resolved_company, CCC_TARGET_SHEET)
+        if not resolved_sheet:
+            return jsonify({"error": "Target sheet not available for company", "company": resolved_company}), 400
+        hdrs = _get_template_sheet_headers(resolved_company, resolved_sheet)
+        if not hdrs:
+            return jsonify({"error": "Target sheet has no template headers", "company": resolved_company}), 400
+
+    if unknown:
+        return jsonify(
+            {
+                "error": "Unknown project(s): not found in site_tags_2026 registry",
+                "unknown_projects": unknown[:50],
+            }
+        ), 400
+
+    active_ccc = _active_job_id_for_job_type("ccc_import")
+    if active_ccc:
+        return jsonify(
+            {
+                "error": "CCC import already running",
+                "detail": "Wait for the current CCC import job to finish before starting another.",
+                "job_id": active_ccc,
+            }
+        ), 409
+
+    job_id = run_in_background(
+        "ccc_import",
+        "CCC API",
+        _run_ccc_import_job,
+        project_labels=labels,
+        user_id=int(getattr(current_user, "id", 0) or 0) or None,
+        job_user_id=int(getattr(current_user, "id", 0) or 0) or None,
+        job_user_email=str(getattr(current_user, "email", "") or ""),
+    )
+    return jsonify({"ok": True, "job_id": job_id})
+
+
 @app.route("/api/evidence/row-summary", methods=["GET"])
 @login_required
 def api_evidence_row_summary():
@@ -11530,6 +11653,263 @@ def api_run_translation():
         job_user_email=str(getattr(current_user, "email", "") or ""),
     )
     return jsonify({"job_id": job_id, "status": "started"})
+
+
+def _run_ccc_import_job(
+    *,
+    job_id: str,
+    project_labels: list[str],
+    user_id: int | None = None,
+) -> dict[str, object]:
+    from frontend.services.ccc_data_entry_import_service import (
+        CCC_IMPORT_DEDUP_COLUMN,
+        CCC_TARGET_SHEET,
+        log_duplicate,
+        log_import,
+        log_inserted,
+        log_warning,
+        prepare_ccc_data_entry_rows,
+        resolve_ccc_project_id,
+    )
+    from frontend.services.site_tag_service import resolve_registered_project
+
+    stats: dict[str, object] = {
+        "projects_processed": 0,
+        "rows_fetched": 0,
+        "rows_inserted": 0,
+        "duplicates_skipped": 0,
+        "fingerprint_duplicates_skipped": 0,
+        "validation_skipped": 0,
+        "errors": [],
+    }
+
+    uid = int(user_id or 0) or None
+    ccc_po = _load_stage1_api_source_module("ccc_purchase_orders")
+    runtime = ccc_po.resolve_runtime_config()
+
+    log_import(f"starting import job projects={len(project_labels)}")
+    _update_job_progress(job_id, 2, "Resolving CCC API projects…")
+
+    if not str(runtime.get("base_url") or "").strip():
+        raise RuntimeError("CCC API base URL is not configured.")
+    if not str(runtime.get("username") or "").strip() or not str(runtime.get("password") or "").strip():
+        raise RuntimeError("CCC API credentials are not configured.")
+
+    projects = list(
+        ccc_po.load_available_projects(
+            base_url=str(runtime["base_url"]),
+            username=str(runtime["username"]),
+            password=str(runtime["password"]),
+            force_refresh=False,
+        )
+    )
+    token = ccc_po.login(str(runtime["base_url"]), str(runtime["username"]), str(runtime["password"]))
+    _raise_if_job_cancelled(job_id)
+    _update_job(
+        job_id,
+        result={
+            "phase": "running",
+            "projects_processed": 0,
+            "rows_fetched": 0,
+            "rows_inserted": 0,
+            "duplicates_skipped": 0,
+            "validation_skipped": 0,
+            "fingerprint_duplicates_skipped": 0,
+            "errors_count": 0,
+        },
+    )
+
+    total_labels = max(1, len(project_labels))
+
+    for idx, label in enumerate(project_labels):
+        _raise_if_job_cancelled(job_id)
+        pct = int((idx / total_labels) * 30)
+        _update_job_progress(job_id, 5 + pct, "Fetching CCC API rows…")
+
+        reg = resolve_registered_project(label)
+        if not reg:
+            log_warning(f"unknown project label={label!r}")
+            stats["errors"].append(f"unknown_project:{label}")
+            continue
+
+        rc = str(reg.get("responsible_company") or "").strip()
+        resolved_company = _resolve_template_company_name(rc) or rc
+        if not resolved_company:
+            log_warning(f"no template company for label={label!r}")
+            stats["errors"].append(f"no_company:{label}")
+            continue
+
+        resolved_sheet = _resolve_template_sheet_name(resolved_company, CCC_TARGET_SHEET) or CCC_TARGET_SHEET
+        headers = _get_template_sheet_headers(resolved_company, resolved_sheet)
+        if not headers:
+            msg = f"no_sheet_headers:{resolved_company}:{resolved_sheet}"
+            log_warning(msg)
+            stats["errors"].append(msg)
+            continue
+
+        pid = resolve_ccc_project_id(projects, label)
+        if pid is None:
+            projects = list(
+                ccc_po.load_available_projects(
+                    base_url=str(runtime["base_url"]),
+                    username=str(runtime["username"]),
+                    password=str(runtime["password"]),
+                    force_refresh=True,
+                )
+            )
+            pid = resolve_ccc_project_id(projects, label)
+        if pid is None:
+            log_warning(f"CCC project id not found for label={label!r}")
+            stats["errors"].append(f"project_id:{label}")
+            continue
+
+        try:
+            items = ccc_po.fetch_purchase_orders(
+                str(runtime["base_url"]),
+                token,
+                project_id=int(pid),
+                sorting=ccc_po.PURCHASE_ORDER_SORTING,
+                page_size=ccc_po.PURCHASE_ORDER_PAGE_SIZE,
+                query_params=None,
+            )
+        except Exception as exc:
+            stats["errors"].append(str(exc))
+            log_warning(f"fetch_failed label={label!r}: {exc}")
+            continue
+
+        df = ccc_po.normalize_purchase_orders_for_cache(items)
+        stats["projects_processed"] = int(stats["projects_processed"]) + 1
+        stats["rows_fetched"] = int(stats["rows_fetched"]) + int(len(df.index))
+        log_import(f"labels ok={label!r} fetched={len(df.index)} → {resolved_company}")
+
+        _update_job_progress(job_id, 40 + int((idx / total_labels) * 20), "Resolving site mappings…")
+        pairs = prepare_ccc_data_entry_rows(df, headers, registration=reg)
+        _raise_if_job_cancelled(job_id)
+        _update_job_progress(job_id, 60 + int((idx / total_labels) * 15), "Normalizing reporting periods…")
+
+        existing_keys = _existing_ccc_import_dedup_keys(resolved_company, resolved_sheet, CCC_IMPORT_DEDUP_COLUMN)
+        _update_job_progress(job_id, 75 + int((idx / total_labels) * 12), "Checking duplicates…")
+
+        for pk, cells in pairs:
+            _raise_if_job_cancelled(job_id)
+            if pk.lower() in existing_keys:
+                stats["duplicates_skipped"] = int(stats["duplicates_skipped"]) + 1
+                log_duplicate(f"ccc key={pk[:16]}…")
+                continue
+
+            if not any(str(c or "").strip() for c in cells):
+                stats["validation_skipped"] = int(stats["validation_skipped"]) + 1
+                continue
+
+            payload_row = {
+                "cells": cells,
+                "is_persisted": False,
+                "row_index": 0,
+                "entry_group": "",
+                "created_at": "",
+            }
+            normalized_rows, verr = _normalize_data_entry_rows(headers, [payload_row])
+            if verr:
+                stats["validation_skipped"] = int(stats["validation_skipped"]) + 1
+                log_warning(f"normalize skipped: {verr[0]}")
+                continue
+            if not normalized_rows:
+                stats["validation_skipped"] = int(stats["validation_skipped"]) + 1
+                continue
+
+            req_err = _validate_data_entry_row_requirements(headers, normalized_rows)
+            if req_err:
+                stats["validation_skipped"] = int(stats["validation_skipped"]) + 1
+                log_warning(f"requirements skipped: {req_err[0]}")
+                continue
+
+            try:
+                result = _upsert_data_entries(resolved_company, resolved_sheet, headers, normalized_rows)
+                db.session.flush()
+            except Exception as exc:
+                db.session.rollback()
+                stats["errors"].append(str(exc))
+                log_warning(f"save failed: {exc}")
+                continue
+
+            saved = int(result.get("saved_rows_count") or 0)
+            fp_dup = int(result.get("duplicate_rows_count") or 0)
+            saved_groups = list(result.get("saved_entry_groups") or [])
+
+            if saved > 0 and saved_groups:
+                eg = saved_groups[-1]
+                leader = (
+                    DataEntry.query.filter_by(
+                        company_name=resolved_company,
+                        sheet_name=resolved_sheet,
+                        entry_group=eg,
+                    )
+                    .order_by(DataEntry.id.asc())
+                    .first()
+                )
+                row_index_used = int(leader.row_index) if leader else 0
+                _upsert_data_entry_cell(
+                    company_name=resolved_company,
+                    sheet_name=resolved_sheet,
+                    entry_group=eg,
+                    row_index=row_index_used,
+                    column_name=CCC_IMPORT_DEDUP_COLUMN,
+                    value=pk,
+                    uploaded_by_user_id=uid,
+                )
+                db.session.commit()
+                existing_keys.add(pk.lower())
+                stats["rows_inserted"] = int(stats["rows_inserted"]) + 1
+                _update_job(job_id, rows=int(stats["rows_inserted"]))
+                log_inserted(f"{resolved_company} row_index={row_index_used} group={eg}")
+            else:
+                db.session.rollback()
+                if fp_dup:
+                    stats["fingerprint_duplicates_skipped"] = int(stats["fingerprint_duplicates_skipped"]) + 1
+
+        _update_job_progress(job_id, 88 + int(((idx + 1) / total_labels) * 10), "Saving Data Entry rows…")
+        errs = stats["errors"] if isinstance(stats["errors"], list) else []
+        _update_job(
+            job_id,
+            result={
+                "phase": "running",
+                "projects_processed": int(stats["projects_processed"]),
+                "rows_fetched": int(stats["rows_fetched"]),
+                "rows_inserted": int(stats["rows_inserted"]),
+                "duplicates_skipped": int(stats["duplicates_skipped"]),
+                "validation_skipped": int(stats["validation_skipped"]),
+                "fingerprint_duplicates_skipped": int(stats["fingerprint_duplicates_skipped"]),
+                "errors_count": len(errs),
+            },
+        )
+
+    _update_job_progress(
+        job_id,
+        100,
+        (
+            "Completed CCC import • inserted "
+            + str(stats["rows_inserted"])
+            + ", skipped duplicates "
+            + str(stats["duplicates_skipped"])
+        ),
+    )
+    log_import(
+        "summary inserted=%s dedup_skip=%s fp_dup=%s val_skip=%s projects=%s"
+        % (
+            stats["rows_inserted"],
+            stats["duplicates_skipped"],
+            stats["fingerprint_duplicates_skipped"],
+            stats["validation_skipped"],
+            stats["projects_processed"],
+        )
+    )
+    _update_job(job_id, rows=int(stats["rows_inserted"]))
+    errs_final = stats["errors"] if isinstance(stats["errors"], list) else []
+    out = dict(stats)
+    out["ok"] = True
+    out["errors_count"] = len(errs_final)
+    out["phase"] = "completed"
+    return out
 
 
 def _run_mapping_job(
@@ -12544,6 +12924,36 @@ def _resolve_ccc_selected_project_id(projects: list[dict[str, object]], preferre
     if projects:
         return _coerce_ccc_project_id(projects[0].get("id"))
     return preferred_project_id
+
+
+def _ccc_de_import_panel_projects(projects: list[dict[str, object]] | None) -> list[dict[str, object]]:
+    """Enrich CCC API project dropdown rows with site-tag registry company/country for admin import UI."""
+    from frontend.services.site_tag_service import resolve_registered_project
+
+    rows: list[dict[str, object]] = []
+    for p in projects or []:
+        lab = str(p.get("label") or "").strip()
+        if not lab:
+            continue
+        reg = resolve_registered_project(lab)
+        site = str(reg.get("platform_site_tag") or "").strip() if reg else ""
+        company = str(reg.get("responsible_company") or "").strip() if reg else ""
+        country = str(reg.get("project_location") or "").strip() if reg else ""
+        subtitle = " • ".join(part for part in (company, country) if part)
+        if not subtitle:
+            subtitle = "Not in site registry" if not reg else ""
+        rows.append(
+            {
+                "label": lab,
+                "project_id": p.get("id"),
+                "primary": site or lab,
+                "subtitle": subtitle,
+                "registered": bool(reg),
+                "company": company,
+                "country": country,
+            }
+        )
+    return rows
 
 
 def _ccc_ui_context(
@@ -13648,6 +14058,15 @@ def data_sources_ccc_api():
             )
             context["run_history"] = _read_run_history("ccc_api_source")
         context["form_state"] = form_state
+    context["can_ccc_data_entry_import"] = _user_can_run_ccc_data_entry_import(current_user)
+    context["ccc_de_import_projects"] = (
+        _ccc_de_import_panel_projects(context.get("ccc_available_projects"))
+        if context["can_ccc_data_entry_import"]
+        else []
+    )
+    context["ccc_import_api_url"] = url_for("api_ccc_import_to_data_entry")
+    context["dashboard_url"] = url_for("dashboard")
+    context["ccc_de_target_sheet"] = "Scope 3 Category 1 Purchased Goods & Services"
     return render_template("analytics_output.html", user=current_user, **context)
 
 

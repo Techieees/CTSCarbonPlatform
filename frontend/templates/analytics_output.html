@@ -110,6 +110,110 @@
         </article>
       </div>
     </div>
+    {% if can_ccc_data_entry_import|default(false) %}
+    <article class="analytics-output-card mt-4 ccc-de-import-card" id="cccDeImportCard">
+      <div class="analytics-output-card__header flex-wrap gap-2">
+        <div class="flex-grow-1">
+          <h3 class="analytics-output-card__title mb-1">CCC API → Data Entry Import</h3>
+          <p class="analytics-output-card__meta mb-0">
+            Import approved CCC purchase order data into <strong>{{ ccc_de_target_sheet }}</strong>.
+          </p>
+        </div>
+        <span class="badge rounded-pill text-bg-secondary align-self-start" id="cccDeImportRunningBadge" hidden>Import running</span>
+      </div>
+      <div class="px-3 pb-3 pt-0">
+        <label class="form-label small text-muted mb-1" for="cccDeImportFilter">Projects</label>
+        <input type="search" class="form-control form-control-sm mb-2" id="cccDeImportFilter" placeholder="Filter by site, company, country…" autocomplete="off" aria-label="Filter CCC projects">
+        <div class="ccc-de-import-meta small text-muted mb-2">
+          <span id="cccDeImportSelectedCount">0</span> selected · Registry-matched projects only
+        </div>
+        <div class="ccc-de-import-list border rounded" id="cccDeImportList" role="group" aria-label="CCC projects for import">
+          {% for row in ccc_de_import_projects %}
+          <label class="ccc-de-import-row d-flex gap-2 align-items-start px-2 py-2 mb-0 {% if not row.registered %}ccc-de-import-row--disabled opacity-50{% endif %}" data-ccc-filter="{{ (row.primary ~ ' ' ~ row.subtitle ~ ' ' ~ row.label)|lower }}">
+            <input class="form-check-input mt-1 ccc-de-import-cb flex-shrink-0" type="checkbox" value="{{ row.label|e }}" {% if not row.registered %}disabled title="Not in site_tags_2026 — cannot import"{% endif %} data-company="{{ row.company|e }}" data-registered="{{ 'true' if row.registered else 'false' }}">
+            <span class="flex-grow-1">
+              <span class="d-block fw-semibold">{{ row.primary }}</span>
+              <span class="d-block small text-muted">{{ row.subtitle }}</span>
+            </span>
+          </label>
+          {% else %}
+          <div class="p-3 text-muted small mb-0">No CCC projects loaded. Configure CCC API credentials and refresh projects.</div>
+          {% endfor %}
+        </div>
+        <div class="analytics-output-stat mt-3 mb-0 py-2 px-2 rounded ccc-de-import-progress d-none" id="cccDeImportProgress" aria-live="polite">
+          <div class="small text-muted mb-1">Progress</div>
+          <div class="progress mb-2" style="height: 8px;">
+            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" id="cccDeImportProgressBar" style="width: 0%;"></div>
+          </div>
+          <div class="small font-monospace" id="cccDeImportProgressMessage">—</div>
+          <dl class="row small mb-0 mt-2 g-1">
+            <dt class="col-6 text-muted">Projects processed</dt><dd class="col-6 mb-0 text-end" id="cccDeStatProjects">—</dd>
+            <dt class="col-6 text-muted">Rows fetched</dt><dd class="col-6 mb-0 text-end" id="cccDeStatFetched">—</dd>
+            <dt class="col-6 text-muted">Rows inserted</dt><dd class="col-6 mb-0 text-end" id="cccDeStatInserted">—</dd>
+            <dt class="col-6 text-muted">Duplicates skipped</dt><dd class="col-6 mb-0 text-end" id="cccDeStatDup">—</dd>
+            <dt class="col-6 text-muted">Unresolved skipped</dt><dd class="col-6 mb-0 text-end" id="cccDeStatValSkip">—</dd>
+            <dt class="col-6 text-muted">Errors</dt><dd class="col-6 mb-0 text-end" id="cccDeStatErr">—</dd>
+          </dl>
+        </div>
+        <div class="analytics-output-card__meta mt-2 small ccc-de-import-last d-none" id="cccDeImportLastSummary"></div>
+        <div class="d-flex flex-wrap gap-2 mt-3">
+          <button type="button" class="btn btn-primary btn-sm" id="cccDeImportBtn" disabled>
+            Import to Data Entry
+          </button>
+        </div>
+      </div>
+    </article>
+
+    <div class="modal fade" id="cccDeImportConfirmModal" tabindex="-1" aria-labelledby="cccDeImportConfirmTitle" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="cccDeImportConfirmTitle">Confirm import</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p class="mb-2">Import selected CCC purchase order rows into Data Entry?</p>
+            <ul class="small mb-0 ps-3">
+              <li><strong id="cccDeConfirmProjectCount">0</strong> project(s) selected</li>
+              <li>Target: <strong>{{ ccc_de_target_sheet }}</strong></li>
+              <li>Duplicate protection enabled (purchase order key)</li>
+              <li>Existing rows will not be duplicated</li>
+            </ul>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary" id="cccDeImportConfirmStart">Start Import</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal fade" id="cccDeImportDoneModal" tabindex="-1" aria-labelledby="cccDeImportDoneTitle" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="cccDeImportDoneTitle">CCC import completed</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <dl class="row small mb-0 g-1">
+              <dt class="col-7 text-muted">Projects processed</dt><dd class="col-5 mb-0 text-end" id="cccDeDoneProjects">—</dd>
+              <dt class="col-7 text-muted">Rows fetched</dt><dd class="col-5 mb-0 text-end" id="cccDeDoneFetched">—</dd>
+              <dt class="col-7 text-muted">Rows inserted</dt><dd class="col-5 mb-0 text-end" id="cccDeDoneInserted">—</dd>
+              <dt class="col-7 text-muted">Duplicates skipped</dt><dd class="col-5 mb-0 text-end" id="cccDeDoneDup">—</dd>
+              <dt class="col-7 text-muted">Unresolved rows skipped</dt><dd class="col-5 mb-0 text-end" id="cccDeDoneValSkip">—</dd>
+              <dt class="col-7 text-muted">Fingerprint duplicates</dt><dd class="col-5 mb-0 text-end" id="cccDeDoneFpDup">—</dd>
+              <dt class="col-7 text-muted">Errors</dt><dd class="col-5 mb-0 text-end" id="cccDeDoneErr">—</dd>
+            </dl>
+            <p class="small text-danger mt-2 mb-0 d-none" id="cccDeDonePartialNote"></p>
+          </div>
+          <div class="modal-footer flex-wrap gap-2">
+            <a class="btn btn-primary" id="cccDeOpenDashboardBtn" href="{{ dashboard_url }}">Open Data Entry</a>
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
     <form method="post" class="analytics-output-form js-analytics-run-form" data-loading-message="Syncing selected endpoint..." id="cccApiSyncForm">
       <div class="row g-3">
         <div class="col-lg-5">
@@ -728,4 +832,280 @@
     });
   })();
 </script>
+{% if page_key == 'ccc_api_source' and can_ccc_data_entry_import|default(false) %}
+<script>
+(function () {
+  var CFG = {
+    apiUrl: {{ ccc_import_api_url | tojson }},
+    dashboardUrl: {{ dashboard_url | tojson }},
+    targetSheet: {{ ccc_de_target_sheet | tojson }},
+  };
+  var LS_LAST = 'cts_ccc_de_import_last_summary';
+
+  function qs(id) { return document.getElementById(id); }
+
+  function fmt(n) {
+    if (n === undefined || n === null || n === '') return '—';
+    return String(n);
+  }
+
+  function applyResultToStats(res, els) {
+    if (!res || typeof res !== 'object') return;
+    var errCount = res.errors_count;
+    if (errCount === undefined || errCount === null) {
+      errCount = Array.isArray(res.errors) ? res.errors.length : errCount;
+    }
+    if (els.projects) els.projects.textContent = fmt(res.projects_processed);
+    if (els.fetched) els.fetched.textContent = fmt(res.rows_fetched);
+    if (els.inserted) els.inserted.textContent = fmt(res.rows_inserted);
+    if (els.dup) els.dup.textContent = fmt(res.duplicates_skipped);
+    if (els.valSkip) els.valSkip.textContent = fmt(res.validation_skipped);
+    if (els.err) els.err.textContent = fmt(errCount);
+  }
+
+  function updateSelectedUi(countEl, btn, n) {
+    countEl.textContent = String(n);
+    btn.disabled = n < 1 || btn.dataset.blocked === '1';
+  }
+
+  async function fetchJson(url, opts) {
+    var res = await fetch(url, Object.assign({ credentials: 'same-origin', headers: { Accept: 'application/json' } }, opts || {}));
+    var data = await res.json().catch(function () { return {}; });
+    if (!res.ok) throw new Error(data.error || data.detail || ('HTTP ' + res.status));
+    return data;
+  }
+
+  async function findBlockingCccJob() {
+    try {
+      var data = await fetchJson('/job-history');
+      var jobs = data.jobs || [];
+      return jobs.find(function (j) {
+        return String(j.type || '') === 'ccc_import' && ['pending', 'running'].includes(String(j.status || ''));
+      });
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function saveLastSummary(payload) {
+    try {
+      localStorage.setItem(LS_LAST, JSON.stringify(Object.assign({ savedAt: new Date().toISOString() }, payload)));
+    } catch (e) {}
+  }
+
+  function renderLastSummary(el) {
+    if (!el) return;
+    try {
+      var raw = localStorage.getItem(LS_LAST);
+      if (!raw) return;
+      var o = JSON.parse(raw);
+      el.classList.remove('d-none');
+      el.innerHTML =
+        '<strong>Last import</strong> · inserted ' + fmt(o.rows_inserted) +
+        ', duplicates skipped ' + fmt(o.duplicates_skipped) +
+        ', fetched ' + fmt(o.rows_fetched) +
+        ' <span class="text-muted">(' + (o.savedAt || '').replace('T', ' ').slice(0, 16) + ')</span>';
+    } catch (e) {}
+  }
+
+  var filterEl = qs('cccDeImportFilter');
+  var listEl = qs('cccDeImportList');
+  var countEl = qs('cccDeImportSelectedCount');
+  var btn = qs('cccDeImportBtn');
+  var badge = qs('cccDeImportRunningBadge');
+  var progressWrap = qs('cccDeImportProgress');
+  var progressBar = qs('cccDeImportProgressBar');
+  var progressMsg = qs('cccDeImportProgressMessage');
+  var lastEl = qs('cccDeImportLastSummary');
+  var openDash = qs('cccDeOpenDashboardBtn');
+
+  if (!btn || !CFG.apiUrl) return;
+
+  var statEls = {
+    projects: qs('cccDeStatProjects'),
+    fetched: qs('cccDeStatFetched'),
+    inserted: qs('cccDeStatInserted'),
+    dup: qs('cccDeStatDup'),
+    valSkip: qs('cccDeStatValSkip'),
+    err: qs('cccDeStatErr'),
+  };
+
+  function recount() {
+    var n = document.querySelectorAll('.ccc-de-import-cb:checked').length;
+    updateSelectedUi(countEl, btn, n);
+    var ccount = qs('cccDeConfirmProjectCount');
+    if (ccount) ccount.textContent = String(n);
+  }
+
+  document.querySelectorAll('.ccc-de-import-cb').forEach(function (cb) {
+    cb.addEventListener('change', recount);
+  });
+
+  listEl && listEl.addEventListener('click', function (e) {
+    var row = e.target.closest('.ccc-de-import-row');
+    if (!row || row.classList.contains('ccc-de-import-row--disabled')) return;
+    var cb = row.querySelector('.ccc-de-import-cb');
+    if (cb && !cb.disabled && e.target !== cb) {
+      cb.checked = !cb.checked;
+      cb.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  });
+
+  filterEl && filterEl.addEventListener('input', function () {
+    var q = (filterEl.value || '').trim().toLowerCase();
+    document.querySelectorAll('.ccc-de-import-row').forEach(function (row) {
+      var hay = row.getAttribute('data-ccc-filter') || '';
+      row.classList.toggle('d-none', q.length > 0 && hay.indexOf(q) === -1);
+    });
+  });
+
+  recount();
+  renderLastSummary(lastEl);
+
+  async function refreshBlocked() {
+    var blocking = await findBlockingCccJob();
+    if (blocking) {
+      btn.dataset.blocked = '1';
+      btn.title = 'A CCC import job is already running (' + (blocking.job_id || '') + ').';
+      if (badge) { badge.hidden = false; }
+    } else {
+      btn.dataset.blocked = '0';
+      btn.title = '';
+      if (badge) { badge.hidden = true; }
+    }
+    recount();
+  }
+  refreshBlocked();
+  setInterval(refreshBlocked, 8000);
+
+  var confirmModalEl = qs('cccDeImportConfirmModal');
+  var doneModalEl = qs('cccDeImportDoneModal');
+  var confirmBs = confirmModalEl && window.bootstrap ? bootstrap.Modal.getOrCreateInstance(confirmModalEl) : null;
+  var doneBs = doneModalEl && window.bootstrap ? bootstrap.Modal.getOrCreateInstance(doneModalEl) : null;
+
+  btn.addEventListener('click', async function () {
+    await refreshBlocked();
+    if (btn.dataset.blocked === '1') {
+      window.alert('A CCC import is already running. Wait for it to finish before starting another.');
+      return;
+    }
+    var labels = Array.prototype.map.call(document.querySelectorAll('.ccc-de-import-cb:checked'), function (c) { return c.value; });
+    if (!labels.length) return;
+    recount();
+    if (confirmBs) confirmBs.show();
+  });
+
+  var confirmStartBtn = qs('cccDeImportConfirmStart');
+  confirmStartBtn && confirmStartBtn.addEventListener('click', async function () {
+    var labels = Array.prototype.map.call(document.querySelectorAll('.ccc-de-import-cb:checked'), function (c) { return c.value; });
+    if (!labels.length) return;
+    if (confirmBs) confirmBs.hide();
+
+    btn.disabled = true;
+    confirmStartBtn.disabled = true;
+    btn.dataset.blocked = '1';
+    if (badge) badge.hidden = false;
+    progressWrap && progressWrap.classList.remove('d-none');
+    progressBar && (progressBar.style.width = '5%');
+    progressMsg && (progressMsg.textContent = 'Starting import…');
+
+    var pollSidebarTimer = null;
+    try {
+      var started = await fetchJson(CFG.apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projects: labels }),
+      });
+      var jobId = started.job_id;
+      if (!jobId) throw new Error('No job_id returned');
+
+      pollSidebarTimer = setInterval(function () { refreshBlocked(); }, 4000);
+
+      while (true) {
+        var job = await fetchJson('/job-status/' + encodeURIComponent(jobId));
+        var st = String(job.status || '');
+        var prog = Math.max(0, Math.min(100, Number(job.progress || 0)));
+        if (progressBar) progressBar.style.width = prog + '%';
+        if (progressMsg) progressMsg.textContent = job.message || job.status || '';
+        applyResultToStats(job.result || {}, statEls);
+
+        if (['completed', 'failed', 'cancelled', 'not_found'].includes(st)) {
+          await refreshBlocked();
+
+          if (st === 'completed') {
+            var r = job.result || {};
+            var doneErr = r.errors_count;
+            if (doneErr === undefined || doneErr === null) {
+              doneErr = Array.isArray(r.errors) ? r.errors.length : doneErr;
+            }
+            saveLastSummary({
+              rows_inserted: r.rows_inserted,
+              duplicates_skipped: r.duplicates_skipped,
+              rows_fetched: r.rows_fetched,
+              projects_processed: r.projects_processed,
+              validation_skipped: r.validation_skipped,
+              fingerprint_duplicates_skipped: r.fingerprint_duplicates_skipped,
+              errors_count: doneErr,
+            });
+            renderLastSummary(lastEl);
+
+            var setDone = function (id, v) {
+              var el = qs(id);
+              if (el) el.textContent = fmt(v);
+            };
+            setDone('cccDeDoneProjects', r.projects_processed);
+            setDone('cccDeDoneFetched', r.rows_fetched);
+            setDone('cccDeDoneInserted', r.rows_inserted);
+            setDone('cccDeDoneDup', r.duplicates_skipped);
+            setDone('cccDeDoneValSkip', r.validation_skipped);
+            setDone('cccDeDoneFpDup', r.fingerprint_duplicates_skipped);
+            setDone('cccDeDoneErr', doneErr);
+
+            var partial = qs('cccDeDonePartialNote');
+            if (partial) {
+              var errN = Number(doneErr || 0);
+              var valN = Number(r.validation_skipped || 0);
+              if (errN > 0 || valN > 0) {
+                partial.classList.remove('d-none');
+                partial.textContent = 'Some rows were skipped or reported errors. Check server logs for [CCC_IMPORT_*] lines.';
+              } else {
+                partial.classList.add('d-none');
+              }
+            }
+            if (doneBs) doneBs.show();
+          } else {
+            window.alert(st === 'failed' ? ('Import failed: ' + (job.error || job.message || 'Unknown')) : 'Import was cancelled or lost.');
+          }
+          break;
+        }
+        await new Promise(function (r) { setTimeout(r, 2000); });
+      }
+    } catch (err) {
+      window.alert(err.message || String(err));
+      if (progressMsg) progressMsg.textContent = 'Error: ' + (err.message || err);
+    } finally {
+      if (pollSidebarTimer) clearInterval(pollSidebarTimer);
+      confirmStartBtn.disabled = false;
+      btn.disabled = false;
+      btn.dataset.blocked = '0';
+      if (badge) badge.hidden = true;
+      recount();
+      await refreshBlocked();
+    }
+  });
+
+  if (openDash) {
+    openDash.addEventListener('click', function () {
+      var checked = Array.prototype.slice.call(document.querySelectorAll('.ccc-de-import-cb:checked'));
+      var companies = checked.map(function (c) { return (c.getAttribute('data-company') || '').trim(); }).filter(Boolean);
+      var uniq = Array.from(new Set(companies));
+      try {
+        if (uniq.length === 1) sessionStorage.setItem('cts_data_entry_company', uniq[0]);
+        sessionStorage.setItem('cts_data_entry_sheet', CFG.targetSheet);
+      } catch (e) {}
+    });
+  }
+})();
+</script>
+{% endif %}
 {% endblock %}

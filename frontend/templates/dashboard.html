@@ -638,6 +638,39 @@ body.dark-mode .data-grid__input::placeholder {
   color: rgba(255, 255, 255, 0.58);
 }
 
+select.data-grid__input.data-grid__select {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  padding: var(--data-grid-input-pad-y) var(--data-grid-input-pad-x);
+  background: #ffffff;
+  color: #000;
+  font-size: var(--data-grid-font-size);
+  line-height: 1.25;
+}
+
+select.data-grid__input.data-grid__select:focus {
+  outline: none;
+}
+
+select.data-grid__input.data-grid__select:disabled {
+  cursor: default;
+  background: var(--bs-tertiary-bg);
+  opacity: 0.95;
+  color: inherit;
+}
+
+body.dark-mode select.data-grid__input.data-grid__select {
+  background: #101010;
+  color: #f5f5f5;
+}
+
+body.dark-mode select.data-grid__input.data-grid__select:disabled {
+  background: var(--bs-tertiary-bg);
+  opacity: 0.95;
+}
+
 .data-grid__evidence-btn.is-invalid {
   border-color: var(--bs-danger) !important;
   box-shadow: inset 0 0 0 1px rgba(220, 53, 69, 0.35);
@@ -888,6 +921,11 @@ let currentHeaders = [];
 let currentRules = {};
 let gridRows = [];
 let allSheets = [];
+/** @type {string[]} */
+let reportingPeriodOptions = [];
+let reportingPeriodsLoaded = false;
+/** @type {Record<string, { loaded: boolean, tags: string[] }>} */
+let siteTagOptionsByCompany = {};
 let gridSelectedRows = new Set();
 let lastCheckboxRowIndex = null;
 
@@ -981,6 +1019,211 @@ function getRuleForHeader(header) {
   return currentRules?.[header] || { type: 'text' };
 }
 
+const REPORTING_PERIOD_HEADER = 'Reporting period (month, year)';
+const SITE_TAG_HEADER = 'Site Tag';
+
+const REPORTING_CANONICAL_2026 = [
+  "Jan'-2026", "Feb'-2026", "Mar'-2026", "Apr'-2026", "May'-2026", "Jun'-2026",
+  "Jul'-2026", "Aug'-2026", "Sep'-2026", "Oct'-2026", "Nov'-2026", "Dec'-2026",
+];
+
+const RP_MONTH_LOOKUP = (() => {
+  const names = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const m = {};
+  names.forEach((n, i) => {
+    const idx = i + 1;
+    m[n.toLowerCase()] = idx;
+    m[n.slice(0, 3).toLowerCase()] = idx;
+  });
+  return m;
+})();
+
+function isReportingPeriodColumn(header) {
+  return String(header || '') === REPORTING_PERIOD_HEADER;
+}
+
+function isSiteTagColumn(header) {
+  return String(header || '') === SITE_TAG_HEADER;
+}
+
+function collapseWs(value) {
+  return String(value ?? '').trim().replace(/\s+/g, ' ');
+}
+
+function canonicalReporting2026(month, year) {
+  if (year !== 2026 || month < 1 || month > 12) return null;
+  return REPORTING_CANONICAL_2026[month - 1];
+}
+
+function normalizeReportingPeriodClient(value) {
+  if (value == null || value === '') return '';
+  const s0 = collapseWs(value);
+  if (!s0) return '';
+  for (const p of REPORTING_CANONICAL_2026) {
+    if (s0.toLowerCase() === p.toLowerCase()) return p;
+  }
+  const tok = /^(?<mon>[A-Za-z]+)[\s'\-]*(?<year>\d{4})\s*$/.exec(s0);
+  if (tok?.groups) {
+    const monRaw = tok.groups.mon.toLowerCase();
+    let mn = RP_MONTH_LOOKUP[monRaw];
+    if (mn == null && monRaw.length >= 3) mn = RP_MONTH_LOOKUP[monRaw.slice(0, 3)];
+    if (mn != null) {
+      const y = parseInt(tok.groups.year, 10);
+      const c = canonicalReporting2026(mn, y);
+      if (c) return c;
+    }
+    return s0;
+  }
+  const isoM = /^(?<year>\d{4})\s*[-/]\s*(?<month>\d{1,2})\s*$/.exec(s0);
+  if (isoM?.groups) {
+    const y = parseInt(isoM.groups.year, 10);
+    const mo = parseInt(isoM.groups.month, 10);
+    const c = canonicalReporting2026(mo, y);
+    if (c) return c;
+    return s0;
+  }
+  const slashMY = /^(?<month>\d{1,2})\s*\/\s*(?<year>\d{4})\s*$/.exec(s0);
+  if (slashMY?.groups) {
+    const mo = parseInt(slashMY.groups.month, 10);
+    const y = parseInt(slashMY.groups.year, 10);
+    const c = canonicalReporting2026(mo, y);
+    if (c) return c;
+    return s0;
+  }
+  const slashDMY = /^(?<day>\d{1,2})\s*\/\s*(?<month>\d{1,2})\s*\/\s*(?<year>\d{4})\s*$/.exec(s0);
+  if (slashDMY?.groups) {
+    const mo = parseInt(slashDMY.groups.month, 10);
+    const y = parseInt(slashDMY.groups.year, 10);
+    const c = canonicalReporting2026(mo, y);
+    if (c) return c;
+    return s0;
+  }
+  const slashYMD = /^(?<year>\d{4})\s*\/\s*(?<month>\d{1,2})\s*\/\s*(?<day>\d{1,2})\s*$/.exec(s0);
+  if (slashYMD?.groups) {
+    const mo = parseInt(slashYMD.groups.month, 10);
+    const y = parseInt(slashYMD.groups.year, 10);
+    const c = canonicalReporting2026(mo, y);
+    if (c) return c;
+    return s0;
+  }
+  const ymdDash = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s0);
+  if (ymdDash) {
+    const y = parseInt(ymdDash[1], 10);
+    const mo = parseInt(ymdDash[2], 10);
+    const c = canonicalReporting2026(mo, y);
+    if (c) return c;
+    return s0;
+  }
+  const dmyDash = /^(\d{1,2})-(\d{1,2})-(\d{4})$/.exec(s0);
+  if (dmyDash) {
+    const mo = parseInt(dmyDash[2], 10);
+    const y = parseInt(dmyDash[3], 10);
+    const c = canonicalReporting2026(mo, y);
+    if (c) return c;
+    const mo2 = parseInt(dmyDash[1], 10);
+    const c2 = canonicalReporting2026(mo2, y);
+    if (c2) return c2;
+    return s0;
+  }
+  return s0;
+}
+
+function normalizeSiteTagAgainstOptions(value, options) {
+  const cleaned = collapseWs(value);
+  if (!cleaned) return '';
+  if (!options?.length) return cleaned;
+  const lc = cleaned.toLowerCase().replace(/\s+/g, ' ');
+  for (const opt of options) {
+    const o = String(opt || '');
+    if (!o) continue;
+    if (o.toLowerCase() === cleaned.toLowerCase()) return o;
+    if (o.toLowerCase().replace(/\s+/g, ' ') === lc) return o;
+  }
+  return cleaned;
+}
+
+function getSiteTagOptionsList() {
+  const slot = siteTagOptionsByCompany[currentCompany];
+  return Array.isArray(slot?.tags) ? slot.tags : [];
+}
+
+async function ensureReportingPeriodOptions() {
+  if (reportingPeriodsLoaded) return;
+  try {
+    const data = await fetchJson('/api/data-entry/reporting-periods');
+    if (data.ok && Array.isArray(data.periods)) {
+      reportingPeriodOptions = data.periods;
+    }
+  } catch (e) {
+    console.warn('Reporting periods API failed; using text inputs.', e);
+  } finally {
+    reportingPeriodsLoaded = true;
+  }
+}
+
+async function ensureSiteTagOptions(company) {
+  const key = String(company || '').trim();
+  if (!key) return;
+  const slot = siteTagOptionsByCompany[key];
+  if (slot?.loaded) return;
+  try {
+    const data = await fetchJson(`/api/data-entry/site-tags?company=${encodeURIComponent(key)}`);
+    const tags = Array.isArray(data.site_tags) ? data.site_tags : [];
+    siteTagOptionsByCompany[key] = { loaded: true, tags };
+  } catch (e) {
+    console.warn('Site tags API failed; using text inputs.', e);
+    siteTagOptionsByCompany[key] = { loaded: true, tags: [] };
+  }
+}
+
+function buildSelectCell(row, rowIndex, header, colIndex, options, kind) {
+  const rawVal = String(row?.cells?.[colIndex] ?? '');
+  const trimmed = rawVal.trim();
+  const normalized = kind === 'period'
+    ? normalizeReportingPeriodClient(trimmed)
+    : normalizeSiteTagAgainstOptions(trimmed, options);
+  const displayCandidate = normalized || collapseWs(trimmed);
+  let matchedOption = null;
+  for (const opt of options) {
+    if (!opt) continue;
+    if (opt === displayCandidate) {
+      matchedOption = opt;
+      break;
+    }
+    if (opt.toLowerCase() === displayCandidate.toLowerCase()) {
+      matchedOption = opt;
+      break;
+    }
+    if (collapseWs(opt).toLowerCase() === collapseWs(displayCandidate).toLowerCase()) {
+      matchedOption = opt;
+      break;
+    }
+  }
+  const orphanNeeded = matchedOption == null && displayCandidate !== '';
+  const rule = getRuleForHeader(header);
+  const title = escapeHtml(rule.format ? `Format: ${rule.format}` : '');
+  const readonly = row?.is_editable ? '' : 'disabled tabindex="-1"';
+  const req = isRequiredRule(rule) ? ' aria-required="true"' : '';
+  let optsHtml = '';
+  const emptySel = displayCandidate === '' ? ' selected' : '';
+  optsHtml += `<option value=""${emptySel}></option>`;
+  if (orphanNeeded) {
+    optsHtml += `<option value="${escapeHtml(displayCandidate)}" selected>${escapeHtml(displayCandidate)}</option>`;
+  }
+  for (const opt of options) {
+    const sel = matchedOption === opt ? ' selected' : '';
+    optsHtml += `<option value="${escapeHtml(opt)}"${sel}>${escapeHtml(opt)}</option>`;
+  }
+  return `<td class="data-grid__cell" data-row="${rowIndex}" data-col="${colIndex}">
+    <div class="data-grid__cell-inner">
+      <select class="data-grid__input data-grid__select" title="${title}" data-row="${rowIndex}" data-col="${colIndex}" data-header="${escapeHtml(header)}" data-controlled-field="${kind}" ${readonly}${req}>
+        ${optsHtml}
+      </select>
+      <div class="data-grid__inline-error" data-error-for="${rowIndex}-${colIndex}"></div>
+    </div>
+  </td>`;
+}
+
 function isEvidenceSourceHeader(header) {
   const s = String(header || '').trim();
   const priority = ['Source_File', 'Source file', 'source_file', 'Source File', 'Data Source', 'Data source', 'Datasource', 'Source'];
@@ -1059,7 +1302,17 @@ function tryConvertEuropeanDateString(raw) {
 
 function normalizePastedCellValueForColumn(cellValue, colIndex) {
   if (colIndex < 0 || colIndex >= currentHeaders.length) return cellValue;
-  const rule = getRuleForHeader(currentHeaders[colIndex]);
+  const header = currentHeaders[colIndex];
+  if (isReportingPeriodColumn(header)) {
+    const v = collapseWs(String(cellValue ?? ''));
+    return normalizeReportingPeriodClient(v) || v;
+  }
+  if (isSiteTagColumn(header)) {
+    const tags = getSiteTagOptionsList();
+    const v = collapseWs(String(cellValue ?? ''));
+    return normalizeSiteTagAgainstOptions(v, tags) || v;
+  }
+  const rule = getRuleForHeader(header);
   if (rule.type !== 'date') return cellValue;
   const s = String(cellValue ?? '').trim();
   const conv = tryConvertEuropeanDateString(s);
@@ -1112,6 +1365,13 @@ function buildInputCell(row, rowIndex, header, colIndex) {
   const evIdx = getEvidenceColumnIndex();
   if (colIndex === evIdx && evIdx >= 0) {
     return buildEvidenceCell(row, rowIndex, colIndex);
+  }
+  if (isReportingPeriodColumn(header) && reportingPeriodOptions.length > 0) {
+    return buildSelectCell(row, rowIndex, header, colIndex, reportingPeriodOptions, 'period');
+  }
+  const siteOpts = getSiteTagOptionsList();
+  if (isSiteTagColumn(header) && siteOpts.length > 0) {
+    return buildSelectCell(row, rowIndex, header, colIndex, siteOpts, 'site_tag');
   }
   const rule = getRuleForHeader(header);
   // Date columns use type="text" so Excel paste (DD/MM/YYYY etc.) is visible until converted; validation still enforces YYYY-MM-DD.
@@ -1286,21 +1546,16 @@ function renderGrid() {
     });
   });
 
-  tbody.querySelectorAll('.data-grid__input').forEach((input) => {
-    input.addEventListener('focus', () => setActiveCell(input));
-    input.addEventListener('click', () => setActiveCell(input));
-    input.addEventListener('input', () => {
-      const rowIndex = Number(input.getAttribute('data-row'));
-      const colIndex = Number(input.getAttribute('data-col'));
-      if (!gridRows[rowIndex]) return;
-      gridRows[rowIndex].cells[colIndex] = input.value;
-      input.classList.remove('is-invalid');
-      const errEl = table.querySelector(`[data-error-for="${rowIndex}-${colIndex}"]`);
-      if (errEl) errEl.textContent = '';
-      ensureAppendRow();
-    });
-    input.addEventListener('keydown', handleGridKeydown);
-    input.addEventListener('paste', handleGridPaste);
+  tbody.querySelectorAll('.data-grid__input').forEach((control) => {
+    control.addEventListener('focus', () => setActiveCell(control));
+    control.addEventListener('click', () => setActiveCell(control));
+    if (control instanceof HTMLSelectElement) {
+      control.addEventListener('change', () => syncGridFromControl(control));
+    } else {
+      control.addEventListener('input', () => syncGridFromControl(control));
+    }
+    control.addEventListener('keydown', handleGridKeydown);
+    control.addEventListener('paste', handleGridPaste);
   });
 
   tbody.querySelectorAll('.data-grid__evidence-btn').forEach((btn) => {
@@ -1323,6 +1578,20 @@ function setActiveCell(input) {
   table.querySelectorAll('.data-grid__cell.is-active').forEach((cell) => cell.classList.remove('is-active'));
   const td = input.closest('.data-grid__cell');
   if (td) td.classList.add('is-active');
+}
+
+function syncGridFromControl(control) {
+  if (!(control instanceof HTMLInputElement || control instanceof HTMLSelectElement)) return;
+  if (control instanceof HTMLInputElement && control.readOnly) return;
+  if (control instanceof HTMLSelectElement && control.disabled) return;
+  const rowIndex = Number(control.getAttribute('data-row'));
+  const colIndex = Number(control.getAttribute('data-col'));
+  if (!gridRows[rowIndex]) return;
+  gridRows[rowIndex].cells[colIndex] = control.value;
+  control.classList.remove('is-invalid');
+  const errEl = table.querySelector(`[data-error-for="${rowIndex}-${colIndex}"]`);
+  if (errEl) errEl.textContent = '';
+  ensureAppendRow();
 }
 
 function setActiveEvidenceCell(btn) {
@@ -1385,6 +1654,10 @@ function focusCell(rowIndex, colIndex) {
     return;
   }
   const input = table.querySelector(`.data-grid__input[data-row="${rowIndex}"][data-col="${colIndex}"]`);
+  if (input instanceof HTMLSelectElement && !input.disabled) {
+    input.focus();
+    return;
+  }
   if (input instanceof HTMLInputElement && !input.readOnly) {
     input.focus();
     input.select?.();
@@ -1404,9 +1677,15 @@ function ensureEditableRowIndex(rowIndex) {
 
 function handleGridKeydown(e) {
   const input = e.target;
-  if (!(input instanceof HTMLInputElement) || input.readOnly) return;
+  const isText = input instanceof HTMLInputElement && !input.readOnly;
+  const isSel = input instanceof HTMLSelectElement && !input.disabled;
+  if (!isText && !isSel) return;
   const rowIndex = Number(input.getAttribute('data-row'));
   const colIndex = Number(input.getAttribute('data-col'));
+
+  if (isSel && ['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+    return;
+  }
 
   if (e.key === 'Enter') {
     e.preventDefault();
@@ -1433,7 +1712,7 @@ function handleGridKeydown(e) {
   }
 
   if (['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
-    if (input.selectionStart !== input.selectionEnd) return;
+    if (input instanceof HTMLInputElement && input.selectionStart !== input.selectionEnd) return;
     let nextRow = rowIndex;
     let nextCol = colIndex;
     if (e.key === 'ArrowRight') nextCol += 1;
@@ -1450,7 +1729,9 @@ function handleGridKeydown(e) {
 
 function handleGridPaste(e) {
   const input = e.target;
-  if (!(input instanceof HTMLInputElement) || input.readOnly) return;
+  const isText = input instanceof HTMLInputElement && !input.readOnly;
+  const isSel = input instanceof HTMLSelectElement && !input.disabled;
+  if (!isText && !isSel) return;
   const text = (e.clipboardData || window.clipboardData).getData('text');
   if (text == null || text === '') return;
 
@@ -1461,7 +1742,33 @@ function handleGridPaste(e) {
   if (!isMultiCell) {
     const evIdxEarly = getEvidenceColumnIndex();
     if (startCol === evIdxEarly && evIdxEarly >= 0) return;
-    const rule = getRuleForHeader(currentHeaders[startCol]);
+    const header = currentHeaders[startCol];
+    if (isReportingPeriodColumn(header)) {
+      e.preventDefault();
+      const v = collapseWs(text.trim());
+      const finalVal = normalizeReportingPeriodClient(v) || v;
+      if (gridRows[startRow]) {
+        gridRows[startRow].cells[startCol] = finalVal;
+        ensureAppendRow();
+        renderGrid();
+        focusCell(startRow, startCol);
+      }
+      return;
+    }
+    if (isSiteTagColumn(header)) {
+      e.preventDefault();
+      const tags = getSiteTagOptionsList();
+      const v = collapseWs(text.trim());
+      const finalVal = normalizeSiteTagAgainstOptions(v, tags) || v;
+      if (gridRows[startRow]) {
+        gridRows[startRow].cells[startCol] = finalVal;
+        ensureAppendRow();
+        renderGrid();
+        focusCell(startRow, startCol);
+      }
+      return;
+    }
+    const rule = getRuleForHeader(header);
     if (rule.type === 'date') {
       const trimmed = text.trim();
       const conv = tryConvertEuropeanDateString(trimmed);
@@ -1520,7 +1827,16 @@ function collectRows() {
       row_index: row.row_index || (idx + 1),
       created_at: row.created_at || '',
       is_persisted: Boolean(row.is_persisted),
-      cells: currentHeaders.map((_, colIndex) => String(row.cells?.[colIndex] ?? '').trim()),
+      cells: currentHeaders.map((h, colIndex) => {
+        let v = String(row.cells?.[colIndex] ?? '').trim();
+        if (isReportingPeriodColumn(h)) {
+          v = normalizeReportingPeriodClient(v) || collapseWs(v);
+        } else if (isSiteTagColumn(h)) {
+          const tags = getSiteTagOptionsList();
+          v = normalizeSiteTagAgainstOptions(v, tags) || collapseWs(v);
+        }
+        return v;
+      }),
     }));
 }
 
@@ -1557,7 +1873,7 @@ function validateGridForSave() {
         return;
       }
       if (!raw) return;
-      if (rule.type === 'date' && !isValidYyyyMmDd(raw)) {
+      if (!isReportingPeriodColumn(header) && rule.type === 'date' && !isValidYyyyMmDd(raw)) {
         issues.push({ rowIndex, colIndex, msg: `${header}: use YYYY-MM-DD` });
         return;
       }
@@ -1593,7 +1909,7 @@ function validateGridForSave() {
   }
 
   const firstInput = table.querySelector(`.data-grid__input[data-row="${first.rowIndex}"][data-col="${first.colIndex}"]`);
-  if (firstInput) {
+  if (firstInput && (firstInput instanceof HTMLInputElement || firstInput instanceof HTMLSelectElement)) {
     firstInput.focus();
     const tr = firstInput.closest('tr');
     tr?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
@@ -1618,6 +1934,7 @@ function jobTypeLabel(type) {
   const t = String(type || '').toLowerCase();
   if (t === 'translation') return 'Translation';
   if (t === 'mapping') return 'Mapping';
+  if (t === 'ccc_import') return 'CCC import';
   if (t === 'evidence_processing') return 'Evidence processing';
   return t || 'Job';
 }
@@ -1843,6 +2160,8 @@ async function selectSheet(sheet, flashEntryGroups = null) {
     ? `${currentHeaders.length} columns • sticky headers • paste from Excel • saved like booklet entries`
     : `${currentHeaders.length} columns • sticky headers • last 7 days editable`;
   await attachEvidenceCountsToRows();
+  await ensureReportingPeriodOptions();
+  await ensureSiteTagOptions(currentCompany);
   renderGrid();
   if (flashEntryGroups?.length) flashSavedEntryGroups(flashEntryGroups);
   setStatus('');
@@ -2046,6 +2365,7 @@ async function mapNow() {
 
 elCompany?.addEventListener('change', async () => {
   currentCompany = elCompany.value;
+  void ensureSiteTagOptions(currentCompany);
   await loadSheets();
 });
 elSheetFilter?.addEventListener('input', () => renderSheets(elSheetFilter.value));
@@ -2502,6 +2822,8 @@ document.getElementById('evidenceSearchSort')?.addEventListener('change', () => 
   loadEvidencePopular();
 });
 
+void ensureReportingPeriodOptions();
+
 (async () => {
   try {
     applyWorkspaceMode(window.localStorage.getItem(WORKSPACE_MODE_KEY) === '1');
@@ -2513,12 +2835,43 @@ document.getElementById('evidenceSearchSort')?.addEventListener('change', () => 
   } catch (e) {
     applyGridZoom(100);
   }
+
+  let deeplinkCompany = '';
+  let deeplinkSheet = '';
+  try {
+    deeplinkCompany = (sessionStorage.getItem('cts_data_entry_company') || '').trim();
+    deeplinkSheet = (sessionStorage.getItem('cts_data_entry_sheet') || '').trim();
+  } catch (e) {}
+
+  if (deeplinkCompany && COMPANIES.length) {
+    const hit = COMPANIES.find((c) => {
+      if (typeof c === 'object' && c) {
+        return String(c.key || '') === deeplinkCompany || String(c.label || '') === deeplinkCompany;
+      }
+      return String(c) === deeplinkCompany;
+    });
+    if (hit && typeof hit === 'object') {
+      currentCompany = hit.key || hit.label || currentCompany;
+    }
+  }
+
   if (!currentCompany && COMPANIES.length) currentCompany = (COMPANIES[0].key || COMPANIES[0]);
+
   try {
     await loadSheets();
-    const preferred = allSheets[0];
+    let preferred = allSheets[0];
+    if (deeplinkSheet) {
+      const exact = allSheets.find((s) => String(s) === deeplinkSheet);
+      if (exact) preferred = exact;
+    }
     if (preferred) await selectSheet(preferred);
     await refreshJobHistory();
+    if (deeplinkCompany || deeplinkSheet) {
+      try {
+        sessionStorage.removeItem('cts_data_entry_company');
+        sessionStorage.removeItem('cts_data_entry_sheet');
+      } catch (err) {}
+    }
   } catch (e) {
     setStatus(`Failed to load schema: ${e.message}`);
   }

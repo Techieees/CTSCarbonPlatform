@@ -1,0 +1,314 @@
+[
+  {
+    "project_name": "17- PRO3005 3005 FIN04 Koski",
+    "platform_site_tag": "3005 FIN04 Koski",
+    "project_location": "Finland",
+    "responsible_company": "CTS Finland"
+  },
+  {
+    "project_name": "27 - PRO1050 1050 Pegasus Ph2",
+    "platform_site_tag": "1050 Pegasus Ph2",
+    "project_location": "Norway",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "28 - PRO3016 Kajaani",
+    "platform_site_tag": "3016 Kajaani",
+    "project_location": "Finland",
+    "responsible_company": "CTS Finland"
+  },
+  {
+    "project_name": "29 - PRO1047 1047 Kvandal KSB1",
+    "platform_site_tag": "1047 Kvandal KSB1",
+    "project_location": "Norway",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "30 - PRO3021 3021 Verne Vantaa",
+    "platform_site_tag": "3021 Verne Vantaa",
+    "project_location": "Finland",
+    "responsible_company": "CTS Finland"
+  },
+  {
+    "project_name": "35- PRO2052 2052 Conapto",
+    "platform_site_tag": "2052 Conapto",
+    "project_location": "Sweden",
+    "responsible_company": "CTS Sweden"
+  },
+  {
+    "project_name": "37 - PRO1070 1070 Pegasus Ph3",
+    "platform_site_tag": "1070 Pegasus Ph3",
+    "project_location": "Norway",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "38 - PRO1080 1080 Kvandal KSB2",
+    "platform_site_tag": "1080 Kvandal KSB2",
+    "project_location": "Norway",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "40- PRO3005 3005 FIN04 GMP",
+    "platform_site_tag": "3005 FIN04 GMP",
+    "project_location": "Finland",
+    "responsible_company": "CTS Finland"
+  },
+  {
+    "project_name": "43 - PRO1054 1054 Fyresdal",
+    "platform_site_tag": "1054 Fyresdal",
+    "project_location": "Norway",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "44- PRO3020 Seinajoki Data Park",
+    "platform_site_tag": "3020 Seinajoki Data Park",
+    "project_location": "Finland",
+    "responsible_company": "CTS Finland"
+  },
+  {
+    "project_name": "CTS HQ Switzerland",
+    "platform_site_tag": "CTS HQ Switzerland",
+    "project_location": "Switzerland",
+    "responsible_company": "CTS HQ Switzerland"
+  },
+  {
+    "project_name": "Navitas Portugal EU HQ Office",
+    "platform_site_tag": "Navitas Portugal EU HQ Office",
+    "project_location": "Portugal",
+    "responsible_company": "Navitas Portugal"
+  },
+  {
+    "project_name": "Navitas Nordics Oslo Office",
+    "platform_site_tag": "Navitas Nordics Oslo Office",
+    "project_location": "Norway",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "CAERUS Oslo Office",
+    "platform_site_tag": "CAERUS Oslo Office",
+    "project_location": "Norway",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "CTS-VDC Services",
+    "platform_site_tag": "CTS-VDC Services",
+    "project_location": "Norway",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "CTS Nordics AS Oslo Office",
+    "platform_site_tag": "CTS Nordics AS Oslo Office",
+    "project_location": "Norway",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "CTS Nordics AB Stockholm Office",
+    "platform_site_tag": "CTS Nordics AB Stockholm Office",
+    "project_location": "Sweden",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "CTS Nordics ApS Office",
+    "platform_site_tag": "CTS Nordics ApS Office",
+    "project_location": "Denmark",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "CTS Nordics OY Office",
+    "platform_site_tag": "CTS Nordics OY Office",
+    "project_location": "Finland",
+    "responsible_company": "CTS Finland"
+  },
+  {
+    "project_name": "Grimstad Norway",
+    "platform_site_tag": "Grimstad Norway",
+    "project_location": "Norway",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "Kristiansand Norway",
+    "platform_site_tag": "Kristiansand Norway",
+    "project_location": "Norway",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "Brogata Norway",
+    "platform_site_tag": "Brogata Norway",
+    "project_location": "Norway",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "Krakow Poland",
+    "platform_site_tag": "Krakow Poland",
+    "project_location": "Poland",
+    "responsible_company": "CTS Europe"
+  },
+  {
+    "project_name": "Mecwide Nordics Oslo Office",
+    "platform_site_tag": "Mecwide Nordics Oslo Office",
+    "project_location": "Norway",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "Larvik Warehouse",
+    "platform_site_tag": "Larvik Warehouse",
+    "project_location": "Norway",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "Porvelox Electro Europe",
+    "platform_site_tag": "Porvelox Electro Europe",
+    "project_location": "Norway",
+    "responsible_company": "CTS Europe"
+  },
+  {
+    "project_name": "DC Piping",
+    "platform_site_tag": "DC Piping",
+    "project_location": "Norway",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "NEP Switchboards",
+    "platform_site_tag": "NEP Switchboards",
+    "project_location": "Norway",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "Gapit Nordics",
+    "platform_site_tag": "Gapit Nordics",
+    "project_location": "Norway",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "NordicEPOD AS",
+    "platform_site_tag": "NordicEPOD AS",
+    "project_location": "Norway",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "NordicEPOD Portugal",
+    "platform_site_tag": "NordicEPOD Portugal",
+    "project_location": "Portugal",
+    "responsible_company": "CTS Europe"
+  },
+  {
+    "project_name": "CTS Nordics EU HQ Office",
+    "platform_site_tag": "CTS Nordics EU HQ Office",
+    "project_location": "Norway",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "CTS Europe Spain SL",
+    "platform_site_tag": "CTS Europe Spain SL",
+    "project_location": "Spain",
+    "responsible_company": "CTS Europe Spain SL"
+  },
+  {
+    "project_name": "CTS UK Europe Limited",
+    "platform_site_tag": "CTS UK Europe Limited",
+    "project_location": "United Kingdom",
+    "responsible_company": "CTS UK Europe Limited"
+  },
+  {
+    "project_name": "BIMMS",
+    "platform_site_tag": "BIMMS",
+    "project_location": "United Kingdom",
+    "responsible_company": "BIMMS"
+  },
+  {
+    "project_name": "Commissioning Services Nordics AS",
+    "platform_site_tag": "Commissioning Services Nordics AS",
+    "project_location": "Norway",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "CTS Security Solutions AB Stockholm Office",
+    "platform_site_tag": "CTS Security Solutions AB Stockholm Office",
+    "project_location": "Sweden",
+    "responsible_company": "CTS Sweden"
+  },
+  {
+    "project_name": "CTS Europe Italy SRL",
+    "platform_site_tag": "CTS Europe Italy SRL",
+    "project_location": "Italy",
+    "responsible_company": "CTS Europe Italy SRL"
+  },
+  {
+    "project_name": "QEC Nordics AS Oslo Office",
+    "platform_site_tag": "QEC Nordics AS Oslo Office",
+    "project_location": "Norway",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "CTS Modular DC",
+    "platform_site_tag": "CTS Modular DC",
+    "project_location": "Norway",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "Fortica AS",
+    "platform_site_tag": "Fortica AS",
+    "project_location": "Norway",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "Hydropark",
+    "platform_site_tag": "Hydropark",
+    "project_location": "Norway",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "The Weaver",
+    "platform_site_tag": "The Weaver",
+    "project_location": "United Kingdom",
+    "responsible_company": "CTS UK Europe Limited"
+  },
+  {
+    "project_name": "CTS Europe France SAS",
+    "platform_site_tag": "CTS Europe France SAS",
+    "project_location": "France",
+    "responsible_company": "CTS Europe France SAS"
+  },
+  {
+    "project_name": "CTS Europe Germany GmbH",
+    "platform_site_tag": "CTS Europe Germany GmbH",
+    "project_location": "Germany",
+    "responsible_company": "CTS Europe Germany GmbH"
+  },
+  {
+    "project_name": "CTS Europe Austria GmbH",
+    "platform_site_tag": "CTS Europe Austria GmbH",
+    "project_location": "Austria",
+    "responsible_company": "CTS Europe Austria GmbH"
+  },
+  {
+    "project_name": "CTS Nordics Iceland ehf.",
+    "platform_site_tag": "CTS Nordics Iceland ehf.",
+    "project_location": "Iceland",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "DCS Norway AS",
+    "platform_site_tag": "DCS Norway AS",
+    "project_location": "Norway",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "CXS - INTERNATIONAL LDA",
+    "platform_site_tag": "CXS - INTERNATIONAL LDA",
+    "project_location": "Portugal",
+    "responsible_company": "CTS Europe"
+  },
+  {
+    "project_name": "DC People",
+    "platform_site_tag": "DC People",
+    "project_location": "Norway",
+    "responsible_company": "CTS Nordics"
+  },
+  {
+    "project_name": "CTS DC India",
+    "platform_site_tag": "CTS DC India",
+    "project_location": "India",
+    "responsible_company": "CTS DC India"
+  }
+]
