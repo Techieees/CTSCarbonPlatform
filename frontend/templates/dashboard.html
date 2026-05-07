@@ -117,6 +117,11 @@
                                         <button class="btn btn-sm btn-ghost px-2 py-1" type="button" id="zoomInBtn" aria-label="Zoom in">+</button>
                                         <span class="text-muted small">Ctrl + scroll</span>
                                     </div>
+                                    <div class="data-entry-toolbar__chip data-entry-toolbar__chip--selection d-none" id="dataEntrySelectionChip">
+                                        <span class="fw-semibold small" id="dataEntrySelectionLabel">0 rows selected</span>
+                                        <button class="btn btn-sm btn-outline-secondary" type="button" id="selectVisibleRowsBtn">Select saved rows</button>
+                                        <button class="btn btn-sm btn-ghost" type="button" id="clearRowSelectionBtn">Clear</button>
+                                    </div>
                                 </div>
                             </div>
 
@@ -297,7 +302,7 @@
                 <div class="modal-header border-0 pb-0">
                     <div>
                         <h5 class="modal-title fw-semibold" id="evidenceAttachmentsModalTitle">Evidence & invoices</h5>
-                        <small class="text-muted d-block">Attach invoices or evidence files to this row.</small>
+                        <small class="text-muted d-block" id="evidenceModalScopeLine">Attach invoices or evidence files to this row.</small>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -324,18 +329,58 @@
                             </div>
                             <div id="evidenceUploadStatus" class="small text-muted mb-3"></div>
                             <div class="fw-semibold small mb-2">Attach existing</div>
-                            <div class="input-group input-group-sm mb-2">
-                                <input type="search" class="form-control" id="evidenceSearchInput" placeholder="Search by filename…" autocomplete="off" />
-                                <button class="btn btn-outline-secondary" type="button" id="evidenceSearchBtn">Search</button>
+                            <div class="row g-2 align-items-center mb-2">
+                                <div class="col-sm-7">
+                                    <div class="input-group input-group-sm">
+                                        <input type="search" class="form-control" id="evidenceSearchInput" placeholder="Search by filename…" autocomplete="off" />
+                                        <button class="btn btn-outline-secondary" type="button" id="evidenceSearchBtn">Search</button>
+                                    </div>
+                                </div>
+                                <div class="col-sm-5">
+                                    <label class="visually-hidden" for="evidenceSearchSort">Sort results</label>
+                                    <select class="form-select form-select-sm" id="evidenceSearchSort" aria-label="Sort search results">
+                                        <option value="newest">Newest first</option>
+                                        <option value="filename">File name A–Z</option>
+                                        <option value="most_linked">Most linked</option>
+                                    </select>
+                                </div>
                             </div>
-                            <div id="evidenceSearchResults" class="list-group list-group-flush evidence-modal-list border rounded-3" style="max-height: 220px; overflow:auto;"></div>
-                            <div class="fw-semibold small mt-3 mb-2">Recent uploads</div>
-                            <div id="evidenceRecentList" class="list-group list-group-flush evidence-modal-list border rounded-3" style="max-height: 180px; overflow:auto;"></div>
+                            <div id="evidenceSearchResults" class="list-group list-group-flush evidence-modal-list border rounded-3 mb-3" style="max-height: 200px; overflow:auto;"></div>
+                            <div class="fw-semibold small mb-2">Recent uploads</div>
+                            <div id="evidenceRecentList" class="list-group list-group-flush evidence-modal-list border rounded-3 mb-3" style="max-height: 140px; overflow:auto;"></div>
+                            <div class="fw-semibold small mb-2">Most reused</div>
+                            <div id="evidencePopularList" class="list-group list-group-flush evidence-modal-list border rounded-3" style="max-height: 140px; overflow:auto;"></div>
                         </div>
                     </div>
                 </div>
                 <div class="modal-footer border-0 pt-0">
                     <button type="button" class="btn btn-ghost btn-sm" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade evidence-preview-modal-host" id="evidenceAuditPreviewModal" tabindex="-1" aria-labelledby="evidenceAuditPreviewTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable" id="evidenceAuditPreviewDialog">
+            <div class="modal-content border-0 shadow-lg evidence-preview-modal">
+                <div class="modal-header border-0 pb-0 flex-wrap gap-2">
+                    <div class="flex-grow-1 min-w-0">
+                        <h5 class="modal-title fw-semibold text-truncate" id="evidenceAuditPreviewTitle">Preview</h5>
+                        <div class="small text-muted text-break" id="evidenceAuditPreviewMeta"></div>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        <a class="btn btn-sm btn-outline-secondary d-none" id="evidenceAuditPreviewDownload" href="#" download>Download</a>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="evidenceAuditPreviewFullscreenBtn" aria-pressed="false">Full screen</button>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                </div>
+                <div class="modal-body pt-2">
+                    <div id="evidenceAuditPreviewLinkedSummary" class="small mb-3 p-2 rounded-3 bg-body-secondary evidence-preview-linked-summary"></div>
+                    <div class="position-relative rounded-3 border evidence-preview-frame-shell bg-body-secondary">
+                        <div id="evidenceAuditPreviewPlaceholder" class="evidence-preview-placeholder text-muted small p-4 text-center">Loading preview…</div>
+                        <iframe class="d-none w-100 rounded-3 evidence-preview-iframe" title="Document preview" id="evidenceAuditPreviewIframe"></iframe>
+                        <img class="d-none img-fluid mx-auto rounded-3 evidence-preview-img" alt="" id="evidenceAuditPreviewImg" />
+                    </div>
                 </div>
             </div>
         </div>
@@ -576,6 +621,7 @@ body.dark-mode .data-entry-grid-table tbody th,
 body.dark-mode .data-entry-grid-table thead th,
 body.dark-mode .data-grid__cell,
 body.dark-mode .data-grid__index,
+body.dark-mode .data-grid__select-col,
 body.dark-mode .data-grid__meta,
 body.dark-mode .data-grid__input,
 body.dark-mode .data-grid__row-actions {
@@ -675,6 +721,16 @@ body.dark-mode .evidence-modal .modal-content {
   color: #f0f0f0;
 }
 
+body.dark-mode .evidence-preview-modal .modal-content {
+  background: #121212;
+  color: #f0f0f0;
+}
+
+body.dark-mode .evidence-preview-linked-summary {
+  background: #1b1b1b !important;
+  color: #eaeaea;
+}
+
 .evidence-modal.evidence-modal--busy .modal-body button:not(.btn-close),
 .evidence-modal.evidence-modal--busy .modal-body .btn,
 .evidence-modal.evidence-modal--busy .modal-body .evidence-drop-zone,
@@ -688,6 +744,57 @@ body.dark-mode .evidence-modal .modal-content {
 .evidence-modal.evidence-modal--busy .modal-footer button[data-bs-dismiss="modal"] {
   pointer-events: auto;
   opacity: 1;
+}
+
+.data-grid__select-col {
+  width: calc(36px * var(--data-grid-zoom));
+  min-width: calc(36px * var(--data-grid-zoom));
+  vertical-align: middle;
+}
+
+.data-grid__row-selected td {
+  box-shadow: inset 3px 0 0 0 rgba(13, 110, 253, 0.55);
+}
+
+body.dark-mode .data-grid__row-selected td {
+  box-shadow: inset 3px 0 0 0 rgba(109, 168, 253, 0.65);
+}
+
+.data-entry-toolbar__chip--selection {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.evidence-modal-audit-lines {
+  line-height: 1.35;
+}
+
+.evidence-preview-modal .evidence-preview-frame-shell {
+  min-height: 320px;
+}
+
+.evidence-preview-iframe {
+  min-height: 55vh;
+  border: 0;
+  background: #fff;
+}
+
+body.dark-mode .evidence-preview-iframe {
+  background: #0d0d0d;
+}
+
+.modal.evidence-preview-modal-host {
+  z-index: 1060;
+}
+
+.evidence-preview-linked-summary ul {
+  margin-bottom: 0;
+}
+
+@media (max-width: 575.98px) {
+  .evidence-preview-iframe {
+    min-height: 42vh;
+  }
 }
 
 .data-entry-toolbar__chip--zoom {
@@ -781,6 +888,8 @@ let currentHeaders = [];
 let currentRules = {};
 let gridRows = [];
 let allSheets = [];
+let gridSelectedRows = new Set();
+let lastCheckboxRowIndex = null;
 
 const WORKSPACE_MODE_KEY = 'cts-data-entry-wide-mode';
 const elWorkspace = document.getElementById('dataEntryWorkspace');
@@ -886,9 +995,10 @@ function getEvidenceColumnIndex() {
 
 function evidenceCountLabel(n) {
   const k = Number(n) || 0;
+  const clip = '\u{1F4CE} ';
   if (!k) return 'Attach';
-  if (k === 1) return '1 file';
-  return `${k} files`;
+  if (k === 1) return `${clip}1 file`;
+  return `${clip}${k} files`;
 }
 
 function buildEvidenceCell(row, rowIndex, colIndex) {
@@ -896,14 +1006,17 @@ function buildEvidenceCell(row, rowIndex, colIndex) {
   const canAttach = Boolean(row.is_persisted);
   const disabledAttr = canAttach ? '' : 'disabled';
   const eye = n ? '<span class="data-grid__evidence-preview-hint" title="Open for preview">◉</span>' : '';
+  const sharedBadge = row.evidence_shared
+    ? '<span class="badge rounded-pill bg-primary-subtle text-primary-emphasis ms-1 data-grid__evidence-shared-badge">Shared invoice</span>'
+    : '';
   return `<td class="data-grid__cell data-grid__cell--evidence" data-row="${rowIndex}" data-col="${colIndex}">
     <div class="data-grid__cell-inner data-grid__evidence-inner">
       <button type="button" class="btn btn-sm data-grid__evidence-btn" ${disabledAttr}
         data-evidence-cell="${rowIndex}-${colIndex}"
         data-row="${rowIndex}" data-col="${colIndex}"
         title="${canAttach ? 'Evidence & invoices' : 'Save row first'}">
-        <span class="data-grid__evidence-clip" aria-hidden="true">\u{1F4CE}</span>
         <span class="data-grid__evidence-label">${escapeHtml(evidenceCountLabel(n))}</span>
+        ${sharedBadge}
         ${eye}
       </button>
       <div class="data-grid__inline-error" data-error-for="${rowIndex}-${colIndex}"></div>
@@ -961,6 +1074,7 @@ function createBlankRow() {
     is_editable: true,
     is_persisted: false,
     evidence_count: 0,
+    evidence_shared: false,
     cells: currentHeaders.map(() => ''),
   };
 }
@@ -1017,6 +1131,70 @@ function buildInputCell(row, rowIndex, header, colIndex) {
   </td>`;
 }
 
+function updateSelectionToolbar() {
+  const chip = document.getElementById('dataEntrySelectionChip');
+  const label = document.getElementById('dataEntrySelectionLabel');
+  const n = gridSelectedRows.size;
+  if (!chip || !label) return;
+  chip.classList.toggle('d-none', n === 0);
+  label.textContent = n === 1 ? '1 row selected' : `${n} rows selected`;
+}
+
+function syncHeaderSelectAllCheckbox() {
+  const selAll = table.querySelector('.data-grid__select-all');
+  if (!(selAll instanceof HTMLInputElement)) return;
+  const persistedIdx = gridRows
+    .map((r, i) => (r.is_persisted && r.entry_group ? i : null))
+    .filter((x) => x !== null);
+  const allOn = persistedIdx.length > 0 && persistedIdx.every((i) => gridSelectedRows.has(i));
+  const someOn = persistedIdx.some((i) => gridSelectedRows.has(i));
+  selAll.checked = allOn;
+  selAll.indeterminate = someOn && !allOn;
+}
+
+function toggleSelectAllPersistedRows(checked) {
+  gridRows.forEach((row, i) => {
+    if (row.is_persisted && row.entry_group) {
+      if (checked) gridSelectedRows.add(i);
+      else gridSelectedRows.delete(i);
+    }
+  });
+  renderGrid();
+}
+
+function getEvidenceLinkTargets(primaryRowIndex) {
+  const groups = [];
+  const seen = new Set();
+  const pushEg = (row) => {
+    const g = String(row?.entry_group || '').trim();
+    if (!g || seen.has(g)) return;
+    seen.add(g);
+    groups.push(g);
+  };
+  if (gridSelectedRows.size > 0) {
+    [...gridSelectedRows].sort((a, b) => a - b).forEach((i) => {
+      const row = gridRows[i];
+      if (row?.is_persisted) pushEg(row);
+    });
+  }
+  const primary = gridRows[primaryRowIndex];
+  if (!groups.length && primary?.is_persisted) pushEg(primary);
+  return groups;
+}
+
+function renderEvidenceAttachButton(it) {
+  const rc = Number(it.relation_count || 0);
+  const linkHint = rc > 1 ? `Linked rows: ${rc}` : (rc === 1 ? 'Linked rows: 1' : 'Not linked yet');
+  const email = it.uploaded_by_email ? `Uploaded by ${it.uploaded_by_email}` : '';
+  const dt = (it.uploaded_at || '').slice(0, 10);
+  const metaBits = [linkHint, email, dt].filter(Boolean);
+  return `
+    <button type="button" class="list-group-item list-group-item-action small text-start" data-attach-evidence="${it.id}">
+      <div class="fw-semibold text-truncate">${escapeHtml(it.original_filename || '')}</div>
+      <div class="text-muted">${metaBits.map((x) => escapeHtml(x)).join(' · ')}</div>
+    </button>`;
+}
+
 function renderGrid() {
   const thead = table.querySelector('thead');
   const tbody = table.querySelector('tbody');
@@ -1025,15 +1203,24 @@ function renderGrid() {
   thead.innerHTML = `
     <tr>
       <th class="text-secondary small data-grid__index">#</th>
+      <th class="text-secondary small data-grid__select-col p-1" scope="col">
+        <input type="checkbox" class="form-check-input mt-0 data-grid__select-all" title="Select saved rows" aria-label="Select all saved rows on this sheet" />
+      </th>
       ${currentHeaders.map(h => `<th class="text-secondary small">${escapeHtml(h)}</th>`).join('')}
       <th class="text-secondary small data-grid__meta">Saved</th>
       <th class="text-secondary small data-grid__row-actions"> </th>
     </tr>
   `;
 
-  tbody.innerHTML = gridRows.map((row, rowIndex) => `
-    <tr class="${row.is_editable ? '' : 'is-locked-row'}" data-row="${rowIndex}" data-entry-group="${escapeHtml(row.entry_group || '')}">
+  tbody.innerHTML = gridRows.map((row, rowIndex) => {
+    const rowSel = gridSelectedRows.has(rowIndex) ? ' data-grid__row-selected' : '';
+    const chk = row.is_persisted && row.entry_group
+      ? `<input type="checkbox" class="form-check-input mt-0 data-grid__row-select" data-row="${rowIndex}" aria-label="Select row ${rowIndex + 1}" ${gridSelectedRows.has(rowIndex) ? 'checked' : ''} />`
+      : '';
+    return `
+    <tr class="${row.is_editable ? '' : 'is-locked-row'}${rowSel}" data-row="${rowIndex}" data-entry-group="${escapeHtml(row.entry_group || '')}">
       <td class="text-muted small data-grid__index">${rowIndex + 1}</td>
+      <td class="data-grid__select-col text-center p-1">${chk}</td>
       ${currentHeaders.map((h, colIndex) => buildInputCell(row, rowIndex, h, colIndex)).join('')}
       <td class="data-grid__meta">
         <span class="data-grid__meta-badge">
@@ -1047,13 +1234,53 @@ function renderGrid() {
             ${ILLU_TIMES}
           </button>` : ''}
       </td>
-    </tr>
-  `).join('');
+    </tr>`;
+  }).join('');
+
+  const selAll = thead.querySelector('.data-grid__select-all');
+  if (selAll instanceof HTMLInputElement) {
+    selAll.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleSelectAllPersistedRows(selAll.checked);
+    });
+  }
+
+  tbody.querySelectorAll('.data-grid__row-select').forEach((cb) => {
+    cb.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = Number(cb.getAttribute('data-row'));
+      const on = cb.checked;
+      if (e.shiftKey && lastCheckboxRowIndex !== null && lastCheckboxRowIndex !== idx) {
+        const lo = Math.min(lastCheckboxRowIndex, idx);
+        const hi = Math.max(lastCheckboxRowIndex, idx);
+        for (let i = lo; i <= hi; i++) {
+          const r = gridRows[i];
+          if (r?.is_persisted && r.entry_group) {
+            if (on) gridSelectedRows.add(i);
+            else gridSelectedRows.delete(i);
+          }
+        }
+      } else if (on) {
+        gridSelectedRows.add(idx);
+      } else {
+        gridSelectedRows.delete(idx);
+      }
+      lastCheckboxRowIndex = idx;
+      renderGrid();
+    });
+  });
 
   tbody.querySelectorAll('[data-remove-row]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const rowIndex = Number(btn.getAttribute('data-remove-row'));
       gridRows.splice(rowIndex, 1);
+      const nextSel = new Set();
+      gridSelectedRows.forEach((i) => {
+        if (i < rowIndex) nextSel.add(i);
+        else if (i > rowIndex) nextSel.add(i - 1);
+      });
+      gridSelectedRows = nextSel;
+      lastCheckboxRowIndex = null;
       ensureAppendRow();
       renderGrid();
     });
@@ -1087,6 +1314,8 @@ function renderGrid() {
     btn.addEventListener('keydown', handleEvidenceKeydown);
   });
 
+  syncHeaderSelectAllCheckbox();
+  updateSelectionToolbar();
   updateButtonState();
 }
 
@@ -1273,6 +1502,8 @@ function addRow() {
 }
 
 function clearRows() {
+  gridSelectedRows.clear();
+  lastCheckboxRowIndex = null;
   gridRows = gridRows.filter(row => row.is_persisted && !row.is_editable);
   ensureAppendRow();
   renderGrid();
@@ -1571,11 +1802,13 @@ async function attachEvidenceCountsToRows() {
   try {
     const data = await fetchJson(`/api/evidence/row-summary?company=${encodeURIComponent(currentCompany)}&sheet=${encodeURIComponent(currentSheet)}`);
     const counts = data.counts || {};
+    const sharedMap = data.shared_invoice_rows || {};
     gridRows.forEach((row) => {
       const eg = row.entry_group || '';
       if (Object.prototype.hasOwnProperty.call(counts, eg)) {
         row.evidence_count = counts[eg];
       }
+      row.evidence_shared = Boolean(sharedMap[eg]);
     });
   } catch (e) {
     console.warn('Evidence counts failed', e);
@@ -1585,6 +1818,8 @@ async function attachEvidenceCountsToRows() {
 async function selectSheet(sheet, flashEntryGroups = null) {
   if (!sheet) return;
   currentSheet = sheet;
+  gridSelectedRows.clear();
+  lastCheckboxRowIndex = null;
   setStatus('Loading data grid…');
   const [schema, existing] = await Promise.all([
     fetchJson(`/api/excel_schema/headers?company=${encodeURIComponent(currentCompany)}&sheet=${encodeURIComponent(sheet)}`),
@@ -1599,6 +1834,7 @@ async function selectSheet(sheet, flashEntryGroups = null) {
     is_editable: Boolean(row.is_editable),
     is_persisted: Boolean(row.is_persisted),
     evidence_count: 0,
+    evidence_shared: false,
     cells: Array.isArray(row.cells) ? row.cells.slice() : currentHeaders.map(() => ''),
   }));
   ensureAppendRow();
@@ -1845,10 +2081,18 @@ function openEvidenceModal(rowIndex) {
   const row = gridRows[rowIndex];
   const locked = document.getElementById('evidenceModalLockedNotice');
   if (locked) locked.classList.toggle('d-none', Boolean(row?.is_persisted));
+  const scopeEl = document.getElementById('evidenceModalScopeLine');
+  const tgt = getEvidenceLinkTargets(rowIndex);
+  if (scopeEl) {
+    scopeEl.textContent = tgt.length > 1
+      ? `Bulk attach: same file will link to ${tgt.length} selected rows on this sheet.`
+      : 'Attach invoices or evidence files to this row.';
+  }
   setEvidenceModalBusy(false, '');
   evidenceBsModal.show();
   refreshEvidenceModalContent();
-  loadEvidenceSearch('');
+  loadEvidenceSearch(document.getElementById('evidenceSearchInput')?.value || '');
+  loadEvidencePopular();
   if (evidenceModalPollTimer) window.clearInterval(evidenceModalPollTimer);
   evidenceModalPollTimer = window.setInterval(() => {
     if (!evidenceModalEl?.classList.contains('show') || evidenceModalBusy) return;
@@ -1878,8 +2122,8 @@ async function waitEvidenceReady(evidenceId) {
 }
 
 async function linkEvidenceToCurrentRow(evidenceFileId, jobId, initialStatus) {
-  const row = gridRows[evidenceModalCtx.rowIndex];
-  if (!row?.entry_group) throw new Error('Row identifier missing');
+  const groups = getEvidenceLinkTargets(evidenceModalCtx.rowIndex);
+  if (!groups.length) throw new Error('No saved rows to attach to');
   if (jobId) {
     await pollJob(jobId, async () => {});
   }
@@ -1893,7 +2137,7 @@ async function linkEvidenceToCurrentRow(evidenceFileId, jobId, initialStatus) {
     body: JSON.stringify({
       company: currentCompany,
       sheet: currentSheet,
-      entry_group: row.entry_group,
+      entry_groups: groups,
       evidence_file_id: evidenceFileId,
     }),
   });
@@ -1918,17 +2162,31 @@ async function refreshEvidenceModalContent() {
         badgeHtml = `<span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">${escapeHtml(ui)}</span>`;
       }
       const ready = ui === 'ready';
+      const rc = Number(it.relation_count || 0);
+      const reuseLine = rc > 1 ? `Used in ${rc} rows (all sheets)` : (rc === 1 ? 'Used in 1 row' : 'Not linked elsewhere');
+      const who = it.uploaded_by_email ? escapeHtml(it.uploaded_by_email) : 'Unknown uploader';
+      const uploaded = it.uploaded_at ? escapeHtml(String(it.uploaded_at).slice(0, 19).replace('T', ' ')) : '';
+      const stLabel = escapeHtml(String(it.ui_status || it.processing_status || ''));
+      const auditBlock = `
+        <div class="small text-muted mt-1 evidence-modal-audit-lines">
+          <div>${escapeHtml(reuseLine)}</div>
+          <div>Uploaded by: ${who}${uploaded ? ` · ${uploaded}` : ''}</div>
+          <div>Status: ${stLabel}</div>
+        </div>`;
       const prev = ready && it.preview_url ? escapeHtml(it.preview_url) : '';
       const dl = ready && it.download_url ? escapeHtml(it.download_url) : '';
       const prevCtl = ready && prev
-        ? `<a class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener" href="${prev}">Preview</a>`
+        ? `<button type="button" class="btn btn-outline-secondary btn-sm" data-evidence-preview-open="${it.id}">Preview</button>`
         : `<span class="btn btn-sm btn-outline-secondary disabled opacity-50">Preview</span>`;
       const dlCtl = ready && dl
         ? `<a class="btn btn-outline-secondary btn-sm" href="${dl}">Download</a>`
         : `<span class="btn btn-sm btn-outline-secondary disabled opacity-50">Download</span>`;
       return `<div class="list-group-item d-flex flex-column gap-1 align-items-start">
         <div class="d-flex w-100 justify-content-between gap-2 align-items-start">
-          <span class="small text-break">${escapeHtml(it.original_filename || '')}${badgeHtml}</span>
+          <div class="min-w-0">
+            <span class="small text-break fw-semibold">${escapeHtml(it.original_filename || '')}${badgeHtml}</span>
+            ${auditBlock}
+          </div>
           <div class="btn-group btn-group-sm flex-shrink-0">
             ${prevCtl}
             ${dlCtl}
@@ -1951,6 +2209,12 @@ async function refreshEvidenceModalContent() {
         renderGrid();
       });
     });
+    listEl.querySelectorAll('[data-evidence-preview-open]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const eid = Number(b.getAttribute('data-evidence-preview-open'));
+        openEvidenceAuditPreview(eid);
+      });
+    });
   } catch (e) {
     console.warn(e);
   }
@@ -1960,54 +2224,74 @@ async function loadEvidenceSearch(q) {
   const target = document.getElementById('evidenceSearchResults');
   const recent = document.getElementById('evidenceRecentList');
   if (!target || !recent || !currentCompany) return;
+  const sortEl = document.getElementById('evidenceSearchSort');
+  const sort = sortEl?.value || 'newest';
+  const qsBase = `company=${encodeURIComponent(currentCompany)}&sort=${encodeURIComponent(sort)}`;
   try {
-    const qs = q.trim()
-      ? `company=${encodeURIComponent(currentCompany)}&q=${encodeURIComponent(q)}&limit=25`
-      : `company=${encodeURIComponent(currentCompany)}&limit=15`;
-    const data = await fetchJson(`/api/evidence/search?${qs}`);
-    const renderBtn = (it) => `
-      <button type="button" class="list-group-item list-group-item-action small text-start" data-attach-evidence="${it.id}">
-        <div class="fw-semibold text-truncate">${escapeHtml(it.original_filename || '')}</div>
-        <div class="text-muted">${escapeHtml(it.uploaded_by_email || '')} · ${escapeHtml(it.uploaded_at || '')}</div>
-      </button>`;
-    target.innerHTML = (data.items || []).map(renderBtn).join('');
-    if (!q.trim()) recent.innerHTML = (data.items || []).slice(0, 12).map(renderBtn).join('');
-    const bind = (root) => {
-      root.querySelectorAll('[data-attach-evidence]').forEach((b) => {
-        b.addEventListener('click', async () => {
-          if (evidenceModalBusy) {
-            showDataEntryToast('Please wait', 'An upload or attachment action is already in progress.');
-            return;
-          }
-          const id = Number(b.getAttribute('data-attach-evidence'));
-          setEvidenceModalBusy(true, 'Attaching…');
-          try {
-            await fetchJson('/api/evidence/link', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                company: currentCompany,
-                sheet: currentSheet,
-                entry_group: gridRows[evidenceModalCtx.rowIndex].entry_group,
-                evidence_file_id: id,
-              }),
-            });
-            await refreshEvidenceModalContent();
-            await attachEvidenceCountsToRows();
-            renderGrid();
-          } catch (err) {
-            showDataEntryToast('Link failed', err.message);
-          } finally {
-            setEvidenceModalBusy(false, '');
-          }
-        });
-      });
-    };
-    bind(target);
-    if (!q.trim()) bind(recent);
+    if (q.trim()) {
+      const data = await fetchJson(`/api/evidence/search?${qsBase}&q=${encodeURIComponent(q)}&limit=25`);
+      const rows = (data.items || []).map(renderEvidenceAttachButton).join('');
+      target.innerHTML = rows || '<div class="list-group-item small text-muted">No matches.</div>';
+      bindEvidenceAttachList(target);
+    } else {
+      target.innerHTML = '<div class="list-group-item small text-muted">Enter a filename search above.</div>';
+    }
+    const dataRecent = await fetchJson(`/api/evidence/search?${qsBase}&limit=12`);
+    recent.innerHTML = (dataRecent.items || []).map(renderEvidenceAttachButton).join('') || '<div class="list-group-item small text-muted">No uploads yet.</div>';
+    bindEvidenceAttachList(recent);
   } catch (e) {
     console.warn(e);
   }
+}
+
+async function loadEvidencePopular() {
+  const popular = document.getElementById('evidencePopularList');
+  if (!popular || !currentCompany) return;
+  try {
+    const data = await fetchJson(`/api/evidence/search?company=${encodeURIComponent(currentCompany)}&sort=most_linked&limit=12`);
+    const rows = (data.items || []).map(renderEvidenceAttachButton).join('');
+    popular.innerHTML = rows || '<div class="list-group-item small text-muted">No reused files yet.</div>';
+    bindEvidenceAttachList(popular);
+  } catch (e) {
+    console.warn(e);
+  }
+}
+
+function bindEvidenceAttachList(root) {
+  root.querySelectorAll('[data-attach-evidence]').forEach((b) => {
+    b.addEventListener('click', async () => {
+      if (evidenceModalBusy) {
+        showDataEntryToast('Please wait', 'An upload or attachment action is already in progress.');
+        return;
+      }
+      const id = Number(b.getAttribute('data-attach-evidence'));
+      const groups = getEvidenceLinkTargets(evidenceModalCtx.rowIndex);
+      if (!groups.length) {
+        showDataEntryToast('Nothing to attach', 'Save rows first.');
+        return;
+      }
+      setEvidenceModalBusy(true, 'Attaching…');
+      try {
+        await fetchJson('/api/evidence/link', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            company: currentCompany,
+            sheet: currentSheet,
+            entry_groups: groups,
+            evidence_file_id: id,
+          }),
+        });
+        await refreshEvidenceModalContent();
+        await attachEvidenceCountsToRows();
+        renderGrid();
+      } catch (err) {
+        showDataEntryToast('Link failed', err.message);
+      } finally {
+        setEvidenceModalBusy(false, '');
+      }
+    });
+  });
 }
 
 async function postEvidenceUploadSingle(file) {
@@ -2033,10 +2317,10 @@ async function postEvidenceUploadSingle(file) {
 async function runEvidenceUploadQueue(files) {
   const fileList = Array.from(files || []);
   const statusEl = document.getElementById('evidenceUploadStatus');
-  const row = gridRows[evidenceModalCtx.rowIndex];
+  const targets = getEvidenceLinkTargets(evidenceModalCtx.rowIndex);
   if (!fileList.length) return;
-  if (!row?.is_persisted) {
-    if (statusEl) statusEl.textContent = 'Save the row first.';
+  if (!targets.length) {
+    if (statusEl) statusEl.textContent = 'Save rows first.';
     return;
   }
   if (evidenceModalBusy) {
@@ -2095,6 +2379,127 @@ evidenceDropZone?.addEventListener('drop', async (e) => {
   const fl = e.dataTransfer?.files;
   if (!fl?.length) return;
   await runEvidenceUploadQueue(fl);
+});
+
+const evidenceAuditPreviewEl = document.getElementById('evidenceAuditPreviewModal');
+const evidenceAuditBsModal = evidenceAuditPreviewEl && typeof bootstrap !== 'undefined'
+  ? bootstrap.Modal.getOrCreateInstance(evidenceAuditPreviewEl)
+  : null;
+
+async function openEvidenceAuditPreview(evidenceId) {
+  if (!evidenceAuditBsModal) return;
+  const titleEl = document.getElementById('evidenceAuditPreviewTitle');
+  const metaEl = document.getElementById('evidenceAuditPreviewMeta');
+  const sumEl = document.getElementById('evidenceAuditPreviewLinkedSummary');
+  const ph = document.getElementById('evidenceAuditPreviewPlaceholder');
+  const iframe = document.getElementById('evidenceAuditPreviewIframe');
+  const img = document.getElementById('evidenceAuditPreviewImg');
+  const dlA = document.getElementById('evidenceAuditPreviewDownload');
+  if (iframe) {
+    iframe.src = 'about:blank';
+    iframe.classList.add('d-none');
+  }
+  if (img) {
+    img.src = '';
+    img.classList.add('d-none');
+  }
+  ph?.classList.remove('d-none');
+  if (ph) ph.textContent = 'Loading preview…';
+  evidenceAuditBsModal.show();
+  try {
+    const data = await fetchJson(`/api/evidence/${evidenceId}/audit-summary`);
+    const ef = data.evidence_file || {};
+    const mime = String(ef.mime_type || '').toLowerCase();
+    const previewUrl = ef.preview_url ? String(ef.preview_url) : '';
+    const dlUrl = ef.download_url ? String(ef.download_url) : '';
+    if (titleEl) titleEl.textContent = ef.original_filename || 'Preview';
+    const rows = Number(data.link_row_count || 0);
+    const who = data.uploaded_by_email ? String(data.uploaded_by_email) : '';
+    const ui = ef.ui_status || ef.processing_status || '';
+    if (metaEl) {
+      metaEl.textContent = [`Used in ${rows} rows`, who ? `Uploaded by ${who}` : '', ui ? `Status: ${ui}` : '']
+        .filter(Boolean)
+        .join(' · ');
+    }
+    const sheets = data.sheet_breakdown || [];
+    if (sumEl) {
+      sumEl.innerHTML = sheets.length
+        ? `<div class="fw-semibold mb-1">Linked rows by sheet</div><ul class="mb-0 ps-3">${sheets.map((s) => `<li>${escapeHtml(s.sheet_name)}: ${Number(s.row_count) || 0} rows</li>`).join('')}</ul>`
+        : '<span class="text-muted">No linked rows</span>';
+    }
+    if (dlA instanceof HTMLAnchorElement) {
+      if (dlUrl) {
+        dlA.href = dlUrl;
+        dlA.classList.remove('d-none');
+      } else {
+        dlA.classList.add('d-none');
+      }
+    }
+    const isImg = mime.startsWith('image/');
+    const ext = String(ef.file_extension || '').toLowerCase();
+    const isPdf = mime === 'application/pdf' || ext === 'pdf';
+    ph?.classList.add('d-none');
+    if (isImg && previewUrl && img) {
+      img.src = previewUrl;
+      img.classList.remove('d-none');
+    } else if (isPdf && previewUrl && iframe) {
+      iframe.src = previewUrl;
+      iframe.classList.remove('d-none');
+    } else if (previewUrl && iframe && (mime.includes('text/') || mime === 'application/octet-stream')) {
+      iframe.src = previewUrl;
+      iframe.classList.remove('d-none');
+    } else if (ef.thumbnail_url && img) {
+      img.src = String(ef.thumbnail_url);
+      img.classList.remove('d-none');
+      ph?.classList.remove('d-none');
+      if (ph) ph.textContent = 'Thumbnail preview — use Download for the full file.';
+    } else {
+      ph?.classList.remove('d-none');
+      if (ph) ph.textContent = 'Inline preview is not available for this file type. Use Download.';
+    }
+  } catch (e) {
+    ph?.classList.remove('d-none');
+    if (ph) ph.textContent = e.message || 'Failed to load preview';
+  }
+}
+
+evidenceAuditPreviewEl?.addEventListener('hidden.bs.modal', () => {
+  const iframe = document.getElementById('evidenceAuditPreviewIframe');
+  const img = document.getElementById('evidenceAuditPreviewImg');
+  if (iframe) iframe.src = 'about:blank';
+  if (img) img.src = '';
+  const dlg = document.getElementById('evidenceAuditPreviewDialog');
+  const btn = document.getElementById('evidenceAuditPreviewFullscreenBtn');
+  dlg?.classList.remove('modal-fullscreen');
+  if (btn) {
+    btn.textContent = 'Full screen';
+    btn.setAttribute('aria-pressed', 'false');
+  }
+});
+
+document.getElementById('evidenceAuditPreviewFullscreenBtn')?.addEventListener('click', () => {
+  const dlg = document.getElementById('evidenceAuditPreviewDialog');
+  const btn = document.getElementById('evidenceAuditPreviewFullscreenBtn');
+  const on = Boolean(dlg?.classList.toggle('modal-fullscreen'));
+  if (btn) {
+    btn.setAttribute('aria-pressed', String(on));
+    btn.textContent = on ? 'Exit full screen' : 'Full screen';
+  }
+});
+
+document.getElementById('clearRowSelectionBtn')?.addEventListener('click', () => {
+  gridSelectedRows.clear();
+  lastCheckboxRowIndex = null;
+  renderGrid();
+});
+
+document.getElementById('selectVisibleRowsBtn')?.addEventListener('click', () => {
+  toggleSelectAllPersistedRows(true);
+});
+
+document.getElementById('evidenceSearchSort')?.addEventListener('change', () => {
+  loadEvidenceSearch(document.getElementById('evidenceSearchInput')?.value || '');
+  loadEvidencePopular();
 });
 
 (async () => {

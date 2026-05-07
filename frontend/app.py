@@ -4,7 +4,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file, send_from_directory, Response, session, abort, g
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from sqlalchemy import and_, exists, func, or_
+from sqlalchemy import and_, desc, exists, func, or_
 from sqlalchemy.exc import IntegrityError
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -4542,6 +4542,27 @@ def _evidence_row_attachment_counts(company_name: str, sheet_name: str) -> dict[
         .all()
     )
     return {str(eg or ""): int(n or 0) for eg, n in rows}
+
+
+_SHARED_INVOICE_MIN_ROWS = 3
+
+
+def _evidence_row_shared_invoice_flags(company_name: str, sheet_name: str) -> dict[str, bool]:
+    """True when any linked file on that grid row is reused across enough rows (relation_count)."""
+    dee = DataEntryEvidence
+    ef = EvidenceFile
+    agg = (
+        db.session.query(dee.entry_group, func.max(func.coalesce(ef.relation_count, 0)).label("mx"))
+        .join(ef, ef.id == dee.evidence_file_id)
+        .filter(
+            dee.company_name == company_name,
+            dee.sheet_name == sheet_name,
+            ef.is_deleted.is_(False),
+        )
+        .group_by(dee.entry_group)
+        .all()
+    )
+    return {str(eg or ""): int(mx or 0) >= _SHARED_INVOICE_MIN_ROWS for eg, mx in agg}
 
 
 def _serialize_evidence_public(
@@ -10737,7 +10758,15 @@ def api_evidence_row_summary():
     if not resolved_sheet:
         return jsonify({"error": "Sheet not found"}), 404
     counts = _evidence_row_attachment_counts(resolved_company, resolved_sheet)
-    return jsonify({"company": resolved_company, "sheet": resolved_sheet, "counts": counts})
+    shared_rows = _evidence_row_shared_invoice_flags(resolved_company, resolved_sheet)
+    return jsonify(
+        {
+            "company": resolved_company,
+            "sheet": resolved_sheet,
+            "counts": counts,
+            "shared_invoice_rows": shared_rows,
+        }
+    )
 
 
 @app.route("/api/evidence/for-row", methods=["GET"])
@@ -10772,7 +10801,17 @@ def api_evidence_for_row():
         .order_by(DataEntryEvidence.linked_at.desc())
         .all()
     )
-    items = [_serialize_evidence_public(ef, link_id=int(link.id)) for link, ef in links]
+    uploader_ids = sorted({int(ef.uploaded_by or 0) for _, ef in links if ef.uploaded_by})
+    uploaders: dict[int, str] = {}
+    if uploader_ids:
+        for u in User.query.filter(User.id.in_(uploader_ids)).all():
+            uploaders[int(u.id)] = str(u.email or "").strip()
+
+    items: list[dict[str, object]] = []
+    for link, ef in links:
+        row = _serialize_evidence_public(ef, link_id=int(link.id))
+        row["uploaded_by_email"] = uploaders.get(int(ef.uploaded_by or 0), "")
+        items.append(row)
     return jsonify({"company": resolved_company, "sheet": resolved_sheet, "entry_group": entry_group, "items": items})
 
 
@@ -10793,6 +10832,8 @@ def api_evidence_search():
     except Exception:
         limit = 25
     limit = max(1, min(limit, 100))
+    sort_raw = (request.args.get("sort") or "newest").strip().lower()
+    sort_key = sort_raw if sort_raw in ("newest", "filename", "most_linked") else "newest"
 
     query = EvidenceFile.query.filter(
         EvidenceFile.company_name == resolved_company,
@@ -10804,7 +10845,26 @@ def api_evidence_search():
         safe_frag = q_raw.replace("\\", "").replace("%", "").replace("_", "")
         if safe_frag.strip():
             query = query.filter(func.lower(EvidenceFile.original_filename).like(f"%{safe_frag.lower()}%"))
-    items = query.order_by(EvidenceFile.uploaded_at.desc()).limit(limit).all()
+
+    if sort_key == "filename":
+        query = query.order_by(func.lower(EvidenceFile.original_filename).asc(), EvidenceFile.uploaded_at.desc())
+    elif sort_key == "most_linked":
+        lc = (
+            db.session.query(
+                DataEntryEvidence.evidence_file_id.label("eid"),
+                func.count(DataEntryEvidence.id).label("lcnt"),
+            )
+            .group_by(DataEntryEvidence.evidence_file_id)
+            .subquery()
+        )
+        query = query.outerjoin(lc, EvidenceFile.id == lc.c.eid).order_by(
+            desc(func.coalesce(lc.c.lcnt, 0)),
+            EvidenceFile.uploaded_at.desc(),
+        )
+    else:
+        query = query.order_by(EvidenceFile.uploaded_at.desc())
+
+    items = query.limit(limit).all()
 
     uploader_ids = sorted({int(e.uploaded_by) for e in items if e.uploaded_by})
     uploaders: dict[int, str] = {}
@@ -10999,13 +11059,30 @@ def api_evidence_link():
     payload = request.get_json(silent=True) or {}
     company = (payload.get("company") or "").strip()
     sheet = (payload.get("sheet") or "").strip()
-    entry_group = str(payload.get("entry_group") or "").strip()
+    groups_payload = payload.get("entry_groups")
+    entry_single = str(payload.get("entry_group") or "").strip()
     try:
         evidence_file_id = int(payload.get("evidence_file_id") or 0)
     except Exception:
         evidence_file_id = 0
-    if not company or not sheet or not entry_group or evidence_file_id <= 0:
-        return jsonify({"error": "company, sheet, entry_group, and evidence_file_id are required"}), 400
+
+    groups: list[str] = []
+    if isinstance(groups_payload, list):
+        seen_g: set[str] = set()
+        for raw in groups_payload:
+            g = str(raw or "").strip()
+            if not g or g in seen_g:
+                continue
+            seen_g.add(g)
+            groups.append(g)
+    if not groups and entry_single:
+        groups = [entry_single]
+
+    if not company or not sheet or not groups or evidence_file_id <= 0:
+        return (
+            jsonify({"error": "company, sheet, entry_groups (or entry_group), and evidence_file_id are required"}),
+            400,
+        )
     if not _user_can_access_company(company):
         return jsonify({"error": "Access denied"}), 403
     resolved_company = _resolve_template_company_name(company)
@@ -11015,8 +11092,10 @@ def api_evidence_link():
     if not resolved_sheet:
         return jsonify({"error": "Sheet not found"}), 404
     headers, _rules = _get_data_entry_template_schema(resolved_company, resolved_sheet)
-    if not _data_entry_grid_row_exists(resolved_company, resolved_sheet, headers, entry_group):
-        return jsonify({"error": "Row not found"}), 404
+
+    for eg in groups:
+        if not _data_entry_grid_row_exists(resolved_company, resolved_sheet, headers, eg):
+            return jsonify({"error": "Row not found", "entry_group": eg}), 404
 
     ef = db.session.get(EvidenceFile, evidence_file_id)
     if not _user_can_access_evidence_file(ef) or str(ef.company_name).strip() != resolved_company:
@@ -11024,28 +11103,41 @@ def api_evidence_link():
     if ef.processing_status != "ready":
         return jsonify({"error": "Evidence is not ready yet"}), 409
 
-    exists_link = DataEntryEvidence.query.filter_by(
-        company_name=resolved_company,
-        sheet_name=resolved_sheet,
-        entry_group=entry_group,
-        evidence_file_id=evidence_file_id,
-    ).first()
-    if exists_link:
-        return jsonify({"ok": True, "link_id": int(exists_link.id), "deduplicated": True})
+    results: list[dict[str, object]] = []
+    for eg in groups:
+        exists_link = DataEntryEvidence.query.filter_by(
+            company_name=resolved_company,
+            sheet_name=resolved_sheet,
+            entry_group=eg,
+            evidence_file_id=evidence_file_id,
+        ).first()
+        if exists_link:
+            results.append(
+                {"entry_group": eg, "link_id": int(exists_link.id), "deduplicated": True},
+            )
+            continue
 
-    link = DataEntryEvidence(
-        company_name=resolved_company,
-        sheet_name=resolved_sheet,
-        entry_group=entry_group,
-        evidence_file_id=evidence_file_id,
-        linked_by=current_user.id,
-    )
-    db.session.add(link)
-    db.session.flush()
-    _sync_evidence_orphan_metadata(evidence_file_id, commit=False)
+        link = DataEntryEvidence(
+            company_name=resolved_company,
+            sheet_name=resolved_sheet,
+            entry_group=eg,
+            evidence_file_id=evidence_file_id,
+            linked_by=current_user.id,
+        )
+        db.session.add(link)
+        db.session.flush()
+        _sync_evidence_orphan_metadata(evidence_file_id, commit=False)
+        results.append({"entry_group": eg, "link_id": int(link.id), "deduplicated": False})
+
     db.session.commit()
-    _evidence_log("evidence_linked", evidence_file_id=evidence_file_id, link_id=int(link.id))
-    return jsonify({"ok": True, "link_id": int(link.id)})
+    _evidence_log(
+        "evidence_linked",
+        evidence_file_id=evidence_file_id,
+        link_count=len(results),
+        entry_groups=[str(r.get("entry_group") or "") for r in results],
+    )
+    first_id = int(results[0]["link_id"]) if results else 0
+    return jsonify({"ok": True, "links": results, "link_id": first_id})
 
 
 def _api_evidence_unlink_impl() -> tuple[dict, int]:
@@ -11075,6 +11167,45 @@ def _api_evidence_unlink_impl() -> tuple[dict, int]:
 def api_evidence_unlink():
     body, status = _api_evidence_unlink_impl()
     return jsonify(body), status
+
+
+@app.route("/api/evidence/<int:evidence_id>/audit-summary", methods=["GET"])
+@login_required
+def api_evidence_audit_summary(evidence_id: int):
+    ef = db.session.get(EvidenceFile, evidence_id)
+    if not _user_can_access_evidence_file(ef):
+        return jsonify({"error": "Not found"}), 404
+
+    uid = int(ef.uploaded_by or 0)
+    uploaded_by_email = ""
+    if uid:
+        u_row = db.session.get(User, uid)
+        if u_row is not None:
+            uploaded_by_email = str(u_row.email or "").strip()
+
+    breakdown_rows = (
+        db.session.query(
+            DataEntryEvidence.sheet_name,
+            func.count(func.distinct(DataEntryEvidence.entry_group)),
+        )
+        .filter(
+            DataEntryEvidence.evidence_file_id == evidence_id,
+            DataEntryEvidence.company_name == ef.company_name,
+        )
+        .group_by(DataEntryEvidence.sheet_name)
+        .order_by(DataEntryEvidence.sheet_name.asc())
+        .all()
+    )
+    sheet_breakdown = [{"sheet_name": str(sn or ""), "row_count": int(rc or 0)} for sn, rc in breakdown_rows]
+
+    return jsonify(
+        {
+            "evidence_file": _serialize_evidence_public(ef),
+            "uploaded_by_email": uploaded_by_email,
+            "link_row_count": int(getattr(ef, "relation_count", 0) or 0),
+            "sheet_breakdown": sheet_breakdown,
+        }
+    )
 
 
 @app.route("/api/evidence/<int:evidence_id>", methods=["GET"])
