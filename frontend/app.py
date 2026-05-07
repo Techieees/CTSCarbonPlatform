@@ -511,6 +511,29 @@ _JOBS_LOCK = threading.Lock()
 _JOB_RETENTION_MINUTES = 240
 _SUBPROCESS_TIMEOUT_SECONDS = 300
 
+_EVIDENCE_UPLOAD_GUARD = threading.Lock()
+_EVIDENCE_UPLOAD_LOCKS: dict[tuple[str, str], threading.Lock] = {}
+
+
+def _evidence_company_digest_lock(company: str, digest: str) -> threading.Lock:
+    """Serialize evidence uploads per (tenant, content hash) to avoid duplicate rows / races."""
+    key = (str(company or "").strip().lower(), str(digest or "").strip().lower())
+    with _EVIDENCE_UPLOAD_GUARD:
+        lk = _EVIDENCE_UPLOAD_LOCKS.get(key)
+        if lk is None:
+            lk = threading.Lock()
+            _EVIDENCE_UPLOAD_LOCKS[key] = lk
+        return lk
+
+
+def _evidence_log(event: str, **fields: object) -> None:
+    """Server-side evidence audit trail (no paths returned to clients)."""
+    try:
+        parts = " ".join(f"{k}={fields[k]!r}" for k in sorted(fields.keys()))
+        print(f"[EVIDENCE] {event} {parts}")
+    except Exception:
+        pass
+
 
 class JobCancelled(Exception):
     pass
@@ -1544,6 +1567,9 @@ class EvidenceFile(db.Model):
     processing_error = db.Column(db.Text, nullable=True)
     is_deleted = db.Column(db.Boolean, nullable=False, default=False)
     deleted_at = db.Column(db.DateTime, nullable=True)
+    is_orphaned = db.Column(db.Boolean, nullable=False, default=False)
+    orphaned_at = db.Column(db.DateTime, nullable=True)
+    relation_count = db.Column(db.Integer, nullable=True)
 
 
 class DataEntryEvidence(db.Model):
@@ -4426,30 +4452,76 @@ def _header_matches_evidence_column(header: str) -> bool:
     return n in ("sourcefile", "sourcefilename", "datasources")
 
 
+def _sync_evidence_orphan_metadata(evidence_file_id: int, *, commit: bool = True) -> None:
+    """Update cached link count and orphan flags (never deletes files)."""
+    ef = db.session.get(EvidenceFile, evidence_file_id)
+    if ef is None or ef.is_deleted:
+        return
+    n = int(
+        db.session.query(func.count(DataEntryEvidence.id)).filter_by(evidence_file_id=evidence_file_id).scalar()
+        or 0
+    )
+    prev_orphan = bool(getattr(ef, "is_orphaned", False))
+    ef.relation_count = n
+    if n == 0:
+        ef.is_orphaned = True
+        if ef.orphaned_at is None:
+            ef.orphaned_at = datetime.utcnow()
+    else:
+        ef.is_orphaned = False
+        ef.orphaned_at = None
+    db.session.add(ef)
+    if commit:
+        db.session.commit()
+    if prev_orphan != bool(ef.is_orphaned):
+        _evidence_log(
+            "orphan_state_changed",
+            evidence_file_id=evidence_file_id,
+            is_orphaned=bool(ef.is_orphaned),
+            relation_count=n,
+        )
+
+
+def _evidence_ui_status(ef: EvidenceFile) -> str:
+    st = str(getattr(ef, "processing_status", "") or "").lower()
+    if st in ("pending", "processing"):
+        return "processing"
+    if st == "failed":
+        return "failed"
+    return "ready"
+
+
 def _delete_evidence_links_for_grid_row(company_name: str, sheet_name: str, grid_row_key: str | None) -> None:
     key = str(grid_row_key or "").strip()
     if not key:
         return
-    DataEntryEvidence.query.filter_by(
-        company_name=company_name,
-        sheet_name=sheet_name,
-        entry_group=key,
-    ).delete(synchronize_session=False)
+    rows = (
+        DataEntryEvidence.query.filter_by(
+            company_name=company_name,
+            sheet_name=sheet_name,
+            entry_group=key,
+        ).all()
+    )
+    if not rows:
+        return
+    fids = {int(r.evidence_file_id) for r in rows}
+    for r in rows:
+        db.session.delete(r)
+    db.session.flush()
+    for fid in fids:
+        _sync_evidence_orphan_metadata(fid, commit=False)
+    db.session.commit()
+
+
+def _evidence_local_read_path(rel: str | None):
+    from frontend.storage import get_evidence_storage
+
+    return get_evidence_storage().try_get_local_path(rel)
 
 
 def _safe_evidence_disk_path(rel: str | None) -> Path | None:
-    if not rel:
-        return None
-    raw = str(rel).replace("\\", "/").strip().lstrip("/")
-    if not raw or ".." in raw.split("/"):
-        return None
-    root = FRONTEND_UPLOAD_DIR.resolve()
-    candidate = (FRONTEND_UPLOAD_DIR / raw).resolve()
-    try:
-        candidate.relative_to(root)
-    except Exception:
-        return None
-    return candidate
+    """Legacy name: resolve evidence relative key via storage provider."""
+    return _evidence_local_read_path(rel)
 
 
 def _data_entry_grid_row_exists(company_name: str, sheet_name: str, headers: list[str], grid_row_key: str) -> bool:
@@ -4485,9 +4557,12 @@ def _serialize_evidence_public(
         "mime_type": ef.mime_type,
         "file_extension": ef.file_extension,
         "processing_status": ef.processing_status,
+        "ui_status": _evidence_ui_status(ef),
         "uploaded_at": ef.uploaded_at.isoformat() if ef.uploaded_at else "",
         "file_size_original": int(ef.file_size_original or 0),
         "file_size_optimized": int(ef.file_size_optimized or 0) if ef.file_size_optimized is not None else None,
+        "is_orphaned": bool(getattr(ef, "is_orphaned", False)),
+        "relation_count": int(getattr(ef, "relation_count", 0) or 0),
         "thumbnail_url": url_for("api_evidence_thumbnail", evidence_id=pid) if ef.thumbnail_storage_path else None,
         "preview_url": url_for("api_evidence_preview", evidence_id=pid),
         "download_url": url_for("api_evidence_download", evidence_id=pid),
@@ -4509,22 +4584,24 @@ def _run_evidence_processing_job(
     *,
     job_id: str,
     evidence_file_id: int,
-    staging_abs: str,
+    staging_rel: str,
     upload_company: str,
 ) -> dict[str, object]:
-    from pathlib import Path
+    from frontend.evidence_processing import process_evidence_file_with_storage
+    from frontend.storage import get_evidence_storage
 
-    from frontend.evidence_processing import evidence_destination_dirs, process_evidence_file
-
-    staging_path = Path(staging_abs)
+    storage = get_evidence_storage()
     _update_job_progress(job_id, 10, "Optimizing evidence file")
     ef = db.session.get(EvidenceFile, evidence_file_id)
     if ef is None:
         raise RuntimeError("Evidence record missing")
-    if not staging_path.is_file():
+
+    staging_path = storage.try_get_local_path(staging_rel)
+    if staging_path is None or not staging_path.is_file():
         ef.processing_status = "failed"
         ef.processing_error = "Staging file missing"
         db.session.commit()
+        _evidence_log("optimization_failed", evidence_file_id=evidence_file_id, reason="staging_missing")
         raise RuntimeError("Staging file missing")
 
     ef.processing_status = "processing"
@@ -4533,14 +4610,12 @@ def _run_evidence_processing_job(
 
     try:
         base_ts = ef.uploaded_at or datetime.utcnow()
-        final_dir, thumb_dir = evidence_destination_dirs(FRONTEND_UPLOAD_DIR, base_ts)
-        result = process_evidence_file(
-            upload_root=FRONTEND_UPLOAD_DIR,
+        result = process_evidence_file_with_storage(
+            storage=storage,
             staging_path=staging_path,
             sha256_hex=ef.sha256_hash,
             normalized_ext=str(ef.file_extension or "").lower(),
-            final_dir=final_dir,
-            thumb_dir=thumb_dir,
+            base_ts=base_ts,
         )
         _raise_if_job_cancelled(job_id)
         ef.stored_filename = str(result["stored_filename"])
@@ -4555,11 +4630,17 @@ def _run_evidence_processing_job(
         ef.processing_status = "ready"
         ef.processing_error = None
         db.session.commit()
+        storage.delete_file(staging_rel)
         try:
             staging_path.unlink(missing_ok=True)
         except Exception:
             pass
         _update_job_progress(job_id, 100, "Evidence ready")
+        _evidence_log(
+            "optimization_completed",
+            evidence_file_id=evidence_file_id,
+            optimized_bytes=int(result["optimized_size"]),
+        )
         return {
             "ok": True,
             "evidence_file_id": evidence_file_id,
@@ -4569,6 +4650,11 @@ def _run_evidence_processing_job(
     except JobCancelled:
         raise
     except Exception as exc:
+        _evidence_log(
+            "optimization_failed",
+            evidence_file_id=evidence_file_id,
+            error=str(exc),
+        )
         try:
             ef2 = db.session.get(EvidenceFile, evidence_file_id)
             if ef2 is not None:
@@ -4577,6 +4663,7 @@ def _run_evidence_processing_job(
                 db.session.commit()
         except Exception:
             db.session.rollback()
+        storage.delete_file(staging_rel)
         try:
             staging_path.unlink(missing_ok=True)
         except Exception:
@@ -5403,6 +5490,17 @@ def _ensure_data_entry_columns() -> None:
         pass
 
 
+def _backfill_evidence_orphan_metadata() -> None:
+    """Recompute relation_count / orphan flags for all evidence rows."""
+    try:
+        ids = [int(r[0]) for r in db.session.query(EvidenceFile.id).filter(EvidenceFile.is_deleted.is_(False)).all()]
+        for eid in ids:
+            _sync_evidence_orphan_metadata(eid, commit=False)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
 def _ensure_evidence_tables_columns() -> None:
     """SQLite-friendly additive DDL for evidence tables."""
     try:
@@ -5414,17 +5512,32 @@ def _ensure_evidence_tables_columns() -> None:
 
         existing = {col["name"] for col in inspector.get_columns("evidence_files")}
         alters: list[str] = []
+        needs_orphan_backfill = False
+
         if "thumbnail_storage_path" not in existing:
             alters.append("ALTER TABLE evidence_files ADD COLUMN thumbnail_storage_path VARCHAR(600)")
         if "processing_status" not in existing:
             alters.append("ALTER TABLE evidence_files ADD COLUMN processing_status VARCHAR(32) DEFAULT 'pending'")
         if "processing_error" not in existing:
             alters.append("ALTER TABLE evidence_files ADD COLUMN processing_error TEXT")
+        if "is_orphaned" not in existing:
+            alters.append("ALTER TABLE evidence_files ADD COLUMN is_orphaned BOOLEAN DEFAULT 0")
+            needs_orphan_backfill = True
+        if "orphaned_at" not in existing:
+            alters.append("ALTER TABLE evidence_files ADD COLUMN orphaned_at DATETIME")
+            needs_orphan_backfill = True
+        if "relation_count" not in existing:
+            alters.append("ALTER TABLE evidence_files ADD COLUMN relation_count INTEGER")
+            needs_orphan_backfill = True
+
         if not alters:
             return
         with db.engine.begin() as conn:
             for stmt in alters:
                 conn.execute(text(stmt))
+
+        if needs_orphan_backfill:
+            _backfill_evidence_orphan_metadata()
     except Exception:
         pass
 
@@ -10713,6 +10826,8 @@ def api_evidence_search():
 @login_required
 def api_evidence_upload():
     from frontend.evidence_processing import MAX_UPLOAD_BYTES, sha256_file, validate_upload_file
+    from frontend.storage import get_evidence_storage
+    from frontend.storage.providers.local import LocalStorageProvider
 
     company = (request.form.get("company") or "").strip()
     if not company:
@@ -10728,112 +10843,153 @@ def api_evidence_upload():
     raw_name = secure_filename(uf.filename or "") or "upload"
     suffix = Path(raw_name).suffix.lower()[:12]
 
-    staging_dir = FRONTEND_UPLOAD_DIR / "evidence" / "_staging"
-    staging_dir.mkdir(parents=True, exist_ok=True)
+    storage = get_evidence_storage()
+    if not isinstance(storage, LocalStorageProvider):
+        return jsonify({"error": "Evidence uploads require filesystem-backed storage in this release"}), 501
+
     sid = uuid.uuid4().hex
-    staging_path = staging_dir / (sid + suffix if suffix else sid)
-    uf.save(staging_path)
+    staging_fn = f"{sid}{suffix}" if suffix else sid
+    staging_rel = storage.generate_path("evidence", "_staging", staging_fn)
+    staging_abs = storage.absolute_path_for_write(staging_rel)
+    uf.save(str(staging_abs))
+
+    def _staging_cleanup() -> None:
+        storage.delete_file(staging_rel)
+        try:
+            staging_abs.unlink(missing_ok=True)
+        except Exception:
+            pass
 
     try:
-        sz = staging_path.stat().st_size
+        sz = staging_abs.stat().st_size
         if sz > MAX_UPLOAD_BYTES:
-            staging_path.unlink(missing_ok=True)
+            _staging_cleanup()
             return jsonify({"error": "File exceeds 25 MB limit"}), 400
-        normalized_ext, mime = validate_upload_file(staging_path, suffix.lstrip("."), sz)
+        normalized_ext, mime = validate_upload_file(staging_abs, suffix.lstrip("."), sz)
     except ValueError as exc:
-        staging_path.unlink(missing_ok=True)
+        _staging_cleanup()
         return jsonify({"error": str(exc)}), 400
 
-    digest = sha256_file(staging_path)
-    existing = EvidenceFile.query.filter_by(
-        sha256_hash=digest, company_name=resolved_company, is_deleted=False
-    ).first()
-    if existing is not None:
-        if existing.processing_status == "ready":
-            staging_path.unlink(missing_ok=True)
-            return jsonify(
-                {
-                    "ok": True,
-                    "deduplicated": True,
-                    "evidence_file": _serialize_evidence_public(existing),
-                    "processing_job_id": None,
-                }
-            )
-        if existing.processing_status == "pending":
-            staging_path.unlink(missing_ok=True)
-            return jsonify(
-                {
-                    "ok": True,
-                    "deduplicated": True,
-                    "pending": True,
-                    "evidence_file": _serialize_evidence_public(existing),
-                    "processing_job_id": None,
-                }
-            )
-        if existing.processing_status == "failed":
-            existing.processing_status = "pending"
-            existing.processing_error = None
-            db.session.commit()
-            jid = run_in_background(
-                "evidence_processing",
-                resolved_company,
-                _run_evidence_processing_job,
-                evidence_file_id=int(existing.id),
-                staging_abs=str(staging_path.resolve()),
-                upload_company=resolved_company,
-                job_user_id=current_user.id,
-                job_user_email=str(getattr(current_user, "email", "") or ""),
-            )
-            return jsonify(
-                {
-                    "ok": True,
-                    "retry": True,
-                    "evidence_file": _serialize_evidence_public(existing),
-                    "processing_job_id": jid,
-                }
-            )
+    digest = sha256_file(staging_abs)
 
-    ef = EvidenceFile(
-        company_name=resolved_company,
-        original_filename=str(raw_name)[:500],
-        stored_filename=f"{digest}.pending",
-        file_extension=normalized_ext,
-        mime_type=mime,
-        sha256_hash=digest,
-        file_size_original=int(sz),
-        uploaded_by=current_user.id,
-        upload_source="data_entry",
-        processing_status="pending",
-        storage_path="",
-    )
-    db.session.add(ef)
-    try:
-        db.session.commit()
-    except IntegrityError:
-        db.session.rollback()
-        staging_path.unlink(missing_ok=True)
-        dup = EvidenceFile.query.filter_by(sha256_hash=digest, company_name=resolved_company).first()
-        if dup is None:
-            return jsonify({"error": "Duplicate handling failed"}), 409
-        return jsonify(
-            {
-                "ok": True,
-                "deduplicated": True,
-                "evidence_file": _serialize_evidence_public(dup),
-                "processing_job_id": None,
-            }
+    with _evidence_company_digest_lock(resolved_company, digest):
+        existing = EvidenceFile.query.filter_by(
+            sha256_hash=digest, company_name=resolved_company, is_deleted=False
+        ).first()
+        if existing is not None:
+            if existing.processing_status == "ready":
+                _staging_cleanup()
+                _evidence_log(
+                    "duplicate_reused",
+                    evidence_file_id=int(existing.id),
+                    company=resolved_company,
+                    status="ready",
+                )
+                return jsonify(
+                    {
+                        "ok": True,
+                        "deduplicated": True,
+                        "evidence_file": _serialize_evidence_public(existing),
+                        "processing_job_id": None,
+                    }
+                )
+            if existing.processing_status == "pending":
+                _staging_cleanup()
+                _evidence_log(
+                    "duplicate_reused",
+                    evidence_file_id=int(existing.id),
+                    company=resolved_company,
+                    status="pending",
+                )
+                return jsonify(
+                    {
+                        "ok": True,
+                        "deduplicated": True,
+                        "pending": True,
+                        "evidence_file": _serialize_evidence_public(existing),
+                        "processing_job_id": None,
+                    }
+                )
+            if existing.processing_status == "failed":
+                existing.processing_status = "pending"
+                existing.processing_error = None
+                db.session.commit()
+                jid = run_in_background(
+                    "evidence_processing",
+                    resolved_company,
+                    _run_evidence_processing_job,
+                    evidence_file_id=int(existing.id),
+                    staging_rel=staging_rel,
+                    upload_company=resolved_company,
+                    job_user_id=current_user.id,
+                    job_user_email=str(getattr(current_user, "email", "") or ""),
+                )
+                _evidence_log(
+                    "optimization_retry_enqueued",
+                    evidence_file_id=int(existing.id),
+                    company=resolved_company,
+                    job_id=jid,
+                )
+                return jsonify(
+                    {
+                        "ok": True,
+                        "retry": True,
+                        "evidence_file": _serialize_evidence_public(existing),
+                        "processing_job_id": jid,
+                    }
+                )
+
+        now_u = datetime.utcnow()
+        ef = EvidenceFile(
+            company_name=resolved_company,
+            original_filename=str(raw_name)[:500],
+            stored_filename=f"{digest}.pending",
+            file_extension=normalized_ext,
+            mime_type=mime,
+            sha256_hash=digest,
+            file_size_original=int(sz),
+            uploaded_by=current_user.id,
+            upload_source="data_entry",
+            processing_status="pending",
+            storage_path="",
+            is_orphaned=True,
+            orphaned_at=now_u,
+            relation_count=0,
         )
+        db.session.add(ef)
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            _staging_cleanup()
+            dup = EvidenceFile.query.filter_by(sha256_hash=digest, company_name=resolved_company).first()
+            if dup is None:
+                return jsonify({"error": "Duplicate handling failed"}), 409
+            _evidence_log(
+                "duplicate_race_resolved",
+                evidence_file_id=int(dup.id),
+                company=resolved_company,
+            )
+            return jsonify(
+                {
+                    "ok": True,
+                    "deduplicated": True,
+                    "evidence_file": _serialize_evidence_public(dup),
+                    "processing_job_id": None,
+                }
+            )
 
-    jid = run_in_background(
-        "evidence_processing",
-        resolved_company,
-        _run_evidence_processing_job,
-        evidence_file_id=int(ef.id),
-        staging_abs=str(staging_path.resolve()),
-        upload_company=resolved_company,
-        job_user_id=current_user.id,
-        job_user_email=str(getattr(current_user, "email", "") or ""),
-    )
+        jid = run_in_background(
+            "evidence_processing",
+            resolved_company,
+            _run_evidence_processing_job,
+            evidence_file_id=int(ef.id),
+            staging_rel=staging_rel,
+            upload_company=resolved_company,
+            job_user_id=current_user.id,
+            job_user_email=str(getattr(current_user, "email", "") or ""),
+        )
+        _evidence_log("upload_accepted", evidence_file_id=int(ef.id), company=resolved_company, job_id=jid)
     return jsonify({"ok": True, "evidence_file": _serialize_evidence_public(ef), "processing_job_id": jid})
 
 
@@ -10885,7 +11041,10 @@ def api_evidence_link():
         linked_by=current_user.id,
     )
     db.session.add(link)
+    db.session.flush()
+    _sync_evidence_orphan_metadata(evidence_file_id, commit=False)
     db.session.commit()
+    _evidence_log("evidence_linked", evidence_file_id=evidence_file_id, link_id=int(link.id))
     return jsonify({"ok": True, "link_id": int(link.id)})
 
 
@@ -10902,8 +11061,12 @@ def _api_evidence_unlink_impl() -> tuple[dict, int]:
         return {"error": "Link not found"}, 404
     if not _user_can_access_company(link.company_name):
         return {"error": "Access denied"}, 403
+    evidence_file_id = int(link.evidence_file_id)
     db.session.delete(link)
+    db.session.flush()
+    _sync_evidence_orphan_metadata(evidence_file_id, commit=False)
     db.session.commit()
+    _evidence_log("evidence_unlinked", evidence_file_id=evidence_file_id, link_id=link_id)
     return {"ok": True}, 200
 
 

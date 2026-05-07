@@ -305,6 +305,10 @@
                     <div id="evidenceModalLockedNotice" class="alert alert-warning py-2 small d-none" role="status">
                         Save the row first, then you can attach documents.
                     </div>
+                    <div class="d-flex align-items-center gap-2 mb-3 px-1 d-none" id="evidenceModalBusyStrip" aria-live="polite">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status" aria-hidden="true"></div>
+                        <span class="small fw-semibold text-muted" id="evidenceModalBusyLabel"></span>
+                    </div>
                     <div class="row g-3">
                         <div class="col-md-6">
                             <div class="fw-semibold small mb-2">Linked to this row</div>
@@ -669,6 +673,21 @@ body.dark-mode .evidence-drop-zone {
 body.dark-mode .evidence-modal .modal-content {
   background: #121212;
   color: #f0f0f0;
+}
+
+.evidence-modal.evidence-modal--busy .modal-body button:not(.btn-close),
+.evidence-modal.evidence-modal--busy .modal-body .btn,
+.evidence-modal.evidence-modal--busy .modal-body .evidence-drop-zone,
+.evidence-modal.evidence-modal--busy .modal-body .form-control,
+.evidence-modal.evidence-modal--busy .modal-body .list-group-item-action {
+  pointer-events: none;
+  opacity: 0.55;
+}
+
+.evidence-modal.evidence-modal--busy .modal-header .btn-close,
+.evidence-modal.evidence-modal--busy .modal-footer button[data-bs-dismiss="modal"] {
+  pointer-events: auto;
+  opacity: 1;
 }
 
 .data-entry-toolbar__chip--zoom {
@@ -1804,10 +1823,21 @@ elRefreshJobs?.addEventListener('click', () => refreshJobHistory());
 
 let evidenceModalCtx = { rowIndex: -1 };
 let evidenceModalPollTimer = null;
+let evidenceModalBusy = false;
 const evidenceModalEl = document.getElementById('evidenceAttachmentsModal');
 const evidenceBsModal = evidenceModalEl && typeof bootstrap !== 'undefined'
   ? bootstrap.Modal.getOrCreateInstance(evidenceModalEl)
   : null;
+
+function setEvidenceModalBusy(busy, label = '') {
+  evidenceModalBusy = Boolean(busy);
+  const shell = document.querySelector('#evidenceAttachmentsModal .evidence-modal');
+  shell?.classList.toggle('evidence-modal--busy', evidenceModalBusy);
+  const strip = document.getElementById('evidenceModalBusyStrip');
+  const lbl = document.getElementById('evidenceModalBusyLabel');
+  if (strip) strip.classList.toggle('d-none', !evidenceModalBusy);
+  if (lbl) lbl.textContent = evidenceModalBusy ? String(label || '') : '';
+}
 
 function openEvidenceModal(rowIndex) {
   if (!evidenceBsModal) return;
@@ -1815,17 +1845,19 @@ function openEvidenceModal(rowIndex) {
   const row = gridRows[rowIndex];
   const locked = document.getElementById('evidenceModalLockedNotice');
   if (locked) locked.classList.toggle('d-none', Boolean(row?.is_persisted));
+  setEvidenceModalBusy(false, '');
   evidenceBsModal.show();
   refreshEvidenceModalContent();
   loadEvidenceSearch('');
   if (evidenceModalPollTimer) window.clearInterval(evidenceModalPollTimer);
   evidenceModalPollTimer = window.setInterval(() => {
-    if (!evidenceModalEl?.classList.contains('show')) return;
+    if (!evidenceModalEl?.classList.contains('show') || evidenceModalBusy) return;
     refreshEvidenceModalContent();
   }, 4000);
 }
 
 evidenceModalEl?.addEventListener('hidden.bs.modal', () => {
+  setEvidenceModalBusy(false, '');
   if (evidenceModalPollTimer) {
     window.clearInterval(evidenceModalPollTimer);
     evidenceModalPollTimer = null;
@@ -1835,9 +1867,11 @@ evidenceModalEl?.addEventListener('hidden.bs.modal', () => {
 async function waitEvidenceReady(evidenceId) {
   for (let i = 0; i < 120; i++) {
     const meta = await fetchJson(`/api/evidence/${evidenceId}`);
-    const st = meta.evidence_file?.processing_status;
-    if (st === 'ready') return;
-    if (st === 'failed') throw new Error(meta.evidence_file?.processing_error || 'Processing failed');
+    const ef = meta.evidence_file || {};
+    const ui = String(ef.ui_status || '').toLowerCase();
+    const st = String(ef.processing_status || '').toLowerCase();
+    if (ui === 'ready' || st === 'ready') return;
+    if (ui === 'failed' || st === 'failed') throw new Error(ef.processing_error || 'Processing failed');
     await new Promise((r) => setTimeout(r, 1000));
   }
   throw new Error('Processing timed out');
@@ -1849,7 +1883,8 @@ async function linkEvidenceToCurrentRow(evidenceFileId, jobId, initialStatus) {
   if (jobId) {
     await pollJob(jobId, async () => {});
   }
-  if (initialStatus !== 'ready') {
+  const ini = String(initialStatus || '').toLowerCase();
+  if (ini !== 'ready') {
     await waitEvidenceReady(evidenceFileId);
   }
   await fetchJson('/api/evidence/link', {
@@ -1873,9 +1908,16 @@ async function refreshEvidenceModalContent() {
     const data = await fetchJson(`/api/evidence/for-row?company=${encodeURIComponent(currentCompany)}&sheet=${encodeURIComponent(currentSheet)}&entry_group=${encodeURIComponent(row.entry_group)}`);
     const items = data.items || [];
     listEl.innerHTML = items.map((it) => {
-      const st = it.processing_status || '';
-      const badge = st === 'ready' ? '' : `<span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">${escapeHtml(st)}</span>`;
-      const ready = st === 'ready';
+      const ui = String(it.ui_status || it.processing_status || '').toLowerCase();
+      let badgeHtml = '';
+      if (ui === 'failed') {
+        badgeHtml = '<span class="badge bg-danger-subtle text-danger-emphasis ms-1">Failed</span>';
+      } else if (ui === 'processing') {
+        badgeHtml = '<span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">Processing</span>';
+      } else if (ui && ui !== 'ready') {
+        badgeHtml = `<span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">${escapeHtml(ui)}</span>`;
+      }
+      const ready = ui === 'ready';
       const prev = ready && it.preview_url ? escapeHtml(it.preview_url) : '';
       const dl = ready && it.download_url ? escapeHtml(it.download_url) : '';
       const prevCtl = ready && prev
@@ -1886,7 +1928,7 @@ async function refreshEvidenceModalContent() {
         : `<span class="btn btn-sm btn-outline-secondary disabled opacity-50">Download</span>`;
       return `<div class="list-group-item d-flex flex-column gap-1 align-items-start">
         <div class="d-flex w-100 justify-content-between gap-2 align-items-start">
-          <span class="small text-break">${escapeHtml(it.original_filename || '')}${badge}</span>
+          <span class="small text-break">${escapeHtml(it.original_filename || '')}${badgeHtml}</span>
           <div class="btn-group btn-group-sm flex-shrink-0">
             ${prevCtl}
             ${dlCtl}
@@ -1933,7 +1975,12 @@ async function loadEvidenceSearch(q) {
     const bind = (root) => {
       root.querySelectorAll('[data-attach-evidence]').forEach((b) => {
         b.addEventListener('click', async () => {
+          if (evidenceModalBusy) {
+            showDataEntryToast('Please wait', 'An upload or attachment action is already in progress.');
+            return;
+          }
           const id = Number(b.getAttribute('data-attach-evidence'));
+          setEvidenceModalBusy(true, 'Attaching…');
           try {
             await fetchJson('/api/evidence/link', {
               method: 'POST',
@@ -1950,6 +1997,8 @@ async function loadEvidenceSearch(q) {
             renderGrid();
           } catch (err) {
             showDataEntryToast('Link failed', err.message);
+          } finally {
+            setEvidenceModalBusy(false, '');
           }
         });
       });
@@ -1963,6 +2012,8 @@ async function loadEvidenceSearch(q) {
 
 async function postEvidenceUploadSingle(file) {
   const statusEl = document.getElementById('evidenceUploadStatus');
+  setEvidenceModalBusy(true, 'Uploading…');
+  if (statusEl) statusEl.textContent = `Uploading: ${file.name}…`;
   const fd = new FormData();
   fd.append('company', currentCompany);
   fd.append('file', file);
@@ -1971,29 +2022,45 @@ async function postEvidenceUploadSingle(file) {
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   const ef = data.evidence_file;
   const jobId = data.processing_job_id || null;
-  await linkEvidenceToCurrentRow(ef.id, jobId, ef.processing_status);
-  if (statusEl) statusEl.textContent = 'Upload complete';
+  setEvidenceModalBusy(true, 'Processing…');
+  if (statusEl) statusEl.textContent = 'Processing…';
+  const initialReady = ef.ui_status || ef.processing_status;
+  await linkEvidenceToCurrentRow(ef.id, jobId, initialReady);
+  if (statusEl) statusEl.textContent = 'Ready';
+  setEvidenceModalBusy(true, 'Ready');
 }
 
 async function runEvidenceUploadQueue(files) {
+  const fileList = Array.from(files || []);
   const statusEl = document.getElementById('evidenceUploadStatus');
   const row = gridRows[evidenceModalCtx.rowIndex];
+  if (!fileList.length) return;
   if (!row?.is_persisted) {
     if (statusEl) statusEl.textContent = 'Save the row first.';
     return;
   }
-  for (const file of Array.from(files || [])) {
-    try {
-      if (statusEl) statusEl.textContent = `Uploading: ${file.name}…`;
-      await postEvidenceUploadSingle(file);
-    } catch (err) {
-      if (statusEl) statusEl.textContent = err.message || 'Hata';
-      showDataEntryToast('Upload error', err.message);
-    }
+  if (evidenceModalBusy) {
+    showDataEntryToast('Please wait', 'Finish the current upload before adding more files.');
+    return;
   }
-  await refreshEvidenceModalContent();
-  await attachEvidenceCountsToRows();
-  renderGrid();
+  setEvidenceModalBusy(true, 'Uploading…');
+  try {
+    for (const file of fileList) {
+      try {
+        await postEvidenceUploadSingle(file);
+      } catch (err) {
+        if (statusEl) statusEl.textContent = err.message || 'Failed';
+        setEvidenceModalBusy(true, 'Failed');
+        showDataEntryToast('Upload error', err.message);
+        await new Promise((r) => setTimeout(r, 1200));
+      }
+    }
+    await refreshEvidenceModalContent();
+    await attachEvidenceCountsToRows();
+    renderGrid();
+  } finally {
+    setEvidenceModalBusy(false, '');
+  }
 }
 
 document.getElementById('evidencePickFilesBtn')?.addEventListener('click', () => document.getElementById('evidenceFileInput')?.click());

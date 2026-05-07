@@ -246,6 +246,89 @@ def _relative_upload_path(upload_root: Path, path: Path) -> str:
         return path.name
 
 
+def process_evidence_file_with_storage(
+    *,
+    storage: "StorageProvider",
+    staging_path: Path,
+    sha256_hex: str,
+    normalized_ext: str,
+    base_ts,
+) -> dict:
+    """
+    Optimize staging bytes and persist via StorageProvider.
+    Returns dict with storage_path / thumbnail_storage_path as relative POSIX keys.
+    """
+    import tempfile
+
+    y = base_ts.strftime("%Y")
+    m = base_ts.strftime("%m")
+
+    with tempfile.TemporaryDirectory() as td:
+        work = Path(td)
+        final_dir = work / "final"
+        thumb_dir = work / "thumb"
+        final_dir.mkdir(parents=True, exist_ok=True)
+        thumb_dir.mkdir(parents=True, exist_ok=True)
+
+        original_size = staging_path.stat().st_size
+        safe_hash = sha256_hex.lower()
+        tmp_final = final_dir / f"{safe_hash}_opt.tmp"
+
+        output_ext = normalized_ext
+        with staging_path.open("rb") as sf:
+            hdr = sf.read(16)
+        mime_out = infer_mime(normalized_ext, sniff_kind(hdr))
+
+        if normalized_ext == "pdf":
+            ok = optimize_pdf_gs(staging_path, tmp_final)
+            if not ok:
+                shutil.copy2(staging_path, tmp_final)
+                output_ext = "pdf"
+                mime_out = "application/pdf"
+        elif normalized_ext in {"png", "jpeg", "webp"}:
+            tmp_webp = final_dir / f"{safe_hash}_opt.webp"
+            optimize_image_to_webp(staging_path, tmp_webp)
+            tmp_final = tmp_webp
+            output_ext = "webp"
+            mime_out = "image/webp"
+        elif normalized_ext in {"docx", "xlsx"}:
+            rezip_store_archive(staging_path, tmp_final)
+            mime_out = infer_mime(normalized_ext, "zip")
+        else:
+            shutil.copy2(staging_path, tmp_final)
+
+        stored_filename = f"{safe_hash}.{output_ext}"
+        final_path = final_dir / stored_filename
+        tmp_final.replace(final_path)
+        optimized_size = final_path.stat().st_size
+
+        thumb_name = f"{safe_hash}_thumb.webp"
+        thumb_work = thumb_dir / thumb_name
+        thumb_rel: str | None = None
+
+        if output_ext == "pdf":
+            if pdf_first_page_thumbnail(final_path, thumb_work):
+                thumb_rel = storage.generate_path("evidence", "_thumbs", y, m, thumb_name)
+                storage.save_file(thumb_work, thumb_rel)
+        elif output_ext == "webp":
+            tiny_thumbnail_webp(final_path, thumb_work)
+            thumb_rel = storage.generate_path("evidence", "_thumbs", y, m, thumb_name)
+            storage.save_file(thumb_work, thumb_rel)
+
+        rel_storage = storage.generate_path("evidence", y, m, stored_filename)
+        storage.save_file(final_path, rel_storage)
+
+        return {
+            "original_size": original_size,
+            "optimized_size": optimized_size,
+            "stored_filename": stored_filename,
+            "storage_path": rel_storage.replace("\\", "/"),
+            "thumbnail_storage_path": thumb_rel.replace("\\", "/") if thumb_rel else None,
+            "file_extension": output_ext,
+            "mime_type": mime_out,
+        }
+
+
 def process_evidence_file(
     *,
     upload_root: Path,
@@ -257,8 +340,7 @@ def process_evidence_file(
 ) -> dict:
     """
     Produce optimized artifact under final_dir using stored filename <sha>.<ext>.
-    Returns dict with keys: stored_filename, storage_path (relative posix string),
-    thumbnail_path (optional), optimized_size, output_ext, mime_type
+    Same layout as historical direct-disk behavior (tests / callers).
     """
     final_dir.mkdir(parents=True, exist_ok=True)
     thumb_dir.mkdir(parents=True, exist_ok=True)
@@ -304,9 +386,6 @@ def process_evidence_file(
     elif output_ext == "webp":
         tiny_thumbnail_webp(final_path, thumb_path_full)
         thumb_rel = _relative_upload_path(upload_root, thumb_path_full)
-    elif normalized_ext in {"docx", "xlsx"}:
-        # no raster thumb by default
-        thumb_rel = None
 
     return {
         "original_size": original_size,
