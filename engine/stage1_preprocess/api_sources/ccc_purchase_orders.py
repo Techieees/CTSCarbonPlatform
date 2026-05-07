@@ -600,6 +600,7 @@ def load_purchase_orders_cache_summary(
         "records_synced": 0,
         "last_sync_time": "",
         "total_amount": 0.0,
+        "totals_by_currency": [],
         "supplier_count": 0,
         "preview": {
             "name": "Latest purchase orders",
@@ -621,6 +622,10 @@ def load_purchase_orders_cache_summary(
     amounts = pd.to_numeric(_series_from_candidates(df, "Total Price", "Amount", "amount"), errors="coerce").fillna(0.0)
     suppliers = _series_from_candidates(df, "Supplier", "supplier").fillna("").astype(str).str.strip()
     summary["total_amount"] = float(amounts.sum())
+    currencies = _series_from_candidates(df, "Currency", "currency").fillna("").astype(str).str.strip()
+    currencies = currencies.mask(currencies.eq(""), "—")
+    _grp = pd.DataFrame({"amt": amounts, "cur": currencies}).groupby("cur", dropna=False)["amt"].sum().sort_index()
+    summary["totals_by_currency"] = [{"currency": str(cur), "total": float(tot)} for cur, tot in _grp.items()]
     summary["supplier_count"] = int(suppliers.loc[suppliers.ne("")].nunique())
     preview_df = df.copy()
     preview_df["_created_on_sort"] = pd.to_datetime(

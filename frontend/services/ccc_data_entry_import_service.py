@@ -21,6 +21,9 @@ CCC_DATA_SOURCE_LABEL = "CCC API Purchase Orders"
 CCC_TARGET_SHEET = "Scope 3 Category 1 Purchased Goods & Services"
 CCC_IMPORT_DEDUP_COLUMN = "ccc_import_dedup"
 
+# Purchase order Status (CCC API statusDescription → dataframe "Status"). Only these may enter Data Entry.
+_ALLOW_IMPORT_STATUS_FOLDED = frozenset({"approved", "waitforoverbudgetcheck"})
+
 _LOG_MAX = 140
 
 
@@ -45,6 +48,16 @@ def log_duplicate(message: object) -> None:
 
 def log_inserted(message: object) -> None:
     print(f"[CCC_IMPORT_INSERTED] {_log_safe(message)}")
+
+
+def log_skipped_status(message: object) -> None:
+    print(f"[CCC_IMPORT_SKIPPED_STATUS] {_log_safe(message)}")
+
+
+def fold_purchase_order_status(value: object) -> str:
+    """Normalize status for rule matching (spacing/punctuation-insensitive, lowercased alnum only)."""
+    s = normalize_site_tag(str(value or "")).strip().lower()
+    return "".join(ch for ch in s if ch.isalnum())
 
 
 def resolve_ccc_company(registration: Mapping[str, str] | None) -> str:
@@ -167,13 +180,20 @@ def prepare_ccc_data_entry_rows(
     headers: Sequence[str],
     *,
     registration: Mapping[str, str],
-) -> list[tuple[str, list[str]]]:
+) -> tuple[list[tuple[str, list[str]]], int]:
     site_tag = resolve_ccc_site_tag(registration)
     country = normalize_site_tag(registration.get("project_location"))
     rows_out: list[tuple[str, list[str]]] = []
+    status_skipped = 0
     if df.empty:
-        return rows_out
+        return rows_out, 0
     for _, row in df.iterrows():
+        raw_status = row.get("Status")
+        folded = fold_purchase_order_status(raw_status)
+        if folded not in _ALLOW_IMPORT_STATUS_FOLDED:
+            status_skipped += 1
+            log_skipped_status(f"status={raw_status!r} folded={folded!r}")
+            continue
         dedup_key = generate_ccc_dedup_key(
             row.get("Project Code"),
             row.get("Purchase Order"),
@@ -194,4 +214,4 @@ def prepare_ccc_data_entry_rows(
             data_source=CCC_DATA_SOURCE_LABEL,
         )
         rows_out.append((dedup_key, cells))
-    return rows_out
+    return rows_out, status_skipped

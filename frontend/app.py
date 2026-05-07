@@ -4272,6 +4272,36 @@ def _resolve_template_sheet_name(company_name: str, sheet_name: str) -> str | No
     return resolved or None
 
 
+def _resolve_template_sheet_name_with_mode(company_name: str, sheet_name: str, *, template_mode: str) -> str | None:
+    """Like _resolve_template_sheet_name but uses an explicit template_mode (no Flask request/session)."""
+    if str(sheet_name or "").strip().lower() == KLARAKARBON_SHEET_NAME.lower():
+        return KLARAKARBON_SHEET_NAME
+    mode = normalize_template_mode(template_mode)
+    resolved = TEMPLATE_REGISTRY.resolve_sheet_name(company_name, sheet_name, template_mode=mode)
+    return resolved or None
+
+
+def _get_template_sheet_headers_with_mode(company_name: str, sheet_name: str, *, template_mode: str) -> list[str]:
+    """Resolve sheet headers without Flask request/session (background jobs). Empty profile: Cat 1 is unaffected."""
+    if str(sheet_name or "").strip().lower() == KLARAKARBON_SHEET_NAME.lower():
+        resolved_company = _resolve_template_company_name(company_name)
+        if not resolved_company:
+            return []
+        return list(klarakarbon_entry_headers(resolved_company))
+    resolved_sheet = _resolve_template_sheet_name_with_mode(company_name, sheet_name, template_mode=template_mode)
+    if not resolved_sheet:
+        return []
+    bundle = TEMPLATE_REGISTRY.get_bundle(
+        template_mode=normalize_template_mode(template_mode),
+        company_name=company_name,
+        profile={},
+    )
+    for item in bundle.get("visible_templates") or []:
+        if _normalize_template_key(str(item.get("sheet_name") or "")) == _normalize_template_key(resolved_sheet):
+            return list(item.get("headers") or [])
+    return []
+
+
 def _list_template_companies_for_user() -> list[dict[str, str]]:
     if bool(getattr(current_user, "is_admin", False)):
         return [{"key": name, "label": name} for name in sorted(_COMPANY_COUNTRY_CANONICAL.keys())]
@@ -4743,12 +4773,22 @@ def _delete_data_entry_group(
     query.delete(synchronize_session=False)
 
 
-def _upsert_data_entries(company_name: str, sheet_name: str, headers: list[str], rows: list[dict[str, object]]) -> dict[str, object]:
+_DATA_ENTRY_UPLOAD_USER_UNSPECIFIED = object()
+
+
+def _upsert_data_entries(
+    company_name: str,
+    sheet_name: str,
+    headers: list[str],
+    rows: list[dict[str, object]],
+    *,
+    uploaded_by_user_id: object = _DATA_ENTRY_UPLOAD_USER_UNSPECIFIED,
+) -> dict[str, object]:
     """
     Save rows with duplicate detection (company + sheet + full row content).
     Returns counts and entry_group ids that were newly written.
     """
-    grid_snapshot = _load_data_entry_grid_rows(company_name, sheet_name, headers)
+    grid_snapshot = _load_data_entry_grid_rows_no_request(company_name, sheet_name, headers)
     entry_group_to_fp: dict[str, str] = {}
     all_fps: set[str] = set()
     for r in grid_snapshot:
@@ -4812,6 +4852,11 @@ def _upsert_data_entries(company_name: str, sheet_name: str, headers: list[str],
             effective_row_index = next_row_index
             effective_entry_group = uuid.uuid4().hex[:12]
 
+        if uploaded_by_user_id is _DATA_ENTRY_UPLOAD_USER_UNSPECIFIED:
+            uploader_id = getattr(current_user, "id", None)
+        else:
+            uploader_id = uploaded_by_user_id
+
         for column_name, value in zip(headers, cells):
             vv = (value or "").strip()
             if vv == "":
@@ -4821,7 +4866,7 @@ def _upsert_data_entries(company_name: str, sheet_name: str, headers: list[str],
                     company_name=company_name,
                     sheet_name=sheet_name,
                     entry_group=effective_entry_group,
-                    uploaded_by_user_id=getattr(current_user, "id", None),
+                    uploaded_by_user_id=uploader_id,
                     row_index=effective_row_index,
                     column_name=column_name,
                     value=vv,
@@ -10853,12 +10898,14 @@ def api_ccc_import_to_data_entry():
             }
         ), 409
 
+    tm = _current_template_mode()
     job_id = run_in_background(
         "ccc_import",
         "CCC API",
         _run_ccc_import_job,
         project_labels=labels,
         user_id=int(getattr(current_user, "id", 0) or 0) or None,
+        template_mode=tm,
         job_user_id=int(getattr(current_user, "id", 0) or 0) or None,
         job_user_email=str(getattr(current_user, "email", "") or ""),
     )
@@ -11660,6 +11707,7 @@ def _run_ccc_import_job(
     job_id: str,
     project_labels: list[str],
     user_id: int | None = None,
+    template_mode: str = TEMPLATE_MODE_LEGACY,
 ) -> dict[str, object]:
     from frontend.services.ccc_data_entry_import_service import (
         CCC_IMPORT_DEDUP_COLUMN,
@@ -11680,6 +11728,7 @@ def _run_ccc_import_job(
         "duplicates_skipped": 0,
         "fingerprint_duplicates_skipped": 0,
         "validation_skipped": 0,
+        "status_skipped": 0,
         "errors": [],
     }
 
@@ -11714,6 +11763,7 @@ def _run_ccc_import_job(
             "rows_inserted": 0,
             "duplicates_skipped": 0,
             "validation_skipped": 0,
+            "status_skipped": 0,
             "fingerprint_duplicates_skipped": 0,
             "errors_count": 0,
         },
@@ -11739,8 +11789,11 @@ def _run_ccc_import_job(
             stats["errors"].append(f"no_company:{label}")
             continue
 
-        resolved_sheet = _resolve_template_sheet_name(resolved_company, CCC_TARGET_SHEET) or CCC_TARGET_SHEET
-        headers = _get_template_sheet_headers(resolved_company, resolved_sheet)
+        resolved_sheet = (
+            _resolve_template_sheet_name_with_mode(resolved_company, CCC_TARGET_SHEET, template_mode=template_mode)
+            or CCC_TARGET_SHEET
+        )
+        headers = _get_template_sheet_headers_with_mode(resolved_company, resolved_sheet, template_mode=template_mode)
         if not headers:
             msg = f"no_sheet_headers:{resolved_company}:{resolved_sheet}"
             log_warning(msg)
@@ -11783,7 +11836,8 @@ def _run_ccc_import_job(
         log_import(f"labels ok={label!r} fetched={len(df.index)} → {resolved_company}")
 
         _update_job_progress(job_id, 40 + int((idx / total_labels) * 20), "Resolving site mappings…")
-        pairs = prepare_ccc_data_entry_rows(df, headers, registration=reg)
+        pairs, skipped_status_n = prepare_ccc_data_entry_rows(df, headers, registration=reg)
+        stats["status_skipped"] = int(stats["status_skipped"]) + int(skipped_status_n)
         _raise_if_job_cancelled(job_id)
         _update_job_progress(job_id, 60 + int((idx / total_labels) * 15), "Normalizing reporting periods…")
 
@@ -11824,7 +11878,9 @@ def _run_ccc_import_job(
                 continue
 
             try:
-                result = _upsert_data_entries(resolved_company, resolved_sheet, headers, normalized_rows)
+                result = _upsert_data_entries(
+                    resolved_company, resolved_sheet, headers, normalized_rows, uploaded_by_user_id=uid
+                )
                 db.session.flush()
             except Exception as exc:
                 db.session.rollback()
@@ -11878,6 +11934,7 @@ def _run_ccc_import_job(
                 "rows_inserted": int(stats["rows_inserted"]),
                 "duplicates_skipped": int(stats["duplicates_skipped"]),
                 "validation_skipped": int(stats["validation_skipped"]),
+                "status_skipped": int(stats["status_skipped"]),
                 "fingerprint_duplicates_skipped": int(stats["fingerprint_duplicates_skipped"]),
                 "errors_count": len(errs),
             },
@@ -11894,12 +11951,13 @@ def _run_ccc_import_job(
         ),
     )
     log_import(
-        "summary inserted=%s dedup_skip=%s fp_dup=%s val_skip=%s projects=%s"
+        "summary inserted=%s dedup_skip=%s fp_dup=%s val_skip=%s status_skip=%s projects=%s"
         % (
             stats["rows_inserted"],
             stats["duplicates_skipped"],
             stats["fingerprint_duplicates_skipped"],
             stats["validation_skipped"],
+            stats["status_skipped"],
             stats["projects_processed"],
         )
     )
@@ -12883,6 +12941,7 @@ def _load_ccc_purchase_orders_summary(project_id: int | None) -> dict[str, objec
         "last_sync_time": "",
         "total_amount": 0.0,
         "total_amount_display": "0.00",
+        "total_spend_lines": [],
         "supplier_count": 0,
         "supplier_count_display": "0",
         "preview": default_preview,
@@ -12897,6 +12956,15 @@ def _load_ccc_purchase_orders_summary(project_id: int | None) -> dict[str, objec
     records_synced = int(raw.get("records_synced") or 0)
     total_amount = _safe_float(raw.get("total_amount") or 0.0)
     supplier_count = int(raw.get("supplier_count") or 0)
+    tb = raw.get("totals_by_currency")
+    spend_lines: list[str] = []
+    if isinstance(tb, list):
+        rows_cur = [x for x in tb if isinstance(x, dict)]
+        rows_cur.sort(key=lambda x: str(x.get("currency") or ""))
+        for item in rows_cur:
+            cur = str(item.get("currency") or "").strip() or "—"
+            amt = _safe_float(item.get("total"))
+            spend_lines.append(f"{cur} {amt:,.2f}")
     preview = raw.get("preview") if isinstance(raw.get("preview"), dict) else default_preview
     available = bool(raw.get("available"))
     return {
@@ -12907,7 +12975,8 @@ def _load_ccc_purchase_orders_summary(project_id: int | None) -> dict[str, objec
         "records_synced_display": f"{records_synced:,}",
         "last_sync_time": str(raw.get("last_sync_time") or ""),
         "total_amount": total_amount,
-        "total_amount_display": f"{total_amount:,.2f}",
+        "total_amount_display": spend_lines[0] if len(spend_lines) == 1 else (" · ".join(spend_lines) if spend_lines else "—"),
+        "total_spend_lines": spend_lines,
         "supplier_count": supplier_count,
         "supplier_count_display": f"{supplier_count:,}",
         "preview": preview,

@@ -100,7 +100,17 @@
       <div class="col-md-4">
         <article class="analytics-output-stat">
           <span class="analytics-output-stat__label">Total spend</span>
-          <strong class="analytics-output-stat__value">{{ ccc_purchase_orders.total_amount_display if ccc_purchase_orders else "0.00" }}</strong>
+          <strong class="analytics-output-stat__value d-flex flex-column gap-1 align-items-start">
+            {% if ccc_purchase_orders and ccc_purchase_orders.total_spend_lines %}
+              {% for line in ccc_purchase_orders.total_spend_lines %}
+              <span class="lh-sm">{{ line }}</span>
+              {% endfor %}
+            {% elif ccc_purchase_orders %}
+              <span class="lh-sm">—</span>
+            {% else %}
+              <span class="lh-sm">—</span>
+            {% endif %}
+          </strong>
         </article>
       </div>
       <div class="col-md-4">
@@ -125,7 +135,7 @@
         <label class="form-label small text-muted mb-1" for="cccDeImportFilter">Projects</label>
         <input type="search" class="form-control form-control-sm mb-2" id="cccDeImportFilter" placeholder="Filter by site, company, country…" autocomplete="off" aria-label="Filter CCC projects">
         <div class="ccc-de-import-meta small text-muted mb-2">
-          <span id="cccDeImportSelectedCount">0</span> selected · Registry-matched projects only
+          <span id="cccDeImportSelectedCount">0</span> selected · Registry matched projects only
         </div>
         <div class="ccc-de-import-list border rounded" id="cccDeImportList" role="group" aria-label="CCC projects for import">
           {% for row in ccc_de_import_projects %}
@@ -151,6 +161,7 @@
             <dt class="col-6 text-muted">Rows fetched</dt><dd class="col-6 mb-0 text-end" id="cccDeStatFetched">—</dd>
             <dt class="col-6 text-muted">Rows inserted</dt><dd class="col-6 mb-0 text-end" id="cccDeStatInserted">—</dd>
             <dt class="col-6 text-muted">Duplicates skipped</dt><dd class="col-6 mb-0 text-end" id="cccDeStatDup">—</dd>
+            <dt class="col-6 text-muted">Excluded status</dt><dd class="col-6 mb-0 text-end" id="cccDeStatStatusSkip">—</dd>
             <dt class="col-6 text-muted">Unresolved skipped</dt><dd class="col-6 mb-0 text-end" id="cccDeStatValSkip">—</dd>
             <dt class="col-6 text-muted">Errors</dt><dd class="col-6 mb-0 text-end" id="cccDeStatErr">—</dd>
           </dl>
@@ -200,6 +211,7 @@
               <dt class="col-7 text-muted">Rows fetched</dt><dd class="col-5 mb-0 text-end" id="cccDeDoneFetched">—</dd>
               <dt class="col-7 text-muted">Rows inserted</dt><dd class="col-5 mb-0 text-end" id="cccDeDoneInserted">—</dd>
               <dt class="col-7 text-muted">Duplicates skipped</dt><dd class="col-5 mb-0 text-end" id="cccDeDoneDup">—</dd>
+              <dt class="col-7 text-muted">Excluded status (not imported)</dt><dd class="col-5 mb-0 text-end" id="cccDeDoneStatusSkip">—</dd>
               <dt class="col-7 text-muted">Unresolved rows skipped</dt><dd class="col-5 mb-0 text-end" id="cccDeDoneValSkip">—</dd>
               <dt class="col-7 text-muted">Fingerprint duplicates</dt><dd class="col-5 mb-0 text-end" id="cccDeDoneFpDup">—</dd>
               <dt class="col-7 text-muted">Errors</dt><dd class="col-5 mb-0 text-end" id="cccDeDoneErr">—</dd>
@@ -860,6 +872,7 @@
     if (els.inserted) els.inserted.textContent = fmt(res.rows_inserted);
     if (els.dup) els.dup.textContent = fmt(res.duplicates_skipped);
     if (els.valSkip) els.valSkip.textContent = fmt(res.validation_skipped);
+    if (els.statusSkip) els.statusSkip.textContent = fmt(res.status_skipped);
     if (els.err) els.err.textContent = fmt(errCount);
   }
 
@@ -926,6 +939,7 @@
     fetched: qs('cccDeStatFetched'),
     inserted: qs('cccDeStatInserted'),
     dup: qs('cccDeStatDup'),
+    statusSkip: qs('cccDeStatStatusSkip'),
     valSkip: qs('cccDeStatValSkip'),
     err: qs('cccDeStatErr'),
   };
@@ -1044,6 +1058,7 @@
               rows_fetched: r.rows_fetched,
               projects_processed: r.projects_processed,
               validation_skipped: r.validation_skipped,
+              status_skipped: r.status_skipped,
               fingerprint_duplicates_skipped: r.fingerprint_duplicates_skipped,
               errors_count: doneErr,
             });
@@ -1057,6 +1072,7 @@
             setDone('cccDeDoneFetched', r.rows_fetched);
             setDone('cccDeDoneInserted', r.rows_inserted);
             setDone('cccDeDoneDup', r.duplicates_skipped);
+            setDone('cccDeDoneStatusSkip', r.status_skipped);
             setDone('cccDeDoneValSkip', r.validation_skipped);
             setDone('cccDeDoneFpDup', r.fingerprint_duplicates_skipped);
             setDone('cccDeDoneErr', doneErr);
@@ -1065,7 +1081,8 @@
             if (partial) {
               var errN = Number(doneErr || 0);
               var valN = Number(r.validation_skipped || 0);
-              if (errN > 0 || valN > 0) {
+              var statN = Number(r.status_skipped || 0);
+              if (errN > 0 || valN > 0 || statN > 0) {
                 partial.classList.remove('d-none');
                 partial.textContent = 'Some rows were skipped or reported errors. Check server logs for [CCC_IMPORT_*] lines.';
               } else {
