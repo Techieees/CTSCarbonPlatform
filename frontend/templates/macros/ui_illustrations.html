@@ -1,165 +1,316 @@
-{# Minimal line illustrations — stroke geometric, neutral (use with dash-admin-illu + size class) #}
+{# Lottie-driven icons (SVG renderer via static/js/lottie-init.js). Stroke SVG kept only for tiny UI chrome (chevron, close, expand) where motion adds noise. #}
+{# Canonical filenames (same meaning => same JSON globally): home/dashboard intelligence=ecology.json, data=environment.json, documents/sheets=recycled-paper.json, charts/trends=timeline-chart.json, energy/quick actions=renewable-energy.json, notifications=alarm-bell.json, settings gear=gear-plant.json, login=access.json, logout=exit-sign.json, upload=cloud.json, download=exports.json, import=import.json, reload=update.json, filter/search=search.json, save=clipboard.json, confirm=double-check.json, mapping-run=recycling-truck.json #}
+
 {% macro _wrap(class_extra, size_mod, svg_inner) -%}
 <span class="dash-admin-illu {{ size_mod }} {{ class_extra }}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">{{ svg_inner|safe }}</svg></span>
 {%- endmacro %}
 
-{# Animated icons via Lottie (SVG); centralized loader: static/js/lottie-init.js #}
-{% macro lottie_icon(json_filename, alt='', size='sm', extra_class='') -%}
+{% macro lottie_icon(json_filename, alt='', size='sm', extra_class='', lottie_speed=None) -%}
 <div class="lottie-icon animated-icon animated-icon-{{ size }} {{ extra_class }}"
      data-animation="{{ url_for('static', filename='lottie/' ~ json_filename) }}"
+     {% if lottie_speed is not none %}data-lottie-speed="{{ lottie_speed }}"{% endif %}
      {% if alt %}role="img" aria-label="{{ alt }}"{% else %}aria-hidden="true"{% endif %}></div>
 {%- endmacro %}
 
-{% macro illu_nav_home(extra_class='') %}{{ lottie_icon('ecology.json', 'Dashboard', 'sm', extra_class) }}{% endmacro %}
+{# --- Core navigation & account (sustainability / climate intelligence identity) --- #}
+{% macro illu_nav_home(extra_class='') %}{{ lottie_icon('ecology.json', 'Environmental overview', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_nav_data(extra_class='') %}{{ lottie_icon('recycling.json', 'Data', 'sm', extra_class) }}{% endmacro %}
+{% macro illu_nav_data(extra_class='') %}{{ lottie_icon('environment.json', 'Environmental data', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_nav_pen_entry(extra_class='') %}{{ lottie_icon('save-water.json', 'Entry', 'sm', extra_class) }}{% endmacro %}
+{% macro illu_nav_pen_entry(extra_class='') %}{{ lottie_icon('cloud.json', 'Upload', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_nav_bolt(extra_class='') %}{{ lottie_icon('renewable-energy.json', 'Energy', 'sm', extra_class) }}{% endmacro %}
+{% macro illu_nav_bolt(extra_class='') %}{{ lottie_icon('renewable-energy.json', 'Energy transition', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_nav_file(extra_class='') %}{{ lottie_icon('co2.json', 'File', 'sm', extra_class) }}{% endmacro %}
+{% macro illu_nav_file(extra_class='') %}{{ lottie_icon('recycled-paper.json', 'Reports and documents', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_nav_chart(extra_class='') %}{{ lottie_icon('chart.json', 'Analytics', 'sm', extra_class) }}{% endmacro %}
+{% macro illu_nav_chart(extra_class='') %}{{ lottie_icon('timeline-chart.json', 'Emissions analytics', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_nav_user(extra_class='') %}{{ lottie_icon('relationship.json', 'Profile', 'sm', extra_class) }}{% endmacro %}
+{% macro illu_nav_user(extra_class='') %}{{ lottie_icon('hands-heart-earth.json', 'People and planet', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_nav_id(extra_class='') %}{{ lottie_icon('map.json', 'Governance', 'sm', extra_class) }}{% endmacro %}
+{% macro illu_nav_id(extra_class='') %}{{ lottie_icon('justice.json', 'Governance and compliance', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_nav_sliders(extra_class='') %}{{ lottie_icon('sustainable-energy.json', 'Controls', 'sm', extra_class) }}{% endmacro %}
+{% macro illu_nav_sliders(extra_class='') %}{{ lottie_icon('sustainable-energy.json', 'Factors and parameters', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_nav_cog(extra_class='') %}{{ lottie_icon('geothermal.json', 'Settings', 'sm', extra_class) }}{% endmacro %}
+{% macro illu_nav_cog(extra_class='') %}{{ lottie_icon('gear-plant.json', 'Settings', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_nav_signout(extra_class='') %}{{ lottie_icon('wind.json', 'Logout', 'sm', extra_class) }}{% endmacro %}
+{% macro illu_nav_admin(extra_class='') %}{{ lottie_icon('eco-process.json', 'Platform administration', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_nav_signin(extra_class='') %}{{ lottie_icon('wind.json', 'Login', 'sm', extra_class) }}{% endmacro %}
+{% macro illu_nav_signout(extra_class='') %}{{ lottie_icon('exit-sign.json', 'Logout', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_nav_notifications(extra_class='') %}{{ lottie_icon('feedback.json', 'Notifications', 'sm', extra_class) }}{% endmacro %}
+{% macro illu_nav_signin(extra_class='') %}{{ lottie_icon('access.json', 'Login', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_nav_feed(extra_class='', alt='Feed') %}{{ lottie_icon('comments.json', alt, 'sm', extra_class) }}{% endmacro %}
+{% macro illu_nav_notifications(extra_class='') %}{{ lottie_icon('alarm-bell.json', 'Notifications', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_nav_map(extra_class='') %}{{ lottie_icon('map.json', 'Map', 'sm', extra_class) }}{% endmacro %}
+{% macro illu_nav_feed(extra_class='', alt='Feed') %}{{ lottie_icon('sustainability-network.json', 'Collaboration feed', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_feed_share(extra_class='') %}{{ lottie_icon('communication.json', 'Share', 'sm', extra_class) }}{% endmacro %}
+{% macro illu_nav_map(extra_class='') %}{{ lottie_icon('globe.json', 'Climate map', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_input_envelope() %}{{ _wrap('', 'dash-admin-illu--input', '<rect x="3" y="5" width="18" height="14" rx="1.5" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.03"/><path d="M3 7l9 6 9-6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.55"/>') }}{% endmacro %}
+{% macro illu_nav_chart_pie(extra_class='') %}{{ lottie_icon('co2.json', 'GHG analytics', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_input_lock() %}{{ _wrap('', 'dash-admin-illu--input', '<rect x="7" y="11" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.04"/><path d="M8.5 11V8.5a3.5 3.5 0 017 0V11" stroke="currentColor" stroke-width="1.15" stroke-linecap="round"/>') }}{% endmacro %}
+{% macro illu_nav_leaf(extra_class='') %}{{ lottie_icon('leaf.json', 'ESG', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_hero_login(extra_class='') %}<span class="dash-admin-illu dash-admin-illu--hero {{ extra_class }}" style="color: var(--muted-2);" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="8" width="11" height="18" rx="1.5" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.04"/><path d="M17 16h9M20 13l3 3-3 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="11.5" cy="14" r="2.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.05"/></svg></span>{% endmacro %}
+{% macro illu_nav_speed(extra_class='') %}{{ lottie_icon('wind-power.json', 'Renewable performance', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_hero_register(extra_class='') %}<span class="dash-admin-illu dash-admin-illu--hero {{ extra_class }}" style="color: var(--muted-2);" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="13" cy="12" r="3.5" stroke="currentColor" stroke-width="1.2" fill="currentColor" fill-opacity="0.05"/><path d="M6 27c0-4 3.2-6 7-6s7 2 7 6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" fill="none"/><path d="M23 7v5M20.5 9.5h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></span>{% endmacro %}
+{# Layers / lifecycle metaphor (LCA, stacks) — distinct from generic documents #}
+{% macro illu_nav_layers(extra_class='') %}{{ lottie_icon('life-cycle.json', 'Lifecycle', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_hero_key(extra_class='') %}<span class="dash-admin-illu dash-admin-illu--hero {{ extra_class }}" style="color: var(--muted-2);" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="14" r="5" stroke="currentColor" stroke-width="1.2" fill="currentColor" fill-opacity="0.04"/><path d="M14.5 17.5L26 26M22 23l4 4-1.5 1.5-2-2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>{% endmacro %}
+{% macro illu_nav_resources(extra_class='') %}{{ lottie_icon('think-green.json', 'Sustainability library', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_hero_lock(extra_class='') %}<span class="dash-admin-illu dash-admin-illu--hero {{ extra_class }}" style="color: var(--muted-2);" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="9" y="14" width="14" height="14" rx="2" stroke="currentColor" stroke-width="1.2" fill="currentColor" fill-opacity="0.05"/><path d="M11 14V11a5 5 0 0110 0v3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></span>{% endmacro %}
+{% macro illu_nav_mapping_run(extra_class='') %}{{ lottie_icon('recycling-truck.json', 'Circular mapping runs', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_hero_profile(extra_class='') %}<span class="dash-admin-illu dash-admin-illu--hero {{ extra_class }}" style="color: var(--muted-2);" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="5" width="20" height="22" rx="2" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.03"/><circle cx="16" cy="13" r="4" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.05"/><path d="M10 26c0-3.5 2.7-5 6-5s6 1.5 6 5" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" fill="none"/></svg></span>{% endmacro %}
+{% macro illu_nav_profile_settings(extra_class='') %}{{ lottie_icon('eco-tag.json', 'Profile settings', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_hero_id(extra_class='') %}<span class="dash-admin-illu dash-admin-illu--hero {{ extra_class }}" style="color: var(--muted-2);" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="7" width="22" height="18" rx="2" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.04"/><circle cx="12" cy="15" r="2.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.06"/><path d="M18 13h7M18 17h5" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-opacity="0.45"/></svg></span>{% endmacro %}
+{# Marketing navbar (public site) — Earth / platform / methodology / trust / team #}
+{% macro illu_nav_mkt_home(extra_class='') %}{{ lottie_icon('mother-earth-day.json', 'Home', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_btn_bolt(extra_class='') %}{{ lottie_icon('renewable-energy.json', 'Energy', 'sm', extra_class) }}{% endmacro %}
+{% macro illu_nav_mkt_platform(extra_class='') %}{{ lottie_icon('green-planet.json', 'Platform', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_btn_download(extra_class='') %}{{ lottie_icon('earth.json', 'Download', 'sm', extra_class) }}{% endmacro %}
+{% macro illu_nav_mkt_methodology(extra_class='') %}{{ lottie_icon('compass.json', 'Methodology', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_nav_mkt_trust(extra_class='') %}{{ lottie_icon('shield-badge.json', 'Trust', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_nav_mkt_who_we_are(extra_class='') %}{{ lottie_icon('cultural-diversity.json', 'Who we are', 'sm', extra_class) }}{% endmacro %}
+
+{# --- Marketing / mega-menu: Impact & ESG (unique per destination) --- #}
+{% macro illu_nav_impact_hub(extra_class='') %}{{ lottie_icon('earth.json', 'Climate impact', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_nav_impact_overview(extra_class='') %}{{ lottie_icon('global-warming.json', 'Impact overview', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_nav_operational_sustainability(extra_class='') %}{{ lottie_icon('eco-factory.json', 'Operational sustainability', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_nav_lca_epd(extra_class='') %}{{ lottie_icon('recycled-paper.json', 'LCA and EPD', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_nav_industry_collaboration(extra_class='') %}{{ lottie_icon('together.json', 'Industry collaboration', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_nav_corporate_sustainability(extra_class='') %}{{ lottie_icon('corporate-culture.json', 'Corporate sustainability', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_nav_double_materiality(extra_class='') %}{{ lottie_icon('venn-diagram.json', 'Double materiality', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_nav_carbon_accounting(extra_class='') %}{{ lottie_icon('carbon-footprint.json', 'Carbon accounting', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_nav_stakeholder_engagement(extra_class='') %}{{ lottie_icon('stakeholders.json', 'Stakeholders', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_nav_esg_overview(extra_class='') %}{{ lottie_icon('sustainability.json', 'ESG overview', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_nav_csrd(extra_class='') %}{{ lottie_icon('gdpr.json', 'CSRD', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_nav_policies(extra_class='') %}{{ lottie_icon('privacy-policy.json', 'Policies', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_nav_lca_menu(extra_class='') %}{{ lottie_icon('ecosystem.json', 'LCA', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_nav_lca_tool(extra_class='') %}{{ lottie_icon('green-technology.json', 'LCA tool', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_nav_owner_analytics(extra_class='') %}{{ lottie_icon('analytics.json', 'Environmental analytics', 'sm', extra_class) }}{% endmacro %}
+
+{# --- Feed actions --- #}
+{% macro illu_feed_share(extra_class='') %}{{ lottie_icon('together.json', 'Share impact', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_feed_comment(extra_class='', alt='Comments') %}{{ lottie_icon('chat.json', alt, 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_feed_attach_image(extra_class='') %}{{ lottie_icon('views.json', 'Image', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_feed_attach_file(extra_class='') %}{{ lottie_icon('files.json', 'File', 'sm', extra_class) }}{% endmacro %}
+
+{# Chat widget & global chrome (search.json shared wherever search is meant) #}
+{% macro illu_chat_compose(extra_class='') %}{{ lottie_icon('communication.json', 'Compose message', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_chat_search_inline(extra_class='') %}{{ lottie_icon('search.json', 'Search messages', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_chat_list_filter(extra_class='') %}{{ lottie_icon('contrast.json', 'Refine list', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_chat_image(extra_class='') %}{{ lottie_icon('views.json', 'Image', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_chat_attach(extra_class='') %}{{ lottie_icon('files.json', 'Attach file', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_chat_emoji(extra_class='') %}{{ lottie_icon('feedback.json', 'Reactions', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_ui_search(extra_class='') %}{{ lottie_icon('search.json', 'Search', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_header_filters(extra_class='') %}{{ lottie_icon('eco-earth.json', 'Environmental filters', 'sm', 'dash-admin-illu--header ' ~ extra_class) }}{% endmacro %}
+
+{# --- Forms (compact Lottie reads better than mixed SVG sets on auth pages) --- #}
+{% macro illu_input_envelope() %}{{ lottie_icon('letter.json', 'Email', 'sm', '') }}{% endmacro %}
+
+{% macro illu_input_lock() %}{{ lottie_icon('key.json', 'Password', 'sm', '') }}{% endmacro %}
+
+{% macro illu_hero_login(extra_class='') %}{{ lottie_icon('access.json', 'Sign in', 'lg', 'dash-admin-illu--hero ' ~ extra_class, 0.82) }}{% endmacro %}
+
+{% macro illu_hero_register(extra_class='') %}{{ lottie_icon('invitation.json', 'Register', 'lg', 'dash-admin-illu--hero ' ~ extra_class, 0.82) }}{% endmacro %}
+
+{% macro illu_hero_key(extra_class='') %}{{ lottie_icon('key.json', 'Reset password', 'lg', 'dash-admin-illu--hero ' ~ extra_class, 0.82) }}{% endmacro %}
+
+{% macro illu_hero_lock(extra_class='') %}{{ lottie_icon('shield.json', 'Secure account', 'lg', 'dash-admin-illu--hero ' ~ extra_class, 0.82) }}{% endmacro %}
+
+{% macro illu_hero_profile(extra_class='') %}{{ lottie_icon('profile_settings.json', 'Profile', 'lg', 'dash-admin-illu--hero ' ~ extra_class, 0.82) }}{% endmacro %}
+
+{% macro illu_hero_id(extra_class='') %}{{ lottie_icon('audit-document.json', 'Verification', 'lg', 'dash-admin-illu--hero ' ~ extra_class, 0.82) }}{% endmacro %}
+
+{# --- Buttons & toolbar --- #}
+{% macro illu_btn_bolt(extra_class='') %}{{ lottie_icon('renewable-energy.json', 'Run', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_btn_download(extra_class='') %}{{ lottie_icon('exports.json', 'Download', 'sm', extra_class) }}{% endmacro %}
 
 {% macro illu_btn_expand(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--btn', '<path d="M9 3H3v6M15 21h6v-6M3 15v6h6M21 9V3h-6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>') }}{% endmacro %}
 
 {% macro illu_btn_compress(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--btn', '<path d="M9 9H3V3M15 15h6v6M9 15v6H3M15 9V3h6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>') }}{% endmacro %}
 
-{% macro illu_btn_plus(extra_class='') %}{{ lottie_icon('green-energy.json', 'Add', 'sm', extra_class) }}{% endmacro %}
+{% macro illu_btn_plus(extra_class='') %}{{ lottie_icon('sprout.json', 'Add', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_btn_clear(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--btn', '<path d="M7 8h12l-1 12H8L7 8z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="currentColor" fill-opacity="0.04"/><path d="M10 11l8 8M18 11l-8 8" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-opacity="0.55"/>') }}{% endmacro %}
+{% macro illu_btn_clear(extra_class='') %}{{ lottie_icon('garbage-bag.json', 'Clear', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_btn_save(extra_class='') %}{{ lottie_icon('save-water.json', 'Save', 'sm', extra_class) }}{% endmacro %}
+{% macro illu_btn_save(extra_class='') %}{{ lottie_icon('clipboard.json', 'Save', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_btn_check(extra_class='') %}{{ lottie_icon('recycle.json', 'Confirm', 'sm', extra_class) }}{% endmacro %}
+{% macro illu_btn_check(extra_class='') %}{{ lottie_icon('double-check.json', 'Confirm', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_toolbar_columns() %}{{ _wrap('', 'dash-admin-illu--toolbar', '<rect x="5" y="4" width="3" height="16" rx="0.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.05"/><rect x="10.5" y="4" width="3" height="16" rx="0.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.07"/><rect x="16" y="4" width="3" height="16" rx="0.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.05"/>') }}{% endmacro %}
+{% macro illu_toolbar_columns() %}{{ lottie_icon('bar-chart (1).json', 'Columns', 'sm', 'dash-admin-illu--toolbar') }}{% endmacro %}
 
-{% macro illu_toolbar_arrows() %}{{ _wrap('', 'dash-admin-illu--toolbar', '<path d="M4 12h16M8 8L4 12l4 4M20 8l4 4-4 4" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round" fill="none"/>') }}{% endmacro %}
+{% macro illu_toolbar_arrows() %}{{ lottie_icon('connection.json', 'Reorder', 'sm', 'dash-admin-illu--toolbar') }}{% endmacro %}
 
-{% macro illu_toolbar_keyboard() %}{{ _wrap('', 'dash-admin-illu--toolbar', '<rect x="3" y="6" width="18" height="12" rx="1.5" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.03"/><path d="M7 10h2M11 10h2M15 10h2M7 14h10" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-opacity="0.45"/>') }}{% endmacro %}
+{% macro illu_toolbar_keyboard() %}{{ lottie_icon('programming.json', 'Shortcuts', 'sm', 'dash-admin-illu--toolbar') }}{% endmacro %}
 
 {% macro illu_chevron_right(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--toolbar', '<path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>') }}{% endmacro %}
 
 {% macro illu_times(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--toolbar', '<path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>') }}{% endmacro %}
 
-{% macro illu_pen_small(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--toolbar', '<path d="M4 20l8-12 4 4-8 12H4v-4z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="currentColor" fill-opacity="0.06"/>') }}{% endmacro %}
+{% macro illu_pen_small(extra_class='') %}{{ lottie_icon('tools.json', 'Edit', 'sm', 'dash-admin-illu--toolbar ' ~ extra_class) }}{% endmacro %}
 
-{% macro illu_lock_small(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--toolbar', '<rect x="7" y="11" width="10" height="9" rx="1" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.04"/><path d="M9 11V8a3 3 0 016 0v3" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>') }}{% endmacro %}
+{% macro illu_lock_small(extra_class='') %}{{ lottie_icon('integrity.json', 'Locked', 'sm', 'dash-admin-illu--toolbar ' ~ extra_class) }}{% endmacro %}
 
-{% macro illu_empty_bolt() %}{{ lottie_icon('renewable-energy.json', 'Empty state', 'lg', '') }}{% endmacro %}
+{% macro illu_empty_bolt() %}{{ lottie_icon('no-data.json', 'Empty state', 'lg', '') }}{% endmacro %}
 
 {% macro illu_arrow_left(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--btn', '<path d="M14 6L6 14l8 8M6 14h14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>') }}{% endmacro %}
 
 {% macro illu_play(extra_class='') %}{{ lottie_icon('windmill.json', 'Video', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_list(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--btn', '<path d="M9 6H6M9 12H6M9 18H6M13 7h7M13 13h7M13 19h5" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-opacity="0.55"/>') }}{% endmacro %}
+{% macro illu_list(extra_class='') %}{{ lottie_icon('questionnaire.json', 'List', 'sm', 'dash-admin-illu--btn ' ~ extra_class) }}{% endmacro %}
 
-{% macro illu_inbox_empty() %}{{ lottie_icon('ecology.json', 'Empty inbox', 'lg', '') }}{% endmacro %}
+{% macro illu_inbox_empty() %}{{ lottie_icon('newsletter.json', 'Empty inbox', 'lg', '') }}{% endmacro %}
 
-{% macro illu_card_users() %}<span class="dash-admin-illu dash-admin-illu--card-stat" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="12" r="3" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.05"/><circle cx="21" cy="11" r="2.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.04"/><path d="M5 26c0-3 2.5-4 6-4s6 1 6 4M17 24c.5-2 2.2-3 4-3s3.5 1 4 3" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" fill="none"/></svg></span>{% endmacro %}
+{% macro illu_card_users() %}{{ lottie_icon('relationship.json', 'Users', 'sm', 'dash-admin-illu--card-stat') }}{% endmacro %}
 
-{% macro illu_card_grid() %}<span class="dash-admin-illu dash-admin-illu--card-stat" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="5" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.05"/><rect x="17" y="5" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.07"/><rect x="5" y="17" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.06"/><rect x="17" y="17" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.04"/></svg></span>{% endmacro %}
+{% macro illu_card_grid() %}{{ lottie_icon('green-city.json', 'Grid', 'sm', 'dash-admin-illu--card-stat') }}{% endmacro %}
 
-{% macro illu_card_building() %}<span class="dash-admin-illu dash-admin-illu--card-stat" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="8" y="8" width="16" height="20" rx="1" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.04"/><path d="M12 14h2M18 14h2M12 18h2M18 18h2M12 22h8" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-opacity="0.45"/></svg></span>{% endmacro %}
+{% macro illu_card_building() %}{{ lottie_icon('eco-house.json', 'Sites', 'sm', 'dash-admin-illu--card-stat') }}{% endmacro %}
 
-{% macro illu_title_building() %}<span class="dash-admin-illu dash-admin-illu--title" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="8" y="8" width="16" height="20" rx="1" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.04"/><path d="M12 14h2M18 14h2M12 18h2M18 18h2M12 22h8" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-opacity="0.45"/></svg></span>{% endmacro %}
+{% macro illu_title_building() %}{{ lottie_icon('eco-house.json', 'Sites', 'sm', 'dash-admin-illu--title') }}{% endmacro %}
 
-{% macro illu_card_calendar() %}<span class="dash-admin-illu dash-admin-illu--card-stat" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="9" width="20" height="18" rx="2" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.03"/><path d="M6 14h20M11 7v5M21 7v5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-opacity="0.45"/><circle cx="16" cy="21" r="2" stroke="currentColor" stroke-width="1" fill="currentColor" fill-opacity="0.06"/></svg></span>{% endmacro %}
+{% macro illu_card_calendar() %}{{ lottie_icon('calendar.json', 'Calendar', 'sm', 'dash-admin-illu--card-stat') }}{% endmacro %}
 
-{% macro illu_card_check() %}<span class="dash-admin-illu dash-admin-illu--card-stat" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="16" r="10" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.04"/><path d="M10 16l4 4 8-8" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg></span>{% endmacro %}
+{% macro illu_card_check() %}{{ lottie_icon('success.json', 'Completed', 'sm', 'dash-admin-illu--card-stat') }}{% endmacro %}
 
-{% macro illu_card_report() %}<span class="dash-admin-illu dash-admin-illu--card-stat" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 6h10l4 4v16a1 1 0 01-1 1H8a1 1 0 01-1-1V7a1 1 0 011-1z" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round" fill="currentColor" fill-opacity="0.04"/><path d="M11 14h10M11 19h8M11 24h6" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-opacity="0.45"/></svg></span>{% endmacro %}
+{% macro illu_card_report() %}{{ lottie_icon('report.json', 'Reporting', 'sm', 'dash-admin-illu--card-stat') }}{% endmacro %}
 
-{% macro illu_header_chart(extra_class='') %}<span class="dash-admin-illu dash-admin-illu--title {{ extra_class }}" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 24V8M5 24h22" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-opacity="0.35"/><rect x="8" y="16" width="4" height="6" rx="0.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.06"/><rect x="14" y="12" width="4" height="10" rx="0.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.08"/><rect x="20" y="14" width="4" height="8" rx="0.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.05"/></svg></span>{% endmacro %}
+{% macro illu_header_chart(extra_class='') %}{{ lottie_icon('timeline-chart.json', 'Analytics', 'md', 'dash-admin-illu--title ' ~ extra_class) }}{% endmacro %}
 
-{% macro illu_header_area(id_suffix='') %}{% set _gid = 'illuGradArea' ~ id_suffix %}<span class="dash-admin-illu" style="width:2.5rem;height:2.5rem;display:inline-flex;" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="{{ _gid }}" x1="4" y1="26" x2="28" y2="8" gradientUnits="userSpaceOnUse"><stop stop-color="currentColor" stop-opacity="0.08"/><stop offset="1" stop-color="currentColor" stop-opacity="0.02"/></linearGradient></defs><path d="M4 22c4-8 8-4 12-10s8-2 12-8v18H4v-10z" fill="url(#{{ _gid }})"/><path d="M4 22c4-8 8-4 12-10s8-2 12-8" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></span>{% endmacro %}
+{% macro illu_header_area(id_suffix='') %}{{ lottie_icon('satellite.json', 'Environmental monitoring', 'md', 'dash-admin-illu--title') }}{% endmacro %}
 
-{% macro illu_layer_header(extra_class='') %}<span class="dash-admin-illu dash-admin-illu--title {{ extra_class }}" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 14l10-5 10 5-10 5-10-5z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="currentColor" fill-opacity="0.05"/><path d="M6 19l10-5 10 5-10 5-10-5z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="currentColor" fill-opacity="0.04"/></svg></span>{% endmacro %}
+{% macro illu_layer_header(extra_class='') %}{{ lottie_icon('eco.json', 'Environmental layers', 'sm', 'dash-admin-illu--title ' ~ extra_class) }}{% endmacro %}
 
-{% macro illu_header_cog(extra_class='') %}<span class="dash-admin-illu dash-admin-illu--title {{ extra_class }}" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="16" r="4" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.05"/><path d="M16 4v3M16 25v3M4 16h3M25 16h3M7 7l2 2M23 23l2 2M7 25l2-2M23 9l2-2" stroke="currentColor" stroke-width="1.05" stroke-linecap="round" stroke-opacity="0.5"/></svg></span>{% endmacro %}
+{% macro illu_header_cog(extra_class='') %}{{ lottie_icon('open-book-gear.json', 'Operations', 'sm', 'dash-admin-illu--title ' ~ extra_class) }}{% endmacro %}
 
-{% macro illu_table_building() %}{{ _wrap('', 'dash-admin-illu--btn', '<rect x="4" y="4" width="10" height="14" rx="1" stroke="currentColor" stroke-width="1.05" fill="currentColor" fill-opacity="0.04"/><path d="M6 8h2M9 8h2M6 11h2M9 11h2" stroke="currentColor" stroke-width="0.9" stroke-linecap="round" stroke-opacity="0.45"/>') }}{% endmacro %}
+{% macro illu_table_building() %}{{ lottie_icon('business.json', 'Company', 'sm', 'dash-admin-illu--btn') }}{% endmacro %}
 
-{% macro illu_table_file() %}{{ _wrap('', 'dash-admin-illu--btn', '<path d="M6 3h7l3 3v14H6V3z" stroke="currentColor" stroke-width="1.05" stroke-linejoin="round" fill="currentColor" fill-opacity="0.04"/><path d="M9 10h6M9 14h5" stroke="currentColor" stroke-width="0.9" stroke-linecap="round" stroke-opacity="0.45"/>') }}{% endmacro %}
+{% macro illu_table_file() %}{{ lottie_icon('recycled-paper.json', 'Sheet', 'sm', 'dash-admin-illu--btn') }}{% endmacro %}
 
-{% macro illu_btn_view() %}{{ _wrap('', 'dash-admin-illu--btn', '<ellipse cx="12" cy="12" rx="7" ry="4" stroke="currentColor" stroke-width="1.1" stroke-opacity="0.55" fill="none"/><circle cx="12" cy="12" r="2" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.08"/>') }}{% endmacro %}
+{% macro illu_btn_view() %}{{ lottie_icon('telescope.json', 'Environmental insight', 'sm', 'dash-admin-illu--btn') }}{% endmacro %}
 
-{% macro illu_btn_edit() %}{{ _wrap('', 'dash-admin-illu--btn', '<path d="M4 20l9-13 5 5-9 13H4v-5z" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round" fill="currentColor" fill-opacity="0.06"/><path d="M13 7l4 4" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>') }}{% endmacro %}
+{% macro illu_btn_edit() %}{{ lottie_icon('leaf (2).json', 'Edit', 'sm', 'dash-admin-illu--btn') }}{% endmacro %}
 
-{% macro illu_spinner() %}<span class="dash-admin-illu dash-admin-illu--card-stat dash-admin-illu--spin" aria-hidden="true" role="status"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="16" r="12" stroke="currentColor" stroke-width="1.25" stroke-opacity="0.2" fill="none"/><path d="M16 4a12 12 0 0112 12" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" fill="none"/></svg></span>{% endmacro %}
+{% macro illu_spinner() %}{{ lottie_icon('progress.json', 'Loading', 'sm', 'dash-admin-illu--card-stat dash-admin-illu--spin') }}{% endmacro %}
 
 {% macro illu_check_tiny() %}<span class="dash-admin-illu dash-admin-illu--check-tiny" aria-hidden="true"><svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.5 6l2.5 2.5L9.5 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>{% endmacro %}
 
-{% macro illu_lp_shield() %}<span class="dash-admin-illu dash-admin-illu--lp-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3l8 3v7c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-3z" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round" fill="currentColor" fill-opacity="0.04"/></svg></span>{% endmacro %}
+{% macro illu_lp_shield() %}{{ lottie_icon('shield-badge.json', 'Trust', 'sm', 'dash-admin-illu--lp-icon') }}{% endmacro %}
 
-{% macro illu_lp_grid() %}<span class="dash-admin-illu dash-admin-illu--lp-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="4" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.05"/><rect x="13" y="4" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.07"/><rect x="4" y="13" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.06"/><rect x="13" y="13" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.04"/></svg></span>{% endmacro %}
+{% macro illu_lp_grid() %}{{ lottie_icon('green-city (2).json', 'Coverage', 'sm', 'dash-admin-illu--lp-icon') }}{% endmacro %}
 
-{% macro illu_lp_chart() %}<span class="dash-admin-illu dash-admin-illu--lp-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 19V5M4 19h16" stroke="currentColor" stroke-width="1.05" stroke-linecap="round" stroke-opacity="0.35"/><rect x="6" y="12" width="3" height="5" rx="0.5" stroke="currentColor" stroke-width="1.05" fill="currentColor" fill-opacity="0.06"/><rect x="11" y="9" width="3" height="8" rx="0.5" stroke="currentColor" stroke-width="1.05" fill="currentColor" fill-opacity="0.08"/><rect x="16" y="11" width="3" height="6" rx="0.5" stroke="currentColor" stroke-width="1.05" fill="currentColor" fill-opacity="0.05"/></svg></span>{% endmacro %}
+{% macro illu_lp_chart() %}{{ lottie_icon('analytics.json', 'Insights', 'sm', 'dash-admin-illu--lp-icon') }}{% endmacro %}
 
-{% macro illu_input_building() %}{{ _wrap('', 'dash-admin-illu--input', '<rect x="5" y="4" width="10" height="14" rx="1" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.04"/><path d="M8 8h1.5M11.5 8H13M8 11h1.5M11.5 11H13" stroke="currentColor" stroke-width="0.9" stroke-linecap="round" stroke-opacity="0.45"/>') }}{% endmacro %}
+{% macro illu_input_building() %}{{ lottie_icon('green-factory.json', 'Organization', 'sm', 'dash-admin-illu--input') }}{% endmacro %}
 
-{% macro illu_paper_plane(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--btn', '<path d="M4 12l18-8-8 18-2-7-8-3z" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round" fill="currentColor" fill-opacity="0.05"/>') }}{% endmacro %}
+{% macro illu_paper_plane(extra_class='') %}{{ lottie_icon('launch.json', 'Send', 'sm', 'dash-admin-illu--btn ' ~ extra_class) }}{% endmacro %}
 
-{% macro illu_nav_layers(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--nav', '<path d="M4 10l8-4 8 4-8 4-8-4z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="currentColor" fill-opacity="0.05"/><path d="M4 15l8-4 8 4-8 4-8-4z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="currentColor" fill-opacity="0.04"/>') }}{% endmacro %}
+{% macro illu_lp_spreadsheet() %}{{ lottie_icon('smm.json', 'Spreadsheet', 'sm', 'dash-admin-illu--lp-icon') }}{% endmacro %}
 
-{% macro illu_lp_spreadsheet() %}<span class="dash-admin-illu dash-admin-illu--lp-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 3h12a1 1 0 011 1v16a1 1 0 01-1 1H6a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="currentColor" fill-opacity="0.04"/><path d="M9 3v18M15 3v18M6 9h12M6 15h12" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-opacity="0.4"/></svg></span>{% endmacro %}
+{% macro illu_btn_rotate(extra_class='') %}{{ lottie_icon('update.json', 'Reload', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_btn_rotate(extra_class='') %}{{ lottie_icon('recycling.json', 'Reload', 'sm', extra_class) }}{% endmacro %}
-
-{% macro illu_btn_filter(extra_class='') %}{{ lottie_icon('wind.json', 'Filter', 'sm', extra_class) }}{% endmacro %}
+{% macro illu_btn_filter(extra_class='') %}{{ lottie_icon('search.json', 'Filter', 'sm', extra_class) }}{% endmacro %}
 
 {% macro illu_btn_trash(extra_class='') %}{{ lottie_icon('waste-management.json', 'Delete', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_btn_import(extra_class='') %}{{ lottie_icon('charging-station.json', 'Import', 'sm', extra_class) }}{% endmacro %}
+{% macro illu_btn_import(extra_class='') %}{{ lottie_icon('import.json', 'Import', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_nav_leaf(extra_class='') %}{{ lottie_icon('leaf.json', 'ESG', 'sm', extra_class) }}{% endmacro %}
+{% macro illu_card_table() %}{{ lottie_icon('bar-chart.json', 'Table', 'sm', 'dash-admin-illu--card-stat') }}{% endmacro %}
 
-{% macro illu_nav_speed(extra_class='') %}{{ lottie_icon('charging-station.json', 'Performance', 'sm', extra_class) }}{% endmacro %}
+{% macro illu_btn_user_plus(extra_class='') %}{{ lottie_icon('inclusion.json', 'Add account', 'sm', 'dash-admin-illu--btn ' ~ extra_class) }}{% endmacro %}
 
-{% macro illu_nav_chart_pie(extra_class='') %}{{ lottie_icon('percentage-chart.json', 'Analytics', 'sm', extra_class) }}{% endmacro %}
+{# --- Sidebar / module-specific (avoid repeating generic icons) --- #}
+{% macro illu_sidebar_carbon_overview(extra_class='') %}{{ lottie_icon('carbon-footprint.json', 'Carbon overview', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_card_table() %}<span class="dash-admin-illu dash-admin-illu--card-stat" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="6" width="22" height="20" rx="1.5" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.03"/><path d="M5 12h22M12 6v20" stroke="currentColor" stroke-width="1" stroke-opacity="0.4"/><path d="M8 16h3M8 20h3M16 16h8M16 20h6" stroke="currentColor" stroke-width="0.9" stroke-linecap="round" stroke-opacity="0.45"/></svg></span>{% endmacro %}
+{% macro illu_sidebar_scope1(extra_class='') %}{{ lottie_icon('factory.json', 'Scope 1', 'sm', extra_class) }}{% endmacro %}
 
-{% macro illu_btn_user_plus(extra_class='') %}{{ _wrap(extra_class, 'dash-admin-illu--btn', '<circle cx="10" cy="9" r="3.2" stroke="currentColor" stroke-width="1.15" fill="currentColor" fill-opacity="0.05"/><path d="M4 19c0-2.5 2.2-3.8 6-3.8S16 16.5 16 19" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" fill="none"/><path d="M18 6v4M16 8h4" stroke="currentColor" stroke-width="1.15" stroke-linecap="round"/>') }}{% endmacro %}
+{% macro illu_sidebar_scope2(extra_class='') %}{{ lottie_icon('solar-panel.json', 'Scope 2', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_scope3(extra_class='') %}{{ lottie_icon('truck.json', 'Scope 3', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_forecasting(extra_class='') %}{{ lottie_icon('candlestick-chart.json', 'Forecasting', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_nav_carbon(extra_class='') %}{{ lottie_icon('carbon-footprint.json', 'Carbon', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_decarbonization(extra_class='') %}{{ lottie_icon('green-fuel.json', 'Decarbonization', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_emissions_map(extra_class='') %}{{ lottie_icon('maps.json', 'Emissions map', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_double_counting(extra_class='') %}{{ lottie_icon('audit.json', 'Double counting check', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_governance_audit(extra_class='') %}{{ lottie_icon('audit-document.json', 'Audit ready output', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_products_input(extra_class='') %}{{ lottie_icon('natural-product.json', 'Products input', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_data_outputs_branch(extra_class='') %}{{ lottie_icon('percentage-chart.json', 'Data outputs', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_admin_users(extra_class='') %}{{ lottie_icon('management.json', 'Users', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_admin_access(extra_class='') %}{{ lottie_icon('invitation.json', 'Access requests', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_admin_companies(extra_class='') %}{{ lottie_icon('business.json', 'Companies', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_admin_unmapped(extra_class='') %}{{ lottie_icon('no-data.json', 'Unmapped rows', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_admin_jobs(extra_class='') %}{{ lottie_icon('countdown.json', 'Background jobs', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_admin_tower(extra_class='') %}{{ lottie_icon('castle-tower.json', 'Tower defense', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_admin_report(extra_class='') %}{{ lottie_icon('report.json', 'Carbon reporting', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_awards(extra_class='') %}{{ lottie_icon('trophy.json', 'Awards', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_audit_year(extra_class='') %}{{ lottie_icon('audit (1).json', 'Audit', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_newsletters(extra_class='') %}{{ lottie_icon('newsletter (1).json', 'Newsletters', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_events(extra_class='') %}{{ lottie_icon('event.json', 'Events', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_appearance(extra_class='') %}{{ lottie_icon('night-mode.json', 'Appearance', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_ds_ccc(extra_class='') %}{{ lottie_icon('electrical.json', 'CCC API', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_ds_klarakarbon(extra_class='') %}{{ lottie_icon('connected.json', 'Klarakarbon', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_ds_averages(extra_class='') %}{{ lottie_icon('equal.json', 'Averages', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_ds_scenarios(extra_class='') %}{{ lottie_icon('strategy-board.json', 'Scenarios', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_ds_headcount(extra_class='') %}{{ lottie_icon('population.json', 'Headcount', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_ds_national(extra_class='') %}{{ lottie_icon('globe.json', 'National averages', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_do_mapped(extra_class='') %}{{ lottie_icon('chart (2).json', 'Mapped window output', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_do_totals(extra_class='') %}{{ lottie_icon('bar-graph.json', 'Totals tables', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_do_share(extra_class='') %}{{ lottie_icon('percentage-chart (1).json', 'Share analysis', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_do_travel(extra_class='') %}{{ lottie_icon('car.json', 'Travel management', 'sm', extra_class) }}{% endmacro %}
+
+{% macro illu_sidebar_do_klarakarbon(extra_class='') %}{{ lottie_icon('ship.json', 'Klarakarbon output', 'sm', extra_class) }}{% endmacro %}

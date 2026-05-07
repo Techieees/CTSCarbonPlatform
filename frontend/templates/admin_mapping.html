@@ -146,8 +146,13 @@
     return String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
 
-  const ILLU_DL = '<span class="dash-admin-illu dash-admin-illu--btn" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 4v11M9 14l3 3 3-3M5 20h14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></span>';
-  const ILLU_MAP_NOW = '<span class="dash-admin-illu dash-admin-illu--btn me-1" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L6 12h5l-1 9 8-12h-5l1-7z" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round" fill="currentColor" fill-opacity="0.05"/></svg></span>';
+  const CTS_LOTTIE_DL = "{{ url_for('static', filename='lottie/exports.json') }}";
+  const CTS_LOTTIE_MAP_NOW = "{{ url_for('static', filename='lottie/workflow.json') }}";
+  function ctsLottieBtnIcon(url, extraClass) {
+    return '<div class="lottie-icon animated-icon animated-icon-sm' + (extraClass ? ' ' + extraClass : '') + '" data-animation="' + url + '" aria-hidden="true"></div>';
+  }
+  const ILLU_DL = ctsLottieBtnIcon(CTS_LOTTIE_DL, 'dash-admin-illu--btn');
+  const ILLU_MAP_NOW = ctsLottieBtnIcon(CTS_LOTTIE_MAP_NOW, 'dash-admin-illu--btn me-1');
 
   function formatUtc(iso) {
     if (!iso) return '';

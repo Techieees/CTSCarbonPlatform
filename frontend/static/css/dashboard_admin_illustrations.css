@@ -52,6 +52,19 @@
   height: 3rem;
 }
 
+/* Auth hero Lottie: slightly under global lg — forms and headings stay visually primary */
+.lottie-icon.dash-admin-illu--hero.animated-icon-lg {
+  width: 3.75rem;
+  height: 3.75rem;
+}
+
+@media (max-width: 575.98px) {
+  .lottie-icon.dash-admin-illu--hero.animated-icon-lg {
+    width: 3.25rem;
+    height: 3.25rem;
+  }
+}
+
 .dash-admin-illu--stat {
   display: flex;
   justify-content: center;

@@ -1,3 +1,4 @@
+{% import 'macros/ui_illustrations.html' as illu %}
 {% set ep = request.endpoint %}
 {% set runs_href = url_for('admin_mapping_runs') if current_user.is_admin else url_for('mapping_runs') %}
 {% set runs_active = ep in ('mapping_runs', 'admin_mapping_runs') %}
@@ -63,15 +64,15 @@
         <span class="label app-sidebar__label">Feed</span>
       </button>
       <button type="button" class="app-sidebar__rail-item nav-item {% if selected_section == 'resources' %}is-active active{% endif %}" data-sidebar-section-trigger data-section-id="resources" data-section="resources" aria-label="Resources">
-        <div class="icon app-sidebar__icon">{{ illu.illu_nav_layers('') }}</div>
+        <div class="icon app-sidebar__icon">{{ illu.illu_nav_resources('') }}</div>
         <span class="label app-sidebar__label">Resources</span>
       </button>
       <button type="button" class="app-sidebar__rail-item nav-item {% if selected_section == 'carbon' %}is-active active{% endif %}" data-sidebar-section-trigger data-section-id="carbon" data-section="carbon" aria-label="Carbon Accounting">
-        <div class="icon app-sidebar__icon">{{ illu.illu_nav_chart('') }}</div>
+        <div class="icon app-sidebar__icon">{{ illu.illu_nav_carbon('') }}</div>
         <span class="label app-sidebar__label">Carbon</span>
       </button>
       <button type="button" class="app-sidebar__rail-item nav-item {% if selected_section == 'data' %}is-active active{% endif %}" data-sidebar-section-trigger data-section-id="data" data-section="data" aria-label="Data">
-        <div class="icon app-sidebar__icon">{{ illu.illu_nav_pen_entry('') }}</div>
+        <div class="icon app-sidebar__icon">{{ illu.illu_nav_data('') }}</div>
         <span class="label app-sidebar__label">Data</span>
       </button>
       <button type="button" class="app-sidebar__rail-item nav-item {% if selected_section == 'analytics' %}is-active active{% endif %}" data-sidebar-section-trigger data-section-id="analytics" data-section="analytics" aria-label="Analytics">
@@ -88,7 +89,7 @@
       </button>
       {% if current_user.is_admin %}
       <button type="button" class="app-sidebar__rail-item nav-item {% if selected_section == 'admin' %}is-active active{% endif %}" data-sidebar-section-trigger data-section-id="admin" data-section="admin" aria-label="Admin">
-        <div class="icon app-sidebar__icon">{{ illu.illu_nav_cog('') }}</div>
+        <div class="icon app-sidebar__icon">{{ illu.illu_nav_admin('') }}</div>
         <span class="label app-sidebar__label">Admin</span>
       </button>
       {% endif %}
@@ -133,19 +134,19 @@
             <span>Reports</span>
           </a>
           <a href="{{ url_for('newsletters_page') }}" class="app-sidebar__menu-item {% if ep in ('newsletters_page', 'newsletter_detail') %}is-active{% endif %}" {% if ep in ('newsletters_page', 'newsletter_detail') %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_file('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_newsletters('app-sidebar__icon') }}
             <span>Newsletters</span>
           </a>
           <a href="{{ url_for('events_page') }}" class="app-sidebar__menu-item {% if ep in ('events_page', 'event_detail') %}is-active{% endif %}" {% if ep in ('events_page', 'event_detail') %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_file('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_events('app-sidebar__icon') }}
             <span>Events</span>
           </a>
           <a href="{{ url_for('awards_index') }}" class="app-sidebar__menu-item {% if ep in ('awards_index', 'awards_form_page') %}is-active{% endif %}" {% if ep in ('awards_index', 'awards_form_page') %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_file('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_awards('app-sidebar__icon') }}
             <span>Awards</span>
           </a>
           <a href="{{ url_for('audit_2025_page') }}" class="app-sidebar__menu-item {% if ep == 'audit_2025_page' %}is-active{% endif %}" {% if ep == 'audit_2025_page' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_chart_pie('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_audit_year('app-sidebar__icon') }}
             <span>Audit 2025</span>
           </a>
         </nav>
@@ -157,19 +158,19 @@
         </div>
         <nav class="app-sidebar__panel-menu">
           <a href="{{ url_for('carbon_accounting') }}" class="app-sidebar__menu-item {% if ep == 'carbon_accounting' %}is-active{% endif %}" {% if ep == 'carbon_accounting' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_chart('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_carbon_overview('app-sidebar__icon') }}
             <span>Overview</span>
           </a>
           <a href="{{ url_for('scope1_detail') }}" class="app-sidebar__menu-item {% if ep == 'scope1_detail' %}is-active{% endif %}" {% if ep == 'scope1_detail' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_chart('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_scope1('app-sidebar__icon') }}
             <span>Scope 1</span>
           </a>
           <a href="{{ url_for('scope2_detail') }}" class="app-sidebar__menu-item {% if ep == 'scope2_detail' %}is-active{% endif %}" {% if ep == 'scope2_detail' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_chart('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_scope2('app-sidebar__icon') }}
             <span>Scope 2</span>
           </a>
           <a href="{{ url_for('scope3_detail') }}" class="app-sidebar__menu-item {% if ep == 'scope3_detail' %}is-active{% endif %}" {% if ep == 'scope3_detail' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_chart('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_scope3('app-sidebar__icon') }}
             <span>Scope 3</span>
           </a>
         </nav>
@@ -181,7 +182,7 @@
         </div>
         <nav class="app-sidebar__panel-menu">
           <a href="{{ url_for('products_input_page') }}" class="app-sidebar__menu-item {% if ep == 'products_input_page' %}is-active{% endif %}" {% if ep == 'products_input_page' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_file('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_products_input('app-sidebar__icon') }}
             <span>Products Input</span>
           </a>
           <a href="{{ url_for('dashboard') }}" class="app-sidebar__menu-item {% if ep == 'dashboard' %}is-active{% endif %}" {% if ep == 'dashboard' %}aria-current="page"{% endif %}>
@@ -189,7 +190,7 @@
             <span>Uploads</span>
           </a>
           <a href="{{ runs_href }}" class="app-sidebar__menu-item {% if runs_active %}is-active{% endif %}" {% if runs_active %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_bolt('app-sidebar__icon') }}
+            {{ illu.illu_nav_mapping_run('app-sidebar__icon') }}
             <span>Mapping Runs</span>
           </a>
           <button
@@ -210,7 +211,7 @@
             data-secondary-id="data-outputs"
             data-secondary-title="Data Outputs"
           >
-            {{ illu.illu_nav_file('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_data_outputs_branch('app-sidebar__icon') }}
             <span>Data Outputs</span>
             <span class="app-sidebar__menu-arrow" aria-hidden="true"></span>
           </button>
@@ -223,19 +224,19 @@
         </div>
         <nav class="app-sidebar__panel-menu">
           <a href="{{ url_for('analytics_forecasting') }}" class="app-sidebar__menu-item {% if ep == 'analytics_forecasting' %}is-active{% endif %}" {% if ep == 'analytics_forecasting' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_chart('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_forecasting('app-sidebar__icon') }}
             <span>Forecasting</span>
           </a>
           <a href="{{ url_for('analytics_decarbonization') }}" class="app-sidebar__menu-item {% if ep == 'analytics_decarbonization' %}is-active{% endif %}" {% if ep == 'analytics_decarbonization' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_bolt('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_decarbonization('app-sidebar__icon') }}
             <span>Decarbonization</span>
           </a>
           <a href="{{ url_for('analytics_emissions_map') }}" class="app-sidebar__menu-item {% if ep == 'analytics_emissions_map' %}is-active{% endif %}" {% if ep == 'analytics_emissions_map' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_leaf('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_emissions_map('app-sidebar__icon') }}
             <span>Emissions Map</span>
           </a>
           <a href="{{ url_for('governance_double_counting_check') }}" class="app-sidebar__menu-item {% if ep == 'governance_double_counting_check' %}is-active{% endif %}" {% if ep == 'governance_double_counting_check' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_file('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_double_counting('app-sidebar__icon') }}
             <span>Double Counting Check</span>
           </a>
         </nav>
@@ -247,7 +248,7 @@
         </div>
         <nav class="app-sidebar__panel-menu">
           <a href="{{ url_for('governance_audit_ready_output') }}" class="app-sidebar__menu-item {% if governance_active %}is-active{% endif %}" {% if governance_active %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_id('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_governance_audit('app-sidebar__icon') }}
             <span>Audit ready output</span>
           </a>
         </nav>
@@ -259,7 +260,7 @@
         </div>
         <nav class="app-sidebar__panel-menu">
           <a href="{{ url_for('csrd') }}" class="app-sidebar__menu-item {% if ep in ('csrd', 'csrd_policies') %}is-active{% endif %}" {% if ep in ('csrd', 'csrd_policies') %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_file('app-sidebar__icon') }}
+            {{ illu.illu_nav_csrd('app-sidebar__icon') }}
             <span>CSRD</span>
           </a>
           <a href="{{ url_for('lca') }}" class="app-sidebar__menu-item {% if ep in ('lca', 'lca_tool') %}is-active{% endif %}" {% if ep in ('lca', 'lca_tool') %}aria-current="page"{% endif %}>
@@ -277,36 +278,36 @@
         <nav class="app-sidebar__panel-menu">
           {% if current_user.role == 'owner' %}
           <a href="{{ url_for('admin_users') }}" class="app-sidebar__menu-item {% if ep == 'admin_users' %}is-active{% endif %}" {% if ep == 'admin_users' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_user('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_admin_users('app-sidebar__icon') }}
             <span>Users</span>
           </a>
           {% endif %}
           <a href="{{ url_for('admin_access_requests') }}" class="app-sidebar__menu-item {% if ep == 'admin_access_requests' %}is-active{% endif %}" {% if ep == 'admin_access_requests' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_user('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_admin_access('app-sidebar__icon') }}
             <span>Access Requests</span>
           </a>
           <a href="{{ url_for('owner_analytics') }}" class="app-sidebar__menu-item {% if ep == 'owner_analytics' %}is-active{% endif %}" {% if ep == 'owner_analytics' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_chart_pie('app-sidebar__icon') }}
+            {{ illu.illu_nav_owner_analytics('app-sidebar__icon') }}
             <span>Owner Analytics</span>
           </a>
           <a href="{{ url_for('admin') }}" class="app-sidebar__menu-item {% if ep == 'admin' %}is-active{% endif %}" {% if ep == 'admin' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_data('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_admin_companies('app-sidebar__icon') }}
             <span>Companies</span>
           </a>
           <a href="{{ url_for('admin_mapping_panel') }}" class="app-sidebar__menu-item {% if ep == 'admin_mapping_panel' %}is-active{% endif %}" {% if ep == 'admin_mapping_panel' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_bolt('app-sidebar__icon') }}
+            {{ illu.illu_nav_mapping_run('app-sidebar__icon') }}
             <span>Batch Mapping</span>
           </a>
           <a href="{{ url_for('admin_unmapped_mappings') }}" class="app-sidebar__menu-item {% if ep == 'admin_unmapped_mappings' %}is-active{% endif %}" {% if ep == 'admin_unmapped_mappings' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_file('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_admin_unmapped('app-sidebar__icon') }}
             <span>Unmapped Rows</span>
           </a>
           <a href="{{ url_for('admin_background_jobs') }}" class="app-sidebar__menu-item {% if ep == 'admin_background_jobs' %}is-active{% endif %}" {% if ep == 'admin_background_jobs' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_bolt('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_admin_jobs('app-sidebar__icon') }}
             <span>Background Jobs</span>
           </a>
           <a href="{{ url_for('admin_tower_defense') }}" class="app-sidebar__menu-item {% if ep == 'admin_tower_defense' %}is-active{% endif %}" {% if ep == 'admin_tower_defense' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_bolt('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_admin_tower('app-sidebar__icon') }}
             <span>Tower Defense</span>
           </a>
           <a href="{{ url_for('manage_emission_factors') }}" class="app-sidebar__menu-item {% if ep == 'manage_emission_factors' %}is-active{% endif %}" {% if ep == 'manage_emission_factors' %}aria-current="page"{% endif %}>
@@ -314,11 +315,11 @@
             <span>Emission Factors</span>
           </a>
           <a href="{{ url_for('admin_report') }}" class="app-sidebar__menu-item {% if ep == 'admin_report' %}is-active{% endif %}" {% if ep == 'admin_report' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_data('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_admin_report('app-sidebar__icon') }}
             <span>Admin Report</span>
           </a>
           <a href="{{ url_for('awards_admin') }}" class="app-sidebar__menu-item {% if ep == 'awards_admin' %}is-active{% endif %}" {% if ep == 'awards_admin' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_file('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_awards('app-sidebar__icon') }}
             <span>Awards Builder</span>
           </a>
         </nav>
@@ -331,13 +332,13 @@
         </div>
         <nav class="app-sidebar__panel-menu">
           <a href="{{ url_for('settings_profile_page') }}" class="app-sidebar__menu-item {% if settings_active %}is-active{% endif %}" {% if settings_active %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_cog('app-sidebar__icon') }}
+            {{ illu.illu_nav_profile_settings('app-sidebar__icon') }}
             <span>Profile</span>
           </a>
         </nav>
         <div class="app-sidebar__utility-card">
           <div class="app-sidebar__utility-header">
-            {{ illu.illu_nav_cog('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_appearance('app-sidebar__icon') }}
             <span>Appearance</span>
           </div>
           <div class="theme-toggle theme-toggle--compact">
@@ -370,28 +371,28 @@
       <div class="app-sidebar__secondary-panel {% if selected_secondary == 'data-sources' %}is-active{% endif %}" data-sidebar-secondary-panel="data-sources">
         <nav class="app-sidebar__panel-menu">
           <a href="{{ url_for('data_sources_ccc_api') }}" class="app-sidebar__menu-item {% if ep == 'data_sources_ccc_api' %}is-active{% endif %}" {% if ep == 'data_sources_ccc_api' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_bolt('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_ds_ccc('app-sidebar__icon') }}
             <span>CCC API</span>
           </a>
           <a href="{{ url_for('data_sources_klarakarbon') }}" class="app-sidebar__menu-item {% if ep == 'data_sources_klarakarbon' %}is-active{% endif %}" {% if ep == 'data_sources_klarakarbon' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_data('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_ds_klarakarbon('app-sidebar__icon') }}
             <span>Klarakarbon</span>
           </a>
           <a href="{{ url_for('data_sources_averages') }}" class="app-sidebar__menu-item {% if ep == 'data_sources_averages' %}is-active{% endif %}" {% if ep == 'data_sources_averages' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_data('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_ds_averages('app-sidebar__icon') }}
             <span>Averages</span>
           </a>
           <a href="{{ url_for('data_sources_scenarios') }}" class="app-sidebar__menu-item {% if ep == 'data_sources_scenarios' %}is-active{% endif %}" {% if ep == 'data_sources_scenarios' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_layers('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_ds_scenarios('app-sidebar__icon') }}
             <span>Scenarios</span>
           </a>
           {% if current_user.is_admin %}
           <a href="{{ url_for('data_sources_employee_commuting_headcount') }}" class="app-sidebar__menu-item {% if ep == 'data_sources_employee_commuting_headcount' %}is-active{% endif %}" {% if ep == 'data_sources_employee_commuting_headcount' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_data('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_ds_headcount('app-sidebar__icon') }}
             <span>Headcount</span>
           </a>
           <a href="{{ url_for('data_sources_employee_commuting_national_averages') }}" class="app-sidebar__menu-item {% if ep == 'data_sources_employee_commuting_national_averages' %}is-active{% endif %}" {% if ep == 'data_sources_employee_commuting_national_averages' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_data('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_ds_national('app-sidebar__icon') }}
             <span>National Averages</span>
           </a>
           <a href="{{ url_for('admin') }}#travel-preprocessing-upload" class="app-sidebar__menu-item">
@@ -405,23 +406,23 @@
       <div class="app-sidebar__secondary-panel {% if selected_secondary == 'data-outputs' %}is-active{% endif %}" data-sidebar-secondary-panel="data-outputs">
         <nav class="app-sidebar__panel-menu">
           <a href="{{ url_for('analytics_mapped_window_output') }}" class="app-sidebar__menu-item {% if ep == 'analytics_mapped_window_output' %}is-active{% endif %}" {% if ep == 'analytics_mapped_window_output' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_file('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_do_mapped('app-sidebar__icon') }}
             <span>Mapped window output</span>
           </a>
           <a href="{{ url_for('analytics_emissions_totals') }}" class="app-sidebar__menu-item {% if ep == 'analytics_emissions_totals' %}is-active{% endif %}" {% if ep == 'analytics_emissions_totals' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_layers('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_do_totals('app-sidebar__icon') }}
             <span>Totals tables</span>
           </a>
           <a href="{{ url_for('analytics_share_analysis') }}" class="app-sidebar__menu-item {% if ep == 'analytics_share_analysis' %}is-active{% endif %}" {% if ep == 'analytics_share_analysis' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_chart_pie('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_do_share('app-sidebar__icon') }}
             <span>Share analysis</span>
           </a>
           <a href="{{ url_for('data_output_travel') }}" class="app-sidebar__menu-item {% if ep == 'data_output_travel' %}is-active{% endif %}" {% if ep == 'data_output_travel' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_file('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_do_travel('app-sidebar__icon') }}
             <span>Travel MGMT</span>
           </a>
           <a href="{{ url_for('data_output_klarakarbon') }}" class="app-sidebar__menu-item {% if ep == 'data_output_klarakarbon' %}is-active{% endif %}" {% if ep == 'data_output_klarakarbon' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_file('app-sidebar__icon') }}
+            {{ illu.illu_sidebar_do_klarakarbon('app-sidebar__icon') }}
             <span>Klarakarbon</span>
           </a>
         </nav>

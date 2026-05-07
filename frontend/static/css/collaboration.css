@@ -42,13 +42,20 @@
 
 .collab-search__icon {
   display: inline-flex;
-  width: 1.2rem;
-  height: 1.2rem;
+  align-items: center;
+  justify-content: center;
+  width: 1.8rem;
+  height: 1.8rem;
   color: currentColor;
 }
 
 .collab-search__icon svg,
 .collab-icon-button svg {
+  width: 100%;
+  height: 100%;
+}
+
+.collab-search__icon .lottie-icon {
   width: 100%;
   height: 100%;
 }
@@ -110,13 +117,13 @@
 }
 
 .collab-icon-button--notification {
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 36px;
 }
 
 .collab-icon-button--notification .collab-icon-button__icon {
-  width: 18px;
-  height: 18px;
+  width: 27px;
+  height: 27px;
 }
 
 .collab-icon-button--notification .collab-icon-button__icon .lottie-icon {
@@ -359,8 +366,19 @@
 }
 
 .chat-widget__icon-button svg {
-  width: 18px;
-  height: 18px;
+  width: 27px;
+  height: 27px;
+}
+
+.chat-widget__icon-button .lottie-icon {
+  width: 27px;
+  height: 27px;
+}
+
+.chat-widget__search-icon .lottie-icon,
+.chat-widget__search-filter .lottie-icon {
+  width: 24px;
+  height: 24px;
 }
 
 .chat-widget__icon-button:hover,

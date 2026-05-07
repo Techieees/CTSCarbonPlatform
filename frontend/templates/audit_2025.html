@@ -22,6 +22,54 @@
             </div>
         </div>
 
+        <!-- Power BI Embedded Dashboard: multi-page report — leave Power BI page/tab navigation enabled inside embed so users can switch among ~15 report pages. -->
+        <div class="audit-2025-powerbi chart-surface report-panel mb-4">
+            <div class="report-panel__header">
+                <div>
+                    <h2 class="report-panel__title">Interactive Power BI Dashboard</h2>
+                    <p class="report-panel__subtitle">Embedded live sustainability reporting dashboard.</p>
+                </div>
+            </div>
+            <div class="audit-2025-powerbi__embed" id="audit2025PowerBiEmbed">
+                <!-- Power BI Loading State -->
+                <div class="audit-2025-powerbi__loading" id="audit2025PowerBiLoading" aria-live="polite" aria-busy="true">
+                    <div class="audit-2025-powerbi__loading-inner">
+                        <span class="audit-2025-powerbi__loading-icon" aria-hidden="true">
+                            <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false">
+                                <rect x="6" y="28" width="10" height="14" rx="2" fill="#f9c800" opacity="0.85"/>
+                                <rect x="19" y="18" width="10" height="24" rx="2" fill="#f9c800"/>
+                                <rect x="32" y="8" width="10" height="34" rx="2" fill="#f9c800" opacity="0.75"/>
+                            </svg>
+                        </span>
+                        <p class="audit-2025-powerbi__loading-text">Loading Power BI dashboard…</p>
+                    </div>
+                </div>
+                <!-- Power BI Fallback -->
+                <div class="audit-2025-powerbi__fallback d-none" id="audit2025PowerBiFallback" role="region" aria-label="Power BI embed unavailable">
+                    <div class="audit-2025-powerbi__fallback-card">
+                        <span class="audit-2025-powerbi__fallback-icon" aria-hidden="true">
+                            <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false">
+                                <rect x="6" y="28" width="10" height="14" rx="2" fill="#f9c800" opacity="0.85"/>
+                                <rect x="19" y="18" width="10" height="24" rx="2" fill="#f9c800"/>
+                                <rect x="32" y="8" width="10" height="34" rx="2" fill="#f9c800" opacity="0.75"/>
+                            </svg>
+                        </span>
+                        <h3 class="audit-2025-powerbi__fallback-title">Power BI dashboard requires authenticated Microsoft access</h3>
+                        <p class="audit-2025-powerbi__fallback-desc">This embedded report is hosted securely in Microsoft Power BI and may require organizational access permissions.</p>
+                        <a id="audit2025PowerBiOpenBtn" href="#" class="btn btn-primary audit-2025-powerbi__fallback-btn" target="_blank" rel="noopener noreferrer">Open Dashboard</a>
+                    </div>
+                </div>
+                <div class="audit-2025-powerbi__iframe-viewport">
+                <iframe id="audit2025PowerBiFrame"
+                        class="audit-2025-powerbi__iframe audit-2025-powerbi__iframe--pending"
+                        title="CTS sustainability Power BI dashboard"
+                        loading="lazy"
+                        referrerpolicy="strict-origin-when-cross-origin"
+                        allowfullscreen></iframe>
+                </div>
+            </div>
+        </div>
+
         <div id="audit2025Error" class="alert alert-warning audit-2025-error-card d-none" role="alert"></div>
 
         <div class="report-kpi-grid mb-4" id="audit2025SummaryCards">
@@ -219,4 +267,104 @@
 {{ super() }}
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <script type="module" src="{{ url_for('static', filename='js/audit_2025.js') }}"></script>
+<script>
+(function () {
+  'use strict';
+
+  /*
+   * Embedded report has many internal Power BI pages (~15); keep page/tab navigation visible in-frame.
+   * Omit navContentPaneEnabled=false so the report navigation pane (pages) stays available in embed.
+   * navContentPaneEnabled=true keeps multi-page tabs explicit for embed URLs that default differently.
+   * filterPaneEnabled=false keeps the filter sidebar collapsed for a tighter chrome; remove if filters must show.
+   * Omit pageView=FitToWidth to reduce excess letterboxing vs fixed iframe height (Power BI handles layout).
+   */
+  var POWER_BI_EMBED_URL = 'https://app.powerbi.com/reportEmbed?reportId=1df3c126-fea0-40e3-9b70-3969464b5c17&autoAuth=true&ctid=9eefa7e9-fc67-4bef-ae06-dfbe05ce2967&navContentPaneEnabled=true&filterPaneEnabled=false';
+
+  var iframe = document.getElementById('audit2025PowerBiFrame');
+  var embed = document.getElementById('audit2025PowerBiEmbed');
+  var loading = document.getElementById('audit2025PowerBiLoading');
+  var fallback = document.getElementById('audit2025PowerBiFallback');
+  var openBtn = document.getElementById('audit2025PowerBiOpenBtn');
+
+  if (!iframe || !embed || !loading || !fallback || !openBtn) return;
+
+  openBtn.href = POWER_BI_EMBED_URL;
+
+  var settled = false;
+  var timeoutId = null;
+  var fallbackTimerArmed = false;
+
+  function showFallback() {
+    if (settled) return;
+    settled = true;
+    if (timeoutId) clearTimeout(timeoutId);
+    iframe.classList.remove('audit-2025-powerbi__iframe--pending', 'is-ready');
+    iframe.classList.add('audit-2025-powerbi__iframe--fallback-hidden');
+    iframe.removeAttribute('src');
+    loading.classList.add('is-done');
+    loading.setAttribute('aria-busy', 'false');
+    fallback.classList.remove('d-none');
+  }
+
+  function showSuccess() {
+    if (settled) return;
+    settled = true;
+    if (timeoutId) clearTimeout(timeoutId);
+    loading.classList.add('is-done');
+    loading.setAttribute('aria-busy', 'false');
+    iframe.classList.remove('audit-2025-powerbi__iframe--pending');
+    requestAnimationFrame(function () {
+      iframe.classList.add('is-ready');
+    });
+  }
+
+  function armFallbackTimer() {
+    if (fallbackTimerArmed || settled) return;
+    fallbackTimerArmed = true;
+    timeoutId = window.setTimeout(function () {
+      if (!settled) showFallback();
+    }, 6000);
+  }
+
+  iframe.addEventListener('load', function () {
+    try {
+      var u = iframe.src || '';
+      if (u.indexOf('app.powerbi.com') === -1) return;
+    } catch (eLoad) {}
+    showSuccess();
+  });
+
+  iframe.addEventListener('error', function () {
+    showFallback();
+  });
+
+  function maybeArmFromVisibility() {
+    var rect = embed.getBoundingClientRect();
+    var vh = window.innerHeight || document.documentElement.clientHeight || 0;
+    if (rect.top < vh + 120 && rect.bottom > -120) {
+      armFallbackTimer();
+      return true;
+    }
+    return false;
+  }
+
+  iframe.src = POWER_BI_EMBED_URL;
+
+  if (!maybeArmFromVisibility()) {
+    var io = new IntersectionObserver(
+      function (entries) {
+        for (var i = 0; i < entries.length; i++) {
+          if (entries[i].isIntersecting) {
+            io.disconnect();
+            armFallbackTimer();
+            break;
+          }
+        }
+      },
+      { root: null, rootMargin: '140px 0px', threshold: 0 }
+    );
+    io.observe(embed);
+  }
+})();
+</script>
 {% endblock %}

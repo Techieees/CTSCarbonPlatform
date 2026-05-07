@@ -58,6 +58,16 @@
       return;
     }
 
+    var spdRaw = el.getAttribute('data-lottie-speed');
+    if (spdRaw) {
+      var spd = parseFloat(spdRaw, 10);
+      if (!isNaN(spd) && spd > 0) {
+        try {
+          anim.setSpeed(spd);
+        } catch (e2) {}
+      }
+    }
+
     if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       try {
         anim.goToAndStop(0, true);

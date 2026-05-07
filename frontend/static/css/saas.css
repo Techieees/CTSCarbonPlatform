@@ -172,26 +172,26 @@ canvas{
 
 .animated-icon {
   display: inline-block;
-  width: 2rem;
-  height: 2rem;
+  width: 3rem;
+  height: 3rem;
   object-fit: contain;
   vertical-align: middle;
   flex: 0 0 auto;
 }
 
 .animated-icon-sm {
-  width: 1.25rem;
-  height: 1.25rem;
+  width: 1.875rem;
+  height: 1.875rem;
 }
 
 .animated-icon-md {
-  width: 2rem;
-  height: 2rem;
+  width: 3rem;
+  height: 3rem;
 }
 
 .animated-icon-lg {
-  width: 3rem;
-  height: 3rem;
+  width: 4.5rem;
+  height: 4.5rem;
 }
 
 /* Lottie replaces GIF icons; keeps sizing aligned with .animated-icon */
@@ -214,33 +214,43 @@ canvas{
 .btn .animated-icon,
 .dropdown-item .animated-icon,
 .nav-link .animated-icon {
-  width: 1.15rem;
-  height: 1.15rem;
+  width: 1.725rem;
+  height: 1.725rem;
 }
 
 .btn .lottie-icon,
 .dropdown-item .lottie-icon,
 .nav-link .lottie-icon {
-  width: 1.15rem;
-  height: 1.15rem;
+  width: 1.725rem;
+  height: 1.725rem;
 }
 
 .app-sidebar__icon.animated-icon,
 .app-sidebar__icon .animated-icon {
-  width: 1.35rem;
-  height: 1.35rem;
+  width: 2.025rem;
+  height: 2.025rem;
 }
 
 .app-sidebar__icon.lottie-icon,
 .app-sidebar__icon .lottie-icon {
-  width: 1.35rem;
-  height: 1.35rem;
+  width: 2.025rem;
+  height: 2.025rem;
+}
+
+/* Lottie: sizing is on the wrapper — do not stack legacy svg { scale(1.5) } on inner SVG */
+.saas-nav .nav-link .lottie-icon svg,
+.saas-nav .dropdown-item .lottie-icon svg,
+.app-topbar .nav-link .lottie-icon svg,
+.app-topbar .dropdown-item .lottie-icon svg,
+.btn .lottie-icon svg,
+.collab-icon-button .lottie-icon svg {
+  transform: none !important;
 }
 
 @media (max-width: 767.98px) {
   .animated-icon-lg {
-    width: 2.5rem;
-    height: 2.5rem;
+    width: 3.75rem;
+    height: 3.75rem;
   }
 }
 
@@ -947,6 +957,17 @@ button.input-group-text.cts-pw-toggle:focus-visible{
 .lp-feature .icon svg{
   width: 22px;
   height: 22px;
+}
+
+.lp-feature .icon .lottie-icon{
+  width: 1.375rem;
+  height: 1.375rem;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.card-header .lottie-icon{
+  flex-shrink: 0;
 }
 
 .lp-split{

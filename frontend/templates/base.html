@@ -98,9 +98,9 @@
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="accountDropdownTop">
                         <li><button class="dropdown-item d-inline-flex align-items-center" type="button" data-open-notifications>{{ illu.illu_nav_notifications('me-2') }}Notifications</button></li>
-                        <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('settings_profile_page') }}">{{ illu.illu_nav_file('me-2') }}Profile Settings</a></li>
+                        <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('settings_profile_page') }}">{{ illu.illu_nav_profile_settings('me-2') }}Profile Settings</a></li>
                         {% if current_user.is_admin %}
-                        <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('owner_analytics') }}">{{ illu.illu_nav_chart_pie('me-2') }}Owner Analytics</a></li>
+                        <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('owner_analytics') }}">{{ illu.illu_nav_owner_analytics('me-2') }}Owner Analytics</a></li>
                         {% endif %}
                         <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('logout') }}">{{ illu.illu_nav_signout('me-2') }}Logout</a></li>
                     </ul>
@@ -123,38 +123,38 @@
             <div class="collapse navbar-collapse" id="navbarNav">
                 {% if is_marketing %}
                 <ul class="navbar-nav ms-auto align-items-lg-center gap-lg-2">
-                    <li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}">Home</a></li>
-                    <li class="nav-item"><a class="nav-link" href="{{ url_for('platform') }}">Platform</a></li>
+                    <li class="nav-item"><a class="nav-link d-inline-flex align-items-center gap-1" href="{{ url_for('index') }}">{{ illu.illu_nav_mkt_home('') }}Home</a></li>
+                    <li class="nav-item"><a class="nav-link d-inline-flex align-items-center gap-1" href="{{ url_for('platform') }}">{{ illu.illu_nav_mkt_platform('') }}Platform</a></li>
                     <li class="nav-item"><a class="nav-link text-nowrap d-inline-flex align-items-center gap-1" href="{{ url_for('locations') }}">{{ illu.illu_nav_map('') }}Climate Risk Map</a></li>
-                    <li class="nav-item"><a class="nav-link" href="{{ url_for('methodology') }}">Methodology</a></li>
-                    <li class="nav-item"><a class="nav-link" href="{{ url_for('trust') }}">Trust</a></li>
-                    <li class="nav-item"><a class="nav-link text-nowrap" href="{{ url_for('who_we_are') }}">Who We Are</a></li>
+                    <li class="nav-item"><a class="nav-link d-inline-flex align-items-center gap-1" href="{{ url_for('methodology') }}">{{ illu.illu_nav_mkt_methodology('') }}Methodology</a></li>
+                    <li class="nav-item"><a class="nav-link d-inline-flex align-items-center gap-1" href="{{ url_for('trust') }}">{{ illu.illu_nav_mkt_trust('') }}Trust</a></li>
+                    <li class="nav-item"><a class="nav-link text-nowrap d-inline-flex align-items-center gap-1" href="{{ url_for('who_we_are') }}">{{ illu.illu_nav_mkt_who_we_are('') }}Who We Are</a></li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle d-inline-flex align-items-center" href="#" id="impactDropdownMarketing" role="button" data-bs-toggle="dropdown" aria-expanded="false">{{ illu.illu_nav_chart_pie('me-1') }}Impact</a>
+                        <a class="nav-link dropdown-toggle d-inline-flex align-items-center" href="#" id="impactDropdownMarketing" role="button" data-bs-toggle="dropdown" aria-expanded="false">{{ illu.illu_nav_impact_hub('me-1') }}Impact</a>
                         <ul class="dropdown-menu" aria-labelledby="impactDropdownMarketing">
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact') }}">{{ illu.illu_nav_chart_pie('me-2') }}Impact Overview</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_operations') }}">{{ illu.illu_nav_speed('me-2') }}Operational Sustainability</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_lca_epd') }}">{{ illu.illu_nav_layers('me-2') }}LCA &amp; EPD</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_collaboration') }}">{{ illu.illu_nav_layers('me-2') }}Industry Collaboration</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_corporate') }}">{{ illu.illu_nav_file('me-2') }}Corporate Sustainability</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_materiality') }}">{{ illu.illu_nav_chart_pie('me-2') }}Double Materiality</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_carbon') }}">{{ illu.illu_nav_chart('me-2') }}Carbon Accounting</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_stakeholders') }}">{{ illu.illu_nav_user('me-2') }}Stakeholder Engagement</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact') }}">{{ illu.illu_nav_impact_overview('me-2') }}Impact Overview</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_operations') }}">{{ illu.illu_nav_operational_sustainability('me-2') }}Operational Sustainability</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_lca_epd') }}">{{ illu.illu_nav_lca_epd('me-2') }}LCA &amp; EPD</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_collaboration') }}">{{ illu.illu_nav_industry_collaboration('me-2') }}Industry Collaboration</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_corporate') }}">{{ illu.illu_nav_corporate_sustainability('me-2') }}Corporate Sustainability</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_materiality') }}">{{ illu.illu_nav_double_materiality('me-2') }}Double Materiality</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_carbon') }}">{{ illu.illu_nav_carbon_accounting('me-2') }}Carbon Accounting</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_stakeholders') }}">{{ illu.illu_nav_stakeholder_engagement('me-2') }}Stakeholder Engagement</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle d-inline-flex align-items-center" href="#" id="esgDropdownMarketing" role="button" data-bs-toggle="dropdown" aria-expanded="false">{{ illu.illu_nav_leaf('me-1') }}ESG</a>
                         <ul class="dropdown-menu" aria-labelledby="esgDropdownMarketing">
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('esg') }}">{{ illu.illu_nav_leaf('me-2') }}Overview</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('csrd') }}">{{ illu.illu_nav_file('me-2') }}CSRD</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('csrd_policies') }}">{{ illu.illu_nav_file('me-2') }}Policies</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('esg') }}">{{ illu.illu_nav_esg_overview('me-2') }}Overview</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('csrd') }}">{{ illu.illu_nav_csrd('me-2') }}CSRD</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('csrd_policies') }}">{{ illu.illu_nav_policies('me-2') }}Policies</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle d-inline-flex align-items-center" href="#" id="lcaDropdownMarketing" role="button" data-bs-toggle="dropdown" aria-expanded="false">{{ illu.illu_nav_layers('me-1') }}LCA</a>
+                        <a class="nav-link dropdown-toggle d-inline-flex align-items-center" href="#" id="lcaDropdownMarketing" role="button" data-bs-toggle="dropdown" aria-expanded="false">{{ illu.illu_nav_lca_menu('me-1') }}LCA</a>
                         <ul class="dropdown-menu" aria-labelledby="lcaDropdownMarketing">
                             <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('lca') }}">{{ illu.illu_nav_layers('me-2') }}Overview</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('lca_tool') }}">{{ illu.illu_nav_speed('me-2') }}Tool</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('lca_tool') }}">{{ illu.illu_nav_lca_tool('me-2') }}Tool</a></li>
                         </ul>
                     </li>
                     <li class="nav-item">
@@ -186,9 +186,9 @@
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="accountDropdownMarketingAuth">
                             <li><button class="dropdown-item d-inline-flex align-items-center" type="button" data-open-notifications>{{ illu.illu_nav_notifications('me-2') }}Notifications</button></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('settings_profile_page') }}">{{ illu.illu_nav_file('me-2') }}Profile Settings</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('settings_profile_page') }}">{{ illu.illu_nav_profile_settings('me-2') }}Profile Settings</a></li>
                             {% if current_user.is_admin %}
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('owner_analytics') }}">{{ illu.illu_nav_chart_pie('me-2') }}Owner Analytics</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('owner_analytics') }}">{{ illu.illu_nav_owner_analytics('me-2') }}Owner Analytics</a></li>
                             {% endif %}
                             <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('logout') }}">{{ illu.illu_nav_signout('me-2') }}Logout</a></li>
                         </ul>
@@ -207,32 +207,32 @@
                     </li>
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle d-inline-flex align-items-center" href="#" id="impactDropdownApp" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            {{ illu.illu_nav_chart_pie('me-1') }}Impact
+                            {{ illu.illu_nav_impact_hub('me-1') }}Impact
                         </a>
                         <ul class="dropdown-menu" aria-labelledby="impactDropdownApp">
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact') }}">{{ illu.illu_nav_chart_pie('me-2') }}Impact Overview</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_operations') }}">{{ illu.illu_nav_speed('me-2') }}Operational Sustainability</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_lca_epd') }}">{{ illu.illu_nav_layers('me-2') }}LCA &amp; EPD</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_collaboration') }}">{{ illu.illu_nav_layers('me-2') }}Industry Collaboration</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_corporate') }}">{{ illu.illu_nav_file('me-2') }}Corporate Sustainability</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_materiality') }}">{{ illu.illu_nav_chart_pie('me-2') }}Double Materiality</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_carbon') }}">{{ illu.illu_nav_chart('me-2') }}Carbon Accounting</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_stakeholders') }}">{{ illu.illu_nav_user('me-2') }}Stakeholder Engagement</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact') }}">{{ illu.illu_nav_impact_overview('me-2') }}Impact Overview</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_operations') }}">{{ illu.illu_nav_operational_sustainability('me-2') }}Operational Sustainability</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_lca_epd') }}">{{ illu.illu_nav_lca_epd('me-2') }}LCA &amp; EPD</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_collaboration') }}">{{ illu.illu_nav_industry_collaboration('me-2') }}Industry Collaboration</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_corporate') }}">{{ illu.illu_nav_corporate_sustainability('me-2') }}Corporate Sustainability</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_materiality') }}">{{ illu.illu_nav_double_materiality('me-2') }}Double Materiality</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_carbon') }}">{{ illu.illu_nav_carbon_accounting('me-2') }}Carbon Accounting</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('impact_stakeholders') }}">{{ illu.illu_nav_stakeholder_engagement('me-2') }}Stakeholder Engagement</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle d-inline-flex align-items-center" href="#" id="esgDropdownApp" role="button" data-bs-toggle="dropdown" aria-expanded="false">{{ illu.illu_nav_leaf('me-1') }}ESG</a>
                         <ul class="dropdown-menu" aria-labelledby="esgDropdownApp">
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('esg') }}">{{ illu.illu_nav_leaf('me-2') }}Overview</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('csrd') }}">{{ illu.illu_nav_file('me-2') }}CSRD</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('csrd_policies') }}">{{ illu.illu_nav_file('me-2') }}Policies</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('esg') }}">{{ illu.illu_nav_esg_overview('me-2') }}Overview</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('csrd') }}">{{ illu.illu_nav_csrd('me-2') }}CSRD</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('csrd_policies') }}">{{ illu.illu_nav_policies('me-2') }}Policies</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle d-inline-flex align-items-center" href="#" id="lcaDropdownApp" role="button" data-bs-toggle="dropdown" aria-expanded="false">{{ illu.illu_nav_layers('me-1') }}LCA</a>
+                        <a class="nav-link dropdown-toggle d-inline-flex align-items-center" href="#" id="lcaDropdownApp" role="button" data-bs-toggle="dropdown" aria-expanded="false">{{ illu.illu_nav_lca_menu('me-1') }}LCA</a>
                         <ul class="dropdown-menu" aria-labelledby="lcaDropdownApp">
                             <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('lca') }}">{{ illu.illu_nav_layers('me-2') }}Overview</a></li>
-                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('lca_tool') }}">{{ illu.illu_nav_speed('me-2') }}Tool</a></li>
+                            <li><a class="dropdown-item d-inline-flex align-items-center" href="{{ url_for('lca_tool') }}">{{ illu.illu_nav_lca_tool('me-2') }}Tool</a></li>
                         </ul>
                     </li>
 

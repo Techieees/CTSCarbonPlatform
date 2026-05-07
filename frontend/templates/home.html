@@ -17,7 +17,7 @@
       </div>
     </div>
     <a class="btn btn-ghost d-inline-flex align-items-center" href="{{ url_for('dashboard') }}">
-      {{ illu.illu_nav_speed('me-1') }}Dashboard
+      {{ illu.illu_nav_pen_entry('me-1') }}Dashboard
     </a>
   </div>
 
@@ -31,11 +31,11 @@
               <div class="display-6 mt-1">{{ totals.total }} <span class="text-muted fs-5">tCO₂e</span></div>
             </div>
             <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 44px; height: 44px; background: var(--bs-tertiary-bg); color: var(--muted-2);">
-              <span class="d-inline-flex" style="font-size:1.2rem;line-height:0;">{{ illu.illu_nav_leaf() }}</span>
+              <span class="d-inline-flex" style="font-size:1.2rem;line-height:0;">{{ illu.illu_nav_carbon('') }}</span>
             </div>
           </div>
           <a href="{{ url_for('carbon_accounting') }}" class="btn btn-primary mt-3 d-inline-flex align-items-center">
-            {{ illu.illu_nav_chart_pie('me-1') }}Open Carbon Accounting
+            {{ illu.illu_nav_carbon_accounting('me-1') }}Open Carbon Accounting
           </a>
         </div>
       </div>

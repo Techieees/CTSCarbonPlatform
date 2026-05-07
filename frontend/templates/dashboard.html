@@ -613,8 +613,15 @@ body.dark-mode .data-grid__input::placeholder {
 }
 </style>
 <script>
-const ILLU_ROW_PEN = '<span class="dash-admin-illu dash-admin-illu--toolbar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 20l8-12 4 4-8 12H4v-4z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="currentColor" fill-opacity="0.06"/></svg></span>';
-const ILLU_ROW_LOCK = '<span class="dash-admin-illu dash-admin-illu--toolbar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="7" y="11" width="10" height="9" rx="1" stroke="currentColor" stroke-width="1.1" fill="currentColor" fill-opacity="0.04"/><path d="M9 11V8a3 3 0 016 0v3" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg></span>';
+const CTS_LOTTIE_URLS = {
+  rowEdit: "{{ url_for('static', filename='lottie/tools.json') }}",
+  rowLock: "{{ url_for('static', filename='lottie/integrity.json') }}"
+};
+function ctsLottieToolbarIcon(url, extraClass) {
+  return '<div class="lottie-icon animated-icon animated-icon-sm' + (extraClass ? ' ' + extraClass : '') + '" data-animation="' + url + '" aria-hidden="true"></div>';
+}
+const ILLU_ROW_PEN = ctsLottieToolbarIcon(CTS_LOTTIE_URLS.rowEdit, 'dash-admin-illu--toolbar');
+const ILLU_ROW_LOCK = ctsLottieToolbarIcon(CTS_LOTTIE_URLS.rowLock, 'dash-admin-illu--toolbar');
 const ILLU_TIMES = '<span class="dash-admin-illu dash-admin-illu--toolbar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></span>';
 const ILLU_CHEVRON = '<span class="dash-admin-illu dash-admin-illu--toolbar small opacity-75" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></span>';
 const ILLU_WIDE_EXPAND = '<span class="dash-admin-illu dash-admin-illu--btn me-1" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 3H3v6M15 21h6v-6M3 15v6h6M21 9V3h-6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></span>';
