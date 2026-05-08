@@ -65,10 +65,11 @@ FRONTEND_INSTANCE_DIR = FRONTEND_DIR / "instance"
 FRONTEND_DB_PATH = FRONTEND_INSTANCE_DIR / "ghg_data.db"
 FRONTEND_UPLOAD_DIR = FRONTEND_INSTANCE_DIR / "uploads"
 
-# Shared storage paths
+# Pipeline / web run storage (this module is loaded via importlib by some tools; Flask uses the `config` package)
 STORAGE_ROOT = PROJECT_ROOT / "storage"
 PIPELINE_TEMPLATE_DIR = STORAGE_ROOT / "pipeline_templates"
 PIPELINE_RUNS_DIR = STORAGE_ROOT / "pipeline_runs_web"
+# Profile photos: PROFILE_PHOTOS_STORAGE_DIR is defined only in config/__init__.py (single source for `from config import`).
 
 # Stage 1 data paths
 STAGE1_INPUT_DIR = data_path("stage1_preprocess", "input")

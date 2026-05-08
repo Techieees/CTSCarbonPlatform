@@ -847,13 +847,13 @@ body.dark-mode .saas-nav .navbar-brand:hover img{
 }
 
 body.dark-mode .saas-footer .brand img{
-  opacity: .86;
-  transition: opacity .22s var(--ease), filter .22s var(--ease), transform .22s var(--ease);
+  opacity: 0.94;
+  mix-blend-mode: darken;
+  transition: opacity .22s var(--ease), transform .22s var(--ease);
 }
 body.dark-mode .saas-footer .brand:hover img{
   opacity: 1;
-  filter: brightness(1.12) contrast(1.05);
-  transform: scale(1.03);
+  transform: scale(1.02);
 }
 
 .logo-marquee__logo{

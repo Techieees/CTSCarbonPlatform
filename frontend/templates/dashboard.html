@@ -2622,8 +2622,24 @@ async function postEvidenceUploadSingle(file) {
   fd.append('company', currentCompany);
   fd.append('file', file);
   const res = await fetch('/api/evidence/upload', { method: 'POST', body: fd });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  const ct = (res.headers.get('content-type') || '').toLowerCase();
+  let data = {};
+  if (ct.includes('application/json')) {
+    try {
+      data = await res.json();
+    } catch (_) {
+      data = {};
+    }
+  } else {
+    await res.text().catch(() => '');
+    if (res.status === 413) {
+      data = { ok: false, error: 'File exceeds maximum allowed size (25MB).' };
+    }
+  }
+  if (!res.ok) {
+    const fallback413 = res.status === 413 ? 'File exceeds maximum allowed size (25MB).' : `HTTP ${res.status}`;
+    throw new Error(data.error || fallback413);
+  }
   const ef = data.evidence_file;
   const jobId = data.processing_job_id || null;
   setEvidenceModalBusy(true, 'Processing…');

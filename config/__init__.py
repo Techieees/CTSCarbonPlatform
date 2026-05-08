@@ -50,6 +50,17 @@ OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY", "").strip()
 
 
 # -----------------
+# STORAGE (not web-exposed; e.g. profile photos via /api/profile-photo/)
+# -----------------
+
+STORAGE_ROOT = PROJECT_ROOT / "storage"
+PROFILE_PHOTOS_STORAGE_DIR = STORAGE_ROOT / "profile_photos"
+
+for _dir in (STORAGE_ROOT, PROFILE_PHOTOS_STORAGE_DIR):
+    _dir.mkdir(parents=True, exist_ok=True)
+
+
+# -----------------
 # PIPELINE
 # -----------------
 

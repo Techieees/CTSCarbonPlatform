@@ -70,6 +70,8 @@ frontend/run_logs/
 # ======================
 frontend/static/profile_photos/
 frontend/static/company_logos/
+storage/profile_photos/*
+!storage/profile_photos/.gitkeep
 
 # ======================
 # API CREDENTIALS

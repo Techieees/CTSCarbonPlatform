@@ -6,6 +6,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from sqlalchemy import and_, desc, exists, func, or_
 from sqlalchemy.exc import IntegrityError
+from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from openpyxl import load_workbook, Workbook
@@ -20,7 +21,9 @@ from pathlib import Path
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 import hashlib
+import html
 import json
+import mimetypes
 from collections import defaultdict, Counter
 import csv
 import difflib
@@ -69,6 +72,7 @@ from config import (
     MAIL_USERNAME,
     PIPELINE_RUNS_DIR,
     PIPELINE_TEMPLATE_DIR,
+    PROFILE_PHOTOS_STORAGE_DIR,
     OPENWEATHER_API_KEY,
     PROJECT_ROOT,
     PUBLIC_APP_BASE_URL,
@@ -92,6 +96,7 @@ from preprocess_jobs import (
     validate_klarakarbon_uploads,
     validate_travel_upload,
 )
+from frontend.evidence_processing import MAX_UPLOAD_BYTES
 from frontend.services import messaging_service, notification_service, search_service
 from frontend.utils.template_registry import (
     TEMPLATE_MODE_2026,
@@ -112,6 +117,9 @@ INSTANCE_DIR.mkdir(parents=True, exist_ok=True)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + str(FRONTEND_DB_PATH)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = str(FRONTEND_UPLOAD_DIR)
+app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
+
+app.logger.info("[PROFILE_PHOTO_STORAGE] Using storage path: %s", PROFILE_PHOTOS_STORAGE_DIR)
 
 TEMPLATES_2026_PATH = APP_DIR / "data" / "templates2026.json"
 PRODUCTS_TEMPLATE_PATH = APP_DIR / "data" / "templates_products.json"
@@ -138,6 +146,38 @@ EMPLOYEE_COMMUTING_NATIONAL_AVERAGE_FIELDS: tuple[dict[str, str], ...] = (
 )
 ALLOWED_EMAIL_DOMAIN = "cts-nordics.com"
 PROFILE_PHOTO_ALLOWED_EXT = frozenset({".png", ".jpg", ".jpeg", ".webp"})
+_PROFILE_PHOTOS_FS_MIGRATED = False
+
+
+def _migrate_profile_photos_to_storage_once() -> None:
+    """Move legacy uploads from frontend/static/profile_photos into storage/profile_photos (once per process)."""
+    global _PROFILE_PHOTOS_FS_MIGRATED
+    if _PROFILE_PHOTOS_FS_MIGRATED:
+        return
+    try:
+        legacy_dir = APP_DIR / "static" / "profile_photos"
+        if legacy_dir.is_dir():
+            PROFILE_PHOTOS_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+            for p in list(legacy_dir.iterdir()):
+                if not p.is_file():
+                    continue
+                dest = PROFILE_PHOTOS_STORAGE_DIR / p.name
+                if dest.exists():
+                    continue
+                try:
+                    shutil.move(str(p), str(dest))
+                except OSError:
+                    try:
+                        shutil.copy2(str(p), str(dest))
+                        p.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+    finally:
+        _PROFILE_PHOTOS_FS_MIGRATED = True
+
+
 COMPANY_LOGO_ALLOWED_EXT = frozenset({".png"})
 TRAVEL_ALLOWED_EXT = frozenset({".xlsb", ".xlsx"})
 FEED_IMAGE_ALLOWED_EXT = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif"})
@@ -822,6 +862,20 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
 
+_EVIDENCE_MAX_SIZE_USER_MSG = "File exceeds maximum allowed size (25MB)."
+
+
+@app.errorhandler(RequestEntityTooLarge)
+def handle_request_entity_too_large(_exc):
+    if request.path.startswith("/api/"):
+        return jsonify(ok=False, error=_EVIDENCE_MAX_SIZE_USER_MSG), 413
+    return (
+        "The uploaded file is too large.",
+        413,
+        {"Content-Type": "text/plain; charset=utf-8"},
+    )
+
+
 _ENDPOINTS_WITHOUT_PROFILE = frozenset(
     {
         "login",
@@ -891,6 +945,8 @@ def _require_complete_profile_for_app():
         return
     ep = request.endpoint
     if ep in _ENDPOINTS_WITHOUT_PROFILE:
+        return
+    if str(request.path or "").startswith("/api/profile-photo/"):
         return
     if request.path.startswith("/api/"):
         return jsonify({"error": "Complete profile setup before using this feature."}), 403
@@ -1008,10 +1064,7 @@ def _nav_profile_context():
         try:
             if not current_user.is_authenticated:
                 return None
-            rel = getattr(current_user, "profile_photo_path", None)
-            if not rel:
-                return None
-            return url_for("static", filename=str(rel))
+            return _profile_photo_url_for_user(current_user)
         except Exception:
             return None
 
@@ -1152,7 +1205,10 @@ def _profile_photo_url_for_user(u: User | None) -> str | None:
     if not rel:
         return None
     try:
-        return url_for("static", filename=str(rel))
+        uid = int(getattr(u, "id", 0) or 0)
+        if uid <= 0:
+            return None
+        return url_for("api_profile_photo", user_id=uid)
     except Exception:
         return None
 
@@ -2038,6 +2094,7 @@ def _ensure_db_tables() -> None:
         _ensure_awards_form_columns()
         _ensure_mapping_unmapped_row_columns()
         _ensure_evidence_tables_columns()
+        _migrate_profile_photos_to_storage_once()
     except Exception:
         pass
 
@@ -2049,6 +2106,7 @@ def _is_static_or_ignored_activity_path(path: str | None) -> bool:
         or raw.startswith("/static/")
         or raw.startswith("/assets/")
         or raw.startswith("/favicon")
+        or raw.startswith("/api/profile-photo")
     )
 
 
@@ -2649,10 +2707,10 @@ def _save_profile_photo_file(storage, user_id: int) -> str | None:
     ext = Path(fn).suffix.lower()
     if ext not in PROFILE_PHOTO_ALLOWED_EXT:
         return None
-    dest_dir = _static_subdir("profile_photos")
-    dest = dest_dir / f"user_{user_id}_{uuid.uuid4().hex[:10]}{ext}"
+    PROFILE_PHOTOS_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+    dest = PROFILE_PHOTOS_STORAGE_DIR / f"user_{user_id}_{uuid.uuid4().hex[:10]}{ext}"
     storage.save(str(dest))
-    return dest.relative_to(APP_DIR / "static").as_posix()
+    return f"profile_photos/{dest.name}"
 
 
 def _save_profile_cover_file(storage, user_id: int) -> str | None:
@@ -2700,6 +2758,91 @@ def _default_avatar_url(seed_text: str) -> str:
         "</svg>"
     )
     return _svg_data_url(svg)
+
+
+def _profile_photo_safe_basename(user_id: int, rel: str | None) -> str | None:
+    if not rel:
+        return None
+    name = Path(str(rel).replace("\\", "/")).name
+    if not name or name in (".", ".."):
+        return None
+    ext = Path(name).suffix.lower()
+    if ext not in PROFILE_PHOTO_ALLOWED_EXT:
+        return None
+    prefix = f"user_{int(user_id)}_"
+    if not name.startswith(prefix):
+        return None
+    if ".." in name or "/" in name or "\\" in str(rel):
+        return None
+    return name
+
+
+def _profile_photo_disk_path_for_user(u: User) -> Path | None:
+    rel = getattr(u, "profile_photo_path", None)
+    uid = int(getattr(u, "id", 0) or 0)
+    if uid <= 0:
+        return None
+    name = _profile_photo_safe_basename(uid, rel)
+    if not name:
+        return None
+    try:
+        primary = (PROFILE_PHOTOS_STORAGE_DIR / name).resolve()
+        root = PROFILE_PHOTOS_STORAGE_DIR.resolve()
+        primary.relative_to(root)
+    except (ValueError, OSError):
+        return None
+    if primary.is_file():
+        return primary
+    try:
+        legacy = (APP_DIR / "static" / "profile_photos" / name).resolve()
+        leg_root = (APP_DIR / "static" / "profile_photos").resolve()
+        legacy.relative_to(leg_root)
+    except (ValueError, OSError):
+        return None
+    if legacy.is_file():
+        return legacy
+    return None
+
+
+def _default_avatar_svg_xml(seed_text: str) -> str:
+    seed = str(seed_text or "").strip() or "Carbon Platform"
+    bg, fg = _AVATAR_COLOR_PAIRS[sum(ord(ch) for ch in seed) % len(_AVATAR_COLOR_PAIRS)]
+    ini = html.escape(_initials(seed), quote=True)
+    return (
+        "<?xml version='1.0' encoding='UTF-8'?>"
+        f"<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'>"
+        f"<rect width='160' height='160' rx='80' fill='{bg}'/>"
+        f"<text x='50%' y='54%' text-anchor='middle' font-family='Arial, sans-serif' "
+        f"font-size='56' font-weight='700' fill='{fg}'>{ini}</text></svg>"
+    )
+
+
+@app.route("/api/profile-photo/<int:user_id>")
+@login_required
+def api_profile_photo(user_id: int):
+    """Serve uploaded profile photos only to authenticated users (not public static)."""
+    target = db.session.get(User, user_id)
+    if target is None:
+        abort(403)
+    disk_path = _profile_photo_disk_path_for_user(target)
+    headers = {"Cache-Control": "private, max-age=86400"}
+    if disk_path and disk_path.is_file():
+        ext = disk_path.suffix.lower()
+        mt = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".webp": "image/webp",
+        }.get(ext) or mimetypes.guess_type(disk_path.name)[0] or "application/octet-stream"
+        return send_file(
+            str(disk_path),
+            mimetype=mt,
+            max_age=86400,
+            conditional=True,
+            etag=True,
+        )
+    body = _default_avatar_svg_xml(_user_display_name(target))
+    return Response(body, mimetype="image/svg+xml; charset=utf-8", headers=headers)
 
 
 def _default_company_logo_url(company_name: str) -> str:
@@ -11094,7 +11237,7 @@ def api_evidence_upload():
         sz = staging_abs.stat().st_size
         if sz > MAX_UPLOAD_BYTES:
             _staging_cleanup()
-            return jsonify({"error": "File exceeds 25 MB limit"}), 400
+            return jsonify(ok=False, error=_EVIDENCE_MAX_SIZE_USER_MSG), 400
         normalized_ext, mime = validate_upload_file(staging_abs, suffix.lstrip("."), sz)
     except ValueError as exc:
         _staging_cleanup()

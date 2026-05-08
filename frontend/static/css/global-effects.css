@@ -186,6 +186,369 @@ body.dark-mode .admin-upload-notification-meta {
   color: #cbd5e1;
 }
 
+/* --- Admin upload notification modal: premium layout (scoped) --- */
+.admin-upload-notification-modal__dialog {
+  max-width: 560px;
+}
+
+.admin-upload-notification-modal__surface {
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.admin-upload-notification-modal__header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem 3.25rem 0.9rem 1.25rem;
+}
+
+.admin-upload-notification-modal__title {
+  margin: 0;
+  width: 100%;
+  font-size: 1.125rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.admin-upload-notification-modal__close {
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+}
+
+.admin-upload-notification-modal__body {
+  padding: 0.6rem 0.9rem 1rem;
+}
+
+.admin-upload-notification-modal__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-height: min(62vh, 520px);
+  overflow-y: auto;
+  padding: 2px 4px 2px 0;
+  scrollbar-gutter: stable;
+}
+
+.admin-upload-notification-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--card-bg-soft);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.admin-upload-notification-card:hover {
+  border-color: rgba(0, 71, 186, 0.2);
+  box-shadow: 0 6px 22px rgba(15, 23, 42, 0.09);
+}
+
+.admin-upload-notification-card__company {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 2.5rem;
+}
+
+.admin-upload-notification-card__co-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: contain;
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+  padding: 3px;
+}
+
+.admin-upload-notification-card__co-name {
+  font-weight: 650;
+  font-size: 0.95rem;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  min-width: 0;
+}
+
+.admin-upload-notification-card__uploader {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+}
+
+.admin-upload-notification-card__avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.admin-upload-notification-card__uploader-meta {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.08rem;
+  line-height: 1.3;
+}
+
+.admin-upload-notification-card__uploader-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.admin-upload-notification-card__role {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.admin-upload-notification-card__category {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.15rem 0;
+  min-height: 1.75rem;
+}
+
+.admin-upload-notification-modal .admin-upload-notification-category-lottie.lottie-icon {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.admin-upload-notification-modal .admin-upload-notification-category-lottie.lottie-icon svg {
+  width: 22px !important;
+  height: 22px !important;
+}
+
+.admin-upload-notification-card__category-text {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--ink);
+  line-height: 1.35;
+  min-width: 0;
+}
+
+.admin-upload-notification-card__stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.65rem 1rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.admin-upload-notification-card__stat-label {
+  font-weight: 500;
+  color: var(--muted);
+  margin-right: 0.2rem;
+}
+
+.admin-upload-notification-card__stat-value {
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-upload-notification-card__status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.05rem;
+}
+
+.admin-upload-notification-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 100%;
+  padding: 0.2rem 0.55rem 0.22rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 640;
+  letter-spacing: 0.01em;
+  border: 1px solid transparent;
+  line-height: 1.25;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.admin-upload-notification-status-pill__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  opacity: 0.92;
+}
+
+.admin-upload-notification-status-pill__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-upload-notification-status-pill--pending {
+  background: rgba(251, 146, 60, 0.14);
+  border-color: rgba(249, 115, 22, 0.35);
+  color: #c2410c;
+}
+.admin-upload-notification-status-pill--pending .admin-upload-notification-status-pill__dot {
+  background: #f97316;
+}
+
+.admin-upload-notification-status-pill--processing {
+  background: rgba(59, 130, 246, 0.14);
+  border-color: rgba(37, 99, 235, 0.35);
+  color: #1d4ed8;
+}
+.admin-upload-notification-status-pill--processing .admin-upload-notification-status-pill__dot {
+  background: #3b82f6;
+}
+
+.admin-upload-notification-status-pill--done {
+  background: rgba(34, 197, 94, 0.14);
+  border-color: rgba(22, 163, 74, 0.35);
+  color: #15803d;
+}
+.admin-upload-notification-status-pill--done .admin-upload-notification-status-pill__dot {
+  background: #22c55e;
+}
+
+.admin-upload-notification-status-pill--failed {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(220, 38, 38, 0.35);
+  color: #b91c1c;
+}
+.admin-upload-notification-status-pill--failed .admin-upload-notification-status-pill__dot {
+  background: #ef4444;
+}
+
+.admin-upload-notification-status-pill--partial {
+  background: rgba(234, 179, 8, 0.16);
+  border-color: rgba(202, 138, 4, 0.38);
+  color: #a16207;
+}
+.admin-upload-notification-status-pill--partial .admin-upload-notification-status-pill__dot {
+  background: #eab308;
+}
+
+.admin-upload-notification-status-pill--review {
+  background: rgba(168, 85, 247, 0.12);
+  border-color: rgba(147, 51, 234, 0.32);
+  color: #7c3aed;
+}
+.admin-upload-notification-status-pill--review .admin-upload-notification-status-pill__dot {
+  background: #a855f7;
+}
+
+.admin-upload-notification-status-pill--neutral {
+  background: rgba(148, 163, 184, 0.14);
+  border-color: rgba(100, 116, 139, 0.28);
+  color: var(--muted-2, #475569);
+}
+.admin-upload-notification-status-pill--neutral .admin-upload-notification-status-pill__dot {
+  background: #94a3b8;
+}
+
+.admin-upload-notification-card__mapped-foot {
+  margin-top: 0.15rem;
+  padding-top: 0.35rem;
+  border-top: 1px dashed var(--border);
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+body.dark-mode .admin-upload-notification-card__co-logo,
+body.dark-mode .admin-upload-notification-card__avatar {
+  background: rgba(15, 23, 42, 0.55);
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+body.dark-mode .admin-upload-notification-card__co-name,
+body.dark-mode .admin-upload-notification-card__uploader-name,
+body.dark-mode .admin-upload-notification-card__category-text,
+body.dark-mode .admin-upload-notification-card__stat-value {
+  color: #f8fafc;
+}
+
+body.dark-mode .admin-upload-notification-card__role,
+body.dark-mode .admin-upload-notification-card__stats,
+body.dark-mode .admin-upload-notification-card__mapped-foot {
+  color: #cbd5e1;
+}
+
+body.dark-mode .admin-upload-notification-card:hover {
+  border-color: rgba(127, 177, 255, 0.35);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+}
+
+body.dark-mode .admin-upload-notification-status-pill--pending {
+  background: rgba(251, 146, 60, 0.12);
+  border-color: rgba(251, 146, 60, 0.35);
+  color: #fdba74;
+}
+body.dark-mode .admin-upload-notification-status-pill--processing {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(96, 165, 250, 0.4);
+  color: #93c5fd;
+}
+body.dark-mode .admin-upload-notification-status-pill--done {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(74, 222, 128, 0.38);
+  color: #86efac;
+}
+body.dark-mode .admin-upload-notification-status-pill--failed {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(248, 113, 113, 0.4);
+  color: #fca5a5;
+}
+body.dark-mode .admin-upload-notification-status-pill--partial {
+  background: rgba(234, 179, 8, 0.12);
+  border-color: rgba(250, 204, 21, 0.35);
+  color: #fde047;
+}
+body.dark-mode .admin-upload-notification-status-pill--review {
+  background: rgba(168, 85, 247, 0.12);
+  border-color: rgba(192, 132, 252, 0.38);
+  color: #d8b4fe;
+}
+body.dark-mode .admin-upload-notification-status-pill--neutral {
+  background: rgba(148, 163, 184, 0.1);
+  border-color: rgba(148, 163, 184, 0.28);
+  color: #e2e8f0;
+}
+
+@media (max-width: 576px) {
+  .admin-upload-notification-modal__header {
+    padding-right: 2.85rem;
+    padding-left: 1rem;
+  }
+  .admin-upload-notification-modal__title {
+    font-size: 1.05rem;
+  }
+  .admin-upload-notification-card__stats {
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+}
+
 .hero-premium-orb--busy {
   width: clamp(260px, 48vw, 400px);
   max-width: min(100%, 400px);
