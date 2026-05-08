@@ -1,0 +1,305 @@
+/* Scoped: Governance Register admin page only */
+.gr-page {
+  --gr-sticky-bg: var(--bs-body-bg, #fff);
+}
+
+body.dark-mode .gr-page {
+  --gr-sticky-bg: var(--bs-body-bg, #0f172a);
+}
+
+.gr-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.75rem;
+}
+
+.gr-kpi-card {
+  border: 1px solid var(--bs-border-color, rgba(0, 0, 0, 0.08));
+  border-radius: 10px;
+  padding: 0.65rem 0.85rem;
+  background: var(--bs-card-bg, var(--card-bg-soft, #fff));
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+.gr-kpi-card__label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bs-secondary-color, #64748b);
+  margin-bottom: 0.25rem;
+}
+
+.gr-kpi-card__value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.gr-kpi-card__pct {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--bs-secondary-color, #64748b);
+  letter-spacing: 0.01em;
+}
+
+.gr-security-banner {
+  border-radius: 10px;
+  border: 1px solid rgba(180, 83, 9, 0.35);
+}
+
+.gr-security-banner__icon {
+  flex-shrink: 0;
+  font-size: 1.15rem;
+  line-height: 1.2;
+  opacity: 0.9;
+}
+
+body.dark-mode .gr-security-banner {
+  border-color: rgba(251, 191, 36, 0.35);
+  background: rgba(254, 243, 199, 0.08);
+}
+
+.gr-quick-actions .btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.gr-kpi-card__value--warn {
+  color: #b45309;
+}
+
+body.dark-mode .gr-kpi-card__value--warn {
+  color: #fbbf24;
+}
+
+.gr-kpi-card__value--expired {
+  color: #991b1b;
+}
+
+body.dark-mode .gr-kpi-card__value--expired {
+  color: #f87171;
+}
+
+.gr-table-wrap {
+  max-height: min(65vh, 560px);
+  overflow: auto;
+}
+
+.gr-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--gr-sticky-bg);
+  box-shadow: 0 1px 0 var(--bs-border-color, rgba(0, 0, 0, 0.08));
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.gr-sort {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px dashed rgba(100, 116, 139, 0.45);
+}
+
+.gr-sort:hover {
+  color: var(--bs-primary, #0047ba);
+  border-bottom-color: transparent;
+}
+
+body.dark-mode .gr-table thead th {
+  box-shadow: 0 1px 0 rgba(148, 163, 184, 0.25);
+}
+
+.gr-cell-tight {
+  max-width: 9rem;
+}
+
+.gr-cell-clip {
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gr-pagination-bar {
+  background: var(--bs-tertiary-bg, rgba(0, 0, 0, 0.02));
+}
+
+body.dark-mode .gr-pagination-bar {
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.gr-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1.2;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.gr-status--approved {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(22, 163, 74, 0.35);
+  color: #15803d;
+}
+.gr-status--under-review {
+  background: rgba(234, 179, 8, 0.18);
+  border-color: rgba(202, 138, 4, 0.4);
+  color: #a16207;
+}
+.gr-status--requested {
+  background: rgba(59, 130, 246, 0.14);
+  border-color: rgba(37, 99, 235, 0.35);
+  color: #1d4ed8;
+}
+.gr-status--rejected {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(220, 38, 38, 0.35);
+  color: #b91c1c;
+}
+.gr-status--revoked {
+  background: rgba(100, 116, 139, 0.16);
+  border-color: rgba(71, 85, 105, 0.35);
+  color: #475569;
+}
+.gr-status--in-progress {
+  background: rgba(168, 85, 247, 0.14);
+  border-color: rgba(147, 51, 234, 0.35);
+  color: #7c3aed;
+}
+.gr-status--expired {
+  background: rgba(127, 29, 29, 0.14);
+  border-color: rgba(153, 27, 27, 0.4);
+  color: #7f1d1d;
+}
+.gr-status--neutral {
+  background: rgba(148, 163, 184, 0.14);
+  border-color: rgba(100, 116, 139, 0.3);
+  color: #475569;
+}
+
+body.dark-mode .gr-status--approved {
+  color: #86efac;
+  border-color: rgba(74, 222, 128, 0.35);
+  background: rgba(34, 197, 94, 0.12);
+}
+body.dark-mode .gr-status--under-review {
+  color: #fde047;
+  border-color: rgba(250, 204, 21, 0.35);
+}
+body.dark-mode .gr-status--requested {
+  color: #93c5fd;
+}
+body.dark-mode .gr-status--rejected {
+  color: #fca5a5;
+}
+body.dark-mode .gr-status--revoked {
+  color: #cbd5e1;
+}
+body.dark-mode .gr-status--in-progress {
+  color: #d8b4fe;
+}
+body.dark-mode .gr-status--expired {
+  color: #fecaca;
+}
+body.dark-mode .gr-status--neutral {
+  color: #e2e8f0;
+}
+
+.gr-doc-link {
+  font-weight: 600;
+}
+
+.gr-empty {
+  border: 1px dashed var(--bs-border-color, rgba(0, 0, 0, 0.12));
+  border-radius: 12px;
+  background: var(--bs-tertiary-bg, rgba(0, 0, 0, 0.015));
+}
+
+.gr-empty__icon svg,
+.gr-empty__icon img {
+  max-height: 4rem;
+  width: auto;
+  opacity: 0.85;
+}
+
+.gr-empty__text {
+  max-width: 28rem;
+}
+
+body.dark-mode .gr-empty {
+  background: rgba(15, 23, 42, 0.45);
+}
+
+/* Row emphasis for review / expiry */
+.gr-table tbody tr.gr-row--expired > td {
+  background: rgba(153, 27, 27, 0.08);
+}
+
+.gr-table tbody tr.gr-row--overdue > td {
+  background: rgba(234, 179, 8, 0.1);
+}
+
+body.dark-mode .gr-table tbody tr.gr-row--expired > td {
+  background: rgba(239, 68, 68, 0.12);
+}
+
+body.dark-mode .gr-table tbody tr.gr-row--overdue > td {
+  background: rgba(250, 204, 21, 0.08);
+}
+
+.gr-mini-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.08rem 0.42rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 650;
+  line-height: 1.2;
+  background: rgba(234, 179, 8, 0.22);
+  border: 1px solid rgba(202, 138, 4, 0.4);
+  color: #92400e;
+  white-space: nowrap;
+}
+
+body.dark-mode .gr-mini-pill {
+  background: rgba(250, 204, 21, 0.15);
+  border-color: rgba(250, 204, 21, 0.35);
+  color: #fde047;
+}
+
+/* Recent activity sidebar */
+.gr-audit-card {
+  border: 1px solid var(--bs-border-color, rgba(0, 0, 0, 0.08));
+  border-radius: 10px;
+}
+
+.gr-audit-list {
+  max-height: min(55vh, 420px);
+  overflow-y: auto;
+}
+
+.gr-audit-item {
+  border-color: var(--bs-border-color-translucent, rgba(0, 0, 0, 0.06));
+}
+
+.gr-audit-item .text-capitalize {
+  font-size: 0.72rem;
+}
+
+@media (max-width: 576px) {
+  .gr-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

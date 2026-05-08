@@ -1,0 +1,508 @@
+{% extends "base.html" %}
+{% import 'macros/ui_illustrations.html' as illu %}
+
+{% macro gr_th_sort(label, key) -%}
+{% if sort_key == key %}
+  {% set next_dir = 'asc' if sort_dir == 'desc' else 'desc' %}
+{% else %}
+  {% set next_dir = 'desc' %}
+{% endif %}
+<a href="{{ url_for('admin_governance_register', sort=key, dir=next_dir, **filter_args) }}" class="gr-sort">{{ label }}</a>
+{%- endmacro %}
+
+{% macro gr_status_badge(st) -%}
+{% if st == 'Approved' %}
+<span class="gr-status gr-status--approved">{{ st }}</span>
+{% elif st == 'Under Review' %}
+<span class="gr-status gr-status--under-review">{{ st }}</span>
+{% elif st == 'Requested' %}
+<span class="gr-status gr-status--requested">{{ st }}</span>
+{% elif st == 'Rejected' %}
+<span class="gr-status gr-status--rejected">{{ st }}</span>
+{% elif st == 'Revoked' %}
+<span class="gr-status gr-status--revoked">{{ st }}</span>
+{% elif st == 'In Progress' %}
+<span class="gr-status gr-status--in-progress">{{ st }}</span>
+{% elif st == 'Expired' %}
+<span class="gr-status gr-status--expired">{{ st }}</span>
+{% else %}
+<span class="gr-status gr-status--neutral">{{ st }}</span>
+{% endif %}
+{%- endmacro %}
+
+{% block title %}Governance Register — Admin{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/governance_register.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="gr-page container-fluid mt-4 mb-5 px-3">
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb mb-2">
+      <li class="breadcrumb-item"><a href="{{ url_for('admin') }}">Admin</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Governance Register</li>
+    </ol>
+  </nav>
+
+  <div class="alert alert-warning gr-security-banner d-flex gap-2 align-items-start mb-3" role="alert">
+    <span class="gr-security-banner__icon" aria-hidden="true">&#9888;</span>
+    <div>
+      <strong>No secrets in this register.</strong>
+      Do not store API keys, passwords, tokens, or other credentials. Use links to internal documentation and ticket systems only. Automated integration hooks are placeholders until enabled by your administrator.
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-body">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+        <div>
+          <h1 class="h4 mb-2 d-flex align-items-center gap-2">
+            {{ illu.illu_sidebar_governance_register('') }}
+            <span>Governance Register</span>
+          </h1>
+          <p class="text-muted mb-0 small">Track APIs, software, access requests, approvals, rejections, and review dates.</p>
+        </div>
+        <div class="gr-quick-actions d-flex flex-wrap justify-content-end gap-2">
+          <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin_governance_register_export', **filter_args) }}">Export Excel</a>
+          <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#grRecordModal" id="grOpenCreate">Add record</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" disabled title="Coming soon">SharePoint</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" disabled title="Coming soon">Jira</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="gr-kpi-grid mb-3">
+    <div class="gr-kpi-card">
+      <span class="gr-kpi-card__label">Total records</span>
+      <strong class="gr-kpi-card__value">{{ stats.total }}</strong>
+      {% if stats.total > 0 %}<span class="gr-kpi-card__pct">100% of filtered view</span>{% endif %}
+    </div>
+    <div class="gr-kpi-card">
+      <span class="gr-kpi-card__label">Approved</span>
+      <strong class="gr-kpi-card__value text-success">{{ stats.approved }}</strong>
+      {% if stats.pct_approved is not none %}<span class="gr-kpi-card__pct">{{ stats.pct_approved }}% of view</span>{% endif %}
+    </div>
+    <div class="gr-kpi-card">
+      <span class="gr-kpi-card__label">Under review</span>
+      <strong class="gr-kpi-card__value gr-kpi-card__value--warn">{{ stats.under_review }}</strong>
+      {% if stats.pct_under_review is not none %}<span class="gr-kpi-card__pct">{{ stats.pct_under_review }}% of view</span>{% endif %}
+    </div>
+    <div class="gr-kpi-card">
+      <span class="gr-kpi-card__label">Expired</span>
+      <strong class="gr-kpi-card__value gr-kpi-card__value--expired">{{ stats.expired }}</strong>
+      {% if stats.pct_expired is not none %}<span class="gr-kpi-card__pct">{{ stats.pct_expired }}% of view</span>{% endif %}
+    </div>
+    <div class="gr-kpi-card">
+      <span class="gr-kpi-card__label">Revoked</span>
+      <strong class="gr-kpi-card__value text-secondary">{{ stats.revoked }}</strong>
+      {% if stats.pct_revoked is not none %}<span class="gr-kpi-card__pct">{{ stats.pct_revoked }}% of view</span>{% endif %}
+    </div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-12 col-xl-8">
+      <div class="card mb-3">
+        <div class="card-body">
+          <form class="row g-2 align-items-end" method="get" action="{{ url_for('admin_governance_register') }}">
+            <input type="hidden" name="sort" value="{{ sort_key }}">
+            <input type="hidden" name="dir" value="{{ sort_dir }}">
+            <div class="col-12 col-md-6 col-lg-4">
+              <label class="form-label small mb-1" for="grQ">Search</label>
+              <input type="search" class="form-control form-control-sm" id="grQ" name="q" value="{{ request.args.get('q', '') }}" placeholder="Name, owner, vendor...">
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+              <label class="form-label small mb-1" for="grStatus">Status</label>
+              <select class="form-select form-select-sm" id="grStatus" name="status">
+                <option value="">Any</option>
+                {% for s in governance_statuses %}
+                <option value="{{ s }}" {% if request.args.get('status') == s %}selected{% endif %}>{{ s }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+              <label class="form-label small mb-1" for="grEnv">Environment</label>
+              <select class="form-select form-select-sm" id="grEnv" name="environment">
+                <option value="">Any</option>
+                {% for e in governance_environments %}
+                <option value="{{ e }}" {% if request.args.get('environment') == e %}selected{% endif %}>{{ e }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+              <label class="form-label small mb-1" for="grAt">Access type</label>
+              <select class="form-select form-select-sm" id="grAt" name="access_type">
+                <option value="">Any</option>
+                {% for a in governance_access_types %}
+                <option value="{{ a }}" {% if request.args.get('access_type') == a %}selected{% endif %}>{{ a }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+              <label class="form-label small mb-1" for="grTeam">Team / department</label>
+              <input type="text" class="form-control form-control-sm" id="grTeam" name="team" value="{{ request.args.get('team', '') }}" placeholder="Contains...">
+            </div>
+            <div class="col-12 d-flex flex-wrap gap-2">
+              <button type="submit" class="btn btn-primary btn-sm">Apply filters</button>
+              <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin_governance_register') }}">Reset filters</a>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {% if pagination.total == 0 %}
+      <div class="card gr-empty">
+        <div class="card-body text-center py-5 px-3">
+          <div class="gr-empty__icon mb-3" aria-hidden="true">{{ illu.illu_sidebar_governance_register('') }}</div>
+          <h2 class="h5 mb-2">No governance records yet</h2>
+          <p class="text-muted small mx-auto gr-empty__text mb-3">Create your first entry for APIs, software, or access paths. Use filters above when you already have data.</p>
+          <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#grRecordModal" id="grEmptyAdd">Add first record</button>
+        </div>
+      </div>
+      {% else %}
+      <div class="card">
+        <div class="card-body p-0">
+          <div class="gr-table-wrap table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0 gr-table">
+              <thead>
+                <tr>
+                  <th scope="col">{{ gr_th_sort('Request date', 'request_date') }}</th>
+                  <th scope="col">{{ gr_th_sort('Requested by', 'requested_by') }}</th>
+                  <th scope="col">{{ gr_th_sort('Team / dept', 'team_department') }}</th>
+                  <th scope="col">{{ gr_th_sort('API / software', 'api_software_name') }}</th>
+                  <th scope="col">{{ gr_th_sort('Vendor / platform', 'vendor_platform') }}</th>
+                  <th scope="col">Purpose</th>
+                  <th scope="col">{{ gr_th_sort('Access type', 'access_type') }}</th>
+                  <th scope="col">{{ gr_th_sort('Environment', 'environment') }}</th>
+                  <th scope="col">{{ gr_th_sort('Status', 'status') }}</th>
+                  <th scope="col">{{ gr_th_sort('Approved by', 'approved_by') }}</th>
+                  <th scope="col">{{ gr_th_sort('Expiry / review', 'expiry_review_date') }}</th>
+                  <th scope="col">Notes / risks</th>
+                  <th scope="col">Docs</th>
+                  <th scope="col">{{ gr_th_sort('Owner', 'owner') }}</th>
+                  <th scope="col">{{ gr_th_sort('Last updated', 'updated_at') }}</th>
+                  <th scope="col">Last updated by</th>
+                  <th scope="col">Attachments</th>
+                  <th scope="col" class="text-end">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in pagination.items %}
+                {% set past_exp = row.expiry_review_date and row.expiry_review_date < gr_today %}
+                {% set tr_class = '' %}
+                {% if row.status == 'Expired' %}
+                  {% set tr_class = 'gr-row--expired' %}
+                {% elif past_exp and row.status not in gr_closed_statuses %}
+                  {% set tr_class = 'gr-row--overdue' %}
+                {% endif %}
+                {% set _att = governance_attachments_stub_label(row.attachments_stub_json) %}
+                <tr class="{{ tr_class }}">
+                  <td class="text-nowrap small">{{ row.request_date.strftime('%Y-%m-%d') if row.request_date else '' }}</td>
+                  <td class="small gr-cell-tight">{{ row.requested_by or '-' }}</td>
+                  <td class="small gr-cell-tight">{{ row.team_department or '-' }}</td>
+                  <td class="small fw-semibold">{{ row.api_software_name }}</td>
+                  <td class="small gr-cell-tight">{{ row.vendor_platform or '-' }}</td>
+                  <td class="small gr-cell-clip" title="{{ row.purpose_business_reason or '' }}">{{ (row.purpose_business_reason or '')[:120] }}{% if row.purpose_business_reason and row.purpose_business_reason|length > 120 %}...{% endif %}</td>
+                  <td class="small">{{ row.access_type }}</td>
+                  <td class="small">{{ row.environment }}</td>
+                  <td class="small">
+                    <div class="d-flex flex-wrap align-items-center gap-1">
+                      {{ gr_status_badge(row.status) }}
+                      {% if past_exp and row.status not in gr_closed_statuses and row.status != 'Expired' %}
+                      <span class="gr-mini-pill" title="Expiry / review date is in the past">Review overdue</span>
+                      {% endif %}
+                    </div>
+                  </td>
+                  <td class="small gr-cell-tight">{{ row.approved_by or '-' }}</td>
+                  <td class="text-nowrap small">{{ row.expiry_review_date.strftime('%Y-%m-%d') if row.expiry_review_date else '-' }}</td>
+                  <td class="small gr-cell-clip" title="{{ row.notes_risks or '' }}">{{ (row.notes_risks or '')[:80] }}{% if row.notes_risks and row.notes_risks|length > 80 %}...{% endif %}</td>
+                  <td class="small gr-cell-tight">
+                    {% if row.linked_documentation %}
+                    <a href="{{ row.linked_documentation }}" target="_blank" rel="noopener noreferrer" class="text-truncate d-inline-block gr-doc-link" style="max-width:8rem;">Link</a>
+                    {% else %}-{% endif %}
+                  </td>
+                  <td class="small">{{ row.owner }}</td>
+                  <td class="text-nowrap small">{{ row.updated_at.strftime('%Y-%m-%d %H:%M') if row.updated_at else '-' }}</td>
+                  <td class="small gr-cell-tight" title="{{ gr_last_user_labels.get(row.last_updated_by_user_id, '') if row.last_updated_by_user_id else '' }}">{{ gr_last_user_labels.get(row.last_updated_by_user_id, '-') if row.last_updated_by_user_id else '-' }}</td>
+                  <td class="small text-muted" title="{{ _att[1] }}">{{ _att[0] }}</td>
+                  <td class="text-end text-nowrap">
+                    <button type="button" class="btn btn-sm btn-outline-primary py-0 gr-edit-btn" data-bs-toggle="modal" data-bs-target="#grRecordModal" data-gr-id="{{ row.id }}">Edit</button>
+                    <button type="button" class="btn btn-sm btn-outline-danger py-0 gr-delete-open" data-bs-toggle="modal" data-bs-target="#grDeleteModal" data-gr-delete-id="{{ row.id }}" data-gr-label="{{ row.api_software_name|e }}">Delete</button>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% if pagination.pages > 1 %}
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 px-3 py-2 border-top gr-pagination-bar">
+            <small class="text-muted">Page {{ pagination.page }} of {{ pagination.pages }} ({{ pagination.total }} records)</small>
+            <nav aria-label="Governance pagination">
+              <ul class="pagination pagination-sm mb-0">
+                {% if pagination.has_prev %}
+                <li class="page-item"><a class="page-link" href="{{ url_for('admin_governance_register', page=pagination.prev_num, sort=sort_key, dir=sort_dir, **filter_args) }}">Previous</a></li>
+                {% endif %}
+                {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+                  {% if p %}
+                    <li class="page-item {% if p == pagination.page %}active{% endif %}"><a class="page-link" href="{{ url_for('admin_governance_register', page=p, sort=sort_key, dir=sort_dir, **filter_args) }}">{{ p }}</a></li>
+                  {% else %}
+                    <li class="page-item disabled"><span class="page-link">...</span></li>
+                  {% endif %}
+                {% endfor %}
+                {% if pagination.has_next %}
+                <li class="page-item"><a class="page-link" href="{{ url_for('admin_governance_register', page=pagination.next_num, sort=sort_key, dir=sort_dir, **filter_args) }}">Next</a></li>
+                {% endif %}
+              </ul>
+            </nav>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    <div class="col-12 col-xl-4">
+      <div class="card gr-audit-card h-100">
+        <div class="card-header py-2">
+          <strong class="small">Recent activity</strong>
+          <span class="text-muted small d-block fw-normal">Create, update, and delete events</span>
+        </div>
+        <div class="card-body p-0">
+          {% if recent_audit %}
+          <ul class="list-group list-group-flush gr-audit-list">
+            {% for ev in recent_audit %}
+            <li class="list-group-item gr-audit-item small">
+              <div class="d-flex justify-content-between gap-2">
+                <span class="fw-semibold text-capitalize">{{ ev.action }}</span>
+                <span class="text-muted text-nowrap">{{ ev.at }}</span>
+              </div>
+              <div class="text-truncate" title="{{ ev.record_label }}">{{ ev.record_label or '(no label)' }}</div>
+              <div class="text-muted text-truncate">{{ ev.user_label }}</div>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p class="text-muted small mb-0 p-3">No audit events yet. Actions will show here after you add or change records.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="grRecordModal" tabindex="-1" aria-labelledby="grRecordModalTitle" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="grRecordModalTitle">Governance record</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form id="grRecordForm" method="post" action="{{ url_for('admin_governance_register_create') }}">
+        <div class="modal-body">
+          <div class="row g-2">
+            <div class="col-md-6">
+              <label class="form-label small" for="gr_f_request_date">Request date <span class="text-danger">*</span></label>
+              <input type="date" class="form-control form-control-sm" name="request_date" id="gr_f_request_date" required value="{{ default_request_date }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small" for="gr_f_expiry">Expiry / review date</label>
+              <input type="date" class="form-control form-control-sm" name="expiry_review_date" id="gr_f_expiry">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small" for="gr_f_requested_by">Requested by</label>
+              <input type="text" class="form-control form-control-sm" name="requested_by" id="gr_f_requested_by" autocomplete="name">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small" for="gr_f_team">Team / department</label>
+              <input type="text" class="form-control form-control-sm" name="team_department" id="gr_f_team">
+            </div>
+            <div class="col-12">
+              <label class="form-label small" for="gr_f_api">API / software name <span class="text-danger">*</span></label>
+              <input type="text" class="form-control form-control-sm" name="api_software_name" id="gr_f_api" required>
+            </div>
+            <div class="col-12">
+              <label class="form-label small" for="gr_f_vendor">Vendor / platform</label>
+              <input type="text" class="form-control form-control-sm" name="vendor_platform" id="gr_f_vendor">
+            </div>
+            <div class="col-12">
+              <label class="form-label small" for="gr_f_purpose">Purpose / business reason</label>
+              <textarea class="form-control form-control-sm" name="purpose_business_reason" id="gr_f_purpose" rows="2"></textarea>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small" for="gr_f_access">Access type <span class="text-danger">*</span></label>
+              <select class="form-select form-select-sm" name="access_type" id="gr_f_access" required>
+                {% for a in governance_access_types %}
+                <option value="{{ a }}">{{ a }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small" for="gr_f_environment">Environment <span class="text-danger">*</span></label>
+              <select class="form-select form-select-sm" name="environment" id="gr_f_environment" required>
+                {% for e in governance_environments %}
+                <option value="{{ e }}">{{ e }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small" for="gr_f_status">Status <span class="text-danger">*</span></label>
+              <select class="form-select form-select-sm" name="status" id="gr_f_status" required>
+                {% for s in governance_statuses %}
+                <option value="{{ s }}">{{ s }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small" for="gr_f_approved">Approved by</label>
+              <input type="text" class="form-control form-control-sm" name="approved_by" id="gr_f_approved">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small" for="gr_f_owner">Owner <span class="text-danger">*</span></label>
+              <input type="text" class="form-control form-control-sm" name="owner" id="gr_f_owner" required>
+            </div>
+            <div class="col-12">
+              <label class="form-label small" for="gr_f_notes">Notes / risks</label>
+              <textarea class="form-control form-control-sm" name="notes_risks" id="gr_f_notes" rows="2"></textarea>
+            </div>
+            <div class="col-12">
+              <label class="form-label small" for="gr_f_docs">Linked documentation (URL or path)</label>
+              <input type="text" class="form-control form-control-sm" name="linked_documentation" id="gr_f_docs" placeholder="https://...">
+            </div>
+            <div class="col-12">
+              <label class="form-label small text-muted">Attachments</label>
+              <input type="text" class="form-control form-control-sm" value="" disabled placeholder="File uploads will be available in a future release">
+              <p class="small text-muted mb-0">Reserved JSON field is stored server-side for future attachment metadata (no binary upload yet).</p>
+            </div>
+          </div>
+          <p class="small text-muted mt-2 mb-0">Do not enter API keys, passwords, tokens, or other secrets. Use documentation links only.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm" id="grSubmitBtn">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  </div>
+
+<div class="modal fade" id="grDeleteModal" tabindex="-1" aria-labelledby="grDeleteModalTitle" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="grDeleteModalTitle">Delete record</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-0 small">Delete this governance record? This cannot be undone.</p>
+        <p class="fw-semibold mb-0 mt-2 small" id="grDeleteLabel"></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <form id="grDeleteForm" method="post" class="d-inline">
+          <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="application/json" id="gr-rows-json">{{ rows_payload|tojson }}</script>
+<script>
+(function () {
+  var PLACE = {{ gr_url_placeholder_id | int }};
+  var createAction = {{ url_for('admin_governance_register_create') | tojson }};
+  var updateTpl = {{ url_for('admin_governance_register_update', row_id=gr_url_placeholder_id) | tojson }};
+  var deleteTpl = {{ url_for('admin_governance_register_delete', row_id=gr_url_placeholder_id) | tojson }};
+  var rows = [];
+  try {
+    rows = JSON.parse(document.getElementById('gr-rows-json').textContent || '[]');
+  } catch (e) {
+    rows = [];
+  }
+  function byId(id) { return document.getElementById(id); }
+  function setVal(id, v) {
+    var el = byId(id);
+    if (!el) return;
+    el.value = v != null && v !== undefined ? String(v) : '';
+  }
+  function selectOptionByValue(selectId, value) {
+    var el = byId(selectId);
+    if (!el) return;
+    var v = String(value || '');
+    for (var i = 0; i < el.options.length; i++) {
+      if (el.options[i].value === v) {
+        el.selectedIndex = i;
+        return;
+      }
+    }
+    el.selectedIndex = 0;
+  }
+  function clearFormDefaults() {
+    setVal('gr_f_request_date', {{ default_request_date | tojson }});
+    setVal('gr_f_expiry', '');
+    ['gr_f_requested_by','gr_f_team','gr_f_api','gr_f_vendor','gr_f_purpose','gr_f_approved','gr_f_notes','gr_f_docs','gr_f_owner'].forEach(function (i) { setVal(i, ''); });
+    selectOptionByValue('gr_f_access', {{ governance_access_types[0] | tojson }});
+    selectOptionByValue('gr_f_environment', {{ governance_environments[0] | tojson }});
+    selectOptionByValue('gr_f_status', {{ governance_statuses[0] | tojson }});
+  }
+  function fillFromRow(r) {
+    if (!r) return;
+    setVal('gr_f_request_date', r.request_date || '');
+    setVal('gr_f_expiry', r.expiry_review_date || '');
+    setVal('gr_f_requested_by', r.requested_by || '');
+    setVal('gr_f_team', r.team_department || '');
+    setVal('gr_f_api', r.api_software_name || '');
+    setVal('gr_f_vendor', r.vendor_platform || '');
+    setVal('gr_f_purpose', r.purpose_business_reason || '');
+    selectOptionByValue('gr_f_access', r.access_type || '');
+    selectOptionByValue('gr_f_environment', r.environment || '');
+    selectOptionByValue('gr_f_status', r.status || '');
+    setVal('gr_f_approved', r.approved_by || '');
+    setVal('gr_f_notes', r.notes_risks || '');
+    setVal('gr_f_docs', r.linked_documentation || '');
+    setVal('gr_f_owner', r.owner || '');
+  }
+  function updateUrl(tpl, id) {
+    return tpl.replace(String(PLACE), String(id));
+  }
+  var modalEl = document.getElementById('grRecordModal');
+  var form = document.getElementById('grRecordForm');
+  var titleEl = document.getElementById('grRecordModalTitle');
+  function wireOpenCreate(btn) {
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      titleEl.textContent = 'New governance record';
+      form.action = createAction;
+      clearFormDefaults();
+    });
+  }
+  wireOpenCreate(document.getElementById('grOpenCreate'));
+  wireOpenCreate(document.getElementById('grEmptyAdd'));
+  document.querySelectorAll('.gr-edit-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var id = parseInt(btn.getAttribute('data-gr-id'), 10);
+      var row = rows.find(function (x) { return x.id === id; });
+      titleEl.textContent = 'Edit governance record';
+      form.action = updateUrl(updateTpl, id);
+      if (row) { fillFromRow(row); }
+    });
+  });
+  if (modalEl) {
+    modalEl.addEventListener('hidden.bs.modal', function () {
+      form.action = createAction;
+      titleEl.textContent = 'Governance record';
+    });
+  }
+  var delForm = document.getElementById('grDeleteForm');
+  var delLabel = document.getElementById('grDeleteLabel');
+  document.querySelectorAll('.gr-delete-open').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var id = parseInt(btn.getAttribute('data-gr-delete-id'), 10);
+      var label = btn.getAttribute('data-gr-label') || '';
+      if (delLabel) delLabel.textContent = label;
+      if (delForm) delForm.action = updateUrl(deleteTpl, id);
+    });
+  });
+})();
+</script>
+{% endblock %}

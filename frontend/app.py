@@ -1756,6 +1756,352 @@ class AccessRequest(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
+class GovernanceRegister(db.Model):
+    """Admin governance register: access integrations and review metadata only (no secrets)."""
+
+    __tablename__ = "governance_register"
+    id = db.Column(db.Integer, primary_key=True)
+    request_date = db.Column(db.Date, nullable=False, index=True)
+    requested_by = db.Column(db.String(200), nullable=True)
+    team_department = db.Column(db.String(200), nullable=True, index=True)
+    api_software_name = db.Column(db.String(300), nullable=False)
+    vendor_platform = db.Column(db.String(300), nullable=True)
+    purpose_business_reason = db.Column(db.Text, nullable=True)
+    access_type = db.Column(db.String(64), nullable=False, index=True)
+    environment = db.Column(db.String(32), nullable=False, index=True)
+    status = db.Column(db.String(64), nullable=False, index=True)
+    approved_by = db.Column(db.String(200), nullable=True)
+    expiry_review_date = db.Column(db.Date, nullable=True, index=True)
+    notes_risks = db.Column(db.Text, nullable=True)
+    linked_documentation = db.Column(db.String(2048), nullable=True)
+    owner = db.Column(db.String(200), nullable=False, index=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    last_updated_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    attachments_stub_json = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class GovernanceRegisterAuditLog(db.Model):
+    """Append-only governance actions for administrators; register row may be deleted but register_id is kept for history."""
+
+    __tablename__ = "governance_register_audit"
+    id = db.Column(db.Integer, primary_key=True)
+    register_id = db.Column(db.Integer, nullable=True, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    action = db.Column(db.String(32), nullable=False, index=True)
+    record_label = db.Column(db.String(400), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+
+GOVERNANCE_ACCESS_TYPES: tuple[str, ...] = (
+    "API",
+    "Software",
+    "Admin Access",
+    "Service Account",
+    "Database",
+    "SharePoint",
+    "Power BI",
+)
+GOVERNANCE_ENVIRONMENTS: tuple[str, ...] = ("Production", "Test", "Sandbox")
+GOVERNANCE_STATUSES: tuple[str, ...] = (
+    "Requested",
+    "Under Review",
+    "Approved",
+    "Rejected",
+    "Revoked",
+    "In Progress",
+    "Expired",
+)
+GOVERNANCE_ACCESS_TYPES_SET = frozenset(GOVERNANCE_ACCESS_TYPES)
+GOVERNANCE_ENVIRONMENTS_SET = frozenset(GOVERNANCE_ENVIRONMENTS)
+GOVERNANCE_STATUSES_SET = frozenset(GOVERNANCE_STATUSES)
+GOVERNANCE_REGISTER_STATUSES_CLOSED_FOR_OVERDUE: frozenset[str] = frozenset(
+    {"Rejected", "Revoked", "Expired"}
+)
+_GOVERNANCE_CREDENTIAL_HINT = re.compile(
+    r"(?i)(api[_-]?key|secret|password|token|bearer\s|authorization:\s*basic|"
+    r"BEGIN (?:RSA |OPENSSH |)PRIVATE|ssh-rsa|eyJ[A-Za-z0-9_-]+\.eyJ|"
+    r"xox[baprs]-|ghp_[A-Za-z0-9]{20,}|glpat-[A-Za-z0-9_-]{16,}|"
+    r"sk_live_[A-Za-z0-9]{20,}|sk_test_[A-Za-z0-9]{20,}|"
+    r"AKIA[0-9A-Z]{16})"
+)
+
+
+def _governance_field_secret_rejection(raw: str | None, *, max_len: int = 8000) -> str | None:
+    """Return flash error message if text looks like a credential or is too long; else None."""
+    s = (raw or "").strip()
+    if not s:
+        return None
+    if len(s) > max_len:
+        return "A text field is too long."
+    if _GOVERNANCE_CREDENTIAL_HINT.search(s):
+        return "Credential-like content is not allowed in this register. Remove keys, tokens, or passwords."
+    if len(s) >= 48:
+        alnum_ratio = sum(1 for c in s if c.isalnum()) / max(len(s), 1)
+        if alnum_ratio > 0.85 and re.search(r"[A-Za-z0-9+/]{36,}", s):
+            return "Credential-like content is not allowed. Use documentation links only—do not paste secrets."
+    return None
+
+
+def _governance_validate_text_fields(
+    purpose: str | None, notes: str | None, docs: str | None
+) -> str | None:
+    for msg in (
+        _governance_field_secret_rejection(purpose),
+        _governance_field_secret_rejection(notes),
+        _governance_field_secret_rejection(docs, max_len=2048),
+    ):
+        if msg:
+            return msg
+    return None
+
+
+def _parse_html_date(value: object) -> date | None:
+    if value is None:
+        return None
+    s = str(value or "").strip()
+    if not s:
+        return None
+    try:
+        return datetime.strptime(s[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _governance_sort_column(key: str):
+    mapping = {
+        "request_date": GovernanceRegister.request_date,
+        "requested_by": GovernanceRegister.requested_by,
+        "team_department": GovernanceRegister.team_department,
+        "api_software_name": GovernanceRegister.api_software_name,
+        "vendor_platform": GovernanceRegister.vendor_platform,
+        "access_type": GovernanceRegister.access_type,
+        "environment": GovernanceRegister.environment,
+        "status": GovernanceRegister.status,
+        "approved_by": GovernanceRegister.approved_by,
+        "expiry_review_date": GovernanceRegister.expiry_review_date,
+        "owner": GovernanceRegister.owner,
+        "created_at": GovernanceRegister.created_at,
+        "updated_at": GovernanceRegister.updated_at,
+        "last_updated_by_user_id": GovernanceRegister.last_updated_by_user_id,
+    }
+    return mapping.get((key or "").strip(), GovernanceRegister.request_date)
+
+
+def _apply_governance_register_filters(q, args) -> object:
+    status = (args.get("status") or "").strip()
+    environment = (args.get("environment") or "").strip()
+    access_type = (args.get("access_type") or "").strip()
+    team = (args.get("team") or "").strip()
+    search = (args.get("q") or "").strip()
+
+    if status and status in GOVERNANCE_STATUSES_SET:
+        q = q.filter(GovernanceRegister.status == status)
+    if environment and environment in GOVERNANCE_ENVIRONMENTS_SET:
+        q = q.filter(GovernanceRegister.environment == environment)
+    if access_type and access_type in GOVERNANCE_ACCESS_TYPES_SET:
+        q = q.filter(GovernanceRegister.access_type == access_type)
+    if team:
+        like = f"%{team}%"
+        q = q.filter(GovernanceRegister.team_department.ilike(like))
+    if search:
+        like = f"%{search}%"
+        q = q.filter(
+            or_(
+                GovernanceRegister.api_software_name.ilike(like),
+                GovernanceRegister.requested_by.ilike(like),
+                GovernanceRegister.vendor_platform.ilike(like),
+                GovernanceRegister.team_department.ilike(like),
+                GovernanceRegister.owner.ilike(like),
+                GovernanceRegister.purpose_business_reason.ilike(like),
+                GovernanceRegister.notes_risks.ilike(like),
+                GovernanceRegister.linked_documentation.ilike(like),
+                GovernanceRegister.approved_by.ilike(like),
+            )
+        )
+    return q
+
+
+def _governance_register_stats(base_q) -> dict[str, int]:
+    return {
+        "total": base_q.count(),
+        "approved": base_q.filter(GovernanceRegister.status == "Approved").count(),
+        "under_review": base_q.filter(GovernanceRegister.status == "Under Review").count(),
+        "expired": base_q.filter(GovernanceRegister.status == "Expired").count(),
+        "revoked": base_q.filter(GovernanceRegister.status == "Revoked").count(),
+    }
+
+
+def _governance_register_stats_with_pct(base_q) -> dict[str, object]:
+    s = _governance_register_stats(base_q)
+    t = int(s.get("total") or 0)
+    if t <= 0:
+        return {
+            **s,
+            "pct_approved": None,
+            "pct_under_review": None,
+            "pct_expired": None,
+            "pct_revoked": None,
+        }
+    return {
+        **s,
+        "pct_approved": round(100.0 * int(s["approved"]) / t, 1),
+        "pct_under_review": round(100.0 * int(s["under_review"]) / t, 1),
+        "pct_expired": round(100.0 * int(s["expired"]) / t, 1),
+        "pct_revoked": round(100.0 * int(s["revoked"]) / t, 1),
+    }
+
+
+def _governance_user_label_map(user_ids: set[int]) -> dict[int, str]:
+    if not user_ids:
+        return {}
+    clean = {int(x) for x in user_ids if x}
+    if not clean:
+        return {}
+    rows = User.query.filter(User.id.in_(clean)).all()
+    return {
+        int(u.id): f"{_display_name_for_user(u)} ({(u.email or '').strip() or 'no-email'})".strip()
+        for u in rows
+    }
+
+
+def _log_governance_audit(
+    register_id: int | None,
+    action: str,
+    *,
+    record_label: str | None = None,
+    user_id: int | None = None,
+) -> None:
+    try:
+        uid = user_id
+        if uid is None:
+            uid = int(getattr(current_user, "id", 0) or 0) or None
+        lab = (record_label or "").strip()[:400] or None
+        db.session.add(
+            GovernanceRegisterAuditLog(
+                register_id=register_id,
+                user_id=uid,
+                action=str(action or "unknown")[:32],
+                record_label=lab,
+            )
+        )
+    except Exception:
+        pass
+
+
+def _governance_recent_audit_payload(limit: int = 25) -> list[dict[str, object]]:
+    rows = (
+        GovernanceRegisterAuditLog.query.order_by(GovernanceRegisterAuditLog.created_at.desc())
+        .limit(max(1, min(limit, 100)))
+        .all()
+    )
+    uids = {int(r.user_id) for r in rows if r.user_id}
+    um = _governance_user_label_map(uids)
+    out: list[dict[str, object]] = []
+    for r in rows:
+        uid = int(r.user_id) if r.user_id else None
+        out.append(
+            {
+                "at": r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "",
+                "action": r.action or "",
+                "record_label": (r.record_label or "").strip(),
+                "user_label": um.get(uid, "Unknown") if uid else "-",
+            }
+        )
+    return out
+
+
+def _governance_attachments_stub_label(stub: str | None) -> tuple[str, str]:
+    """Return (cell text, title tooltip) for attachment placeholder column."""
+    s = (stub or "").strip() or "[]"
+    try:
+        data = json.loads(s)
+        if isinstance(data, list) and len(data) > 0:
+            return (f"{len(data)} linked", "Reserved attachment metadata (future upload support)")
+    except Exception:
+        pass
+    return ("-", "File attachments reserved for a future release")
+
+
+def _governance_row_to_editor_dict(r: GovernanceRegister) -> dict[str, object]:
+    return {
+        "id": r.id,
+        "request_date": r.request_date.isoformat() if r.request_date else "",
+        "requested_by": r.requested_by or "",
+        "team_department": r.team_department or "",
+        "api_software_name": r.api_software_name or "",
+        "vendor_platform": r.vendor_platform or "",
+        "purpose_business_reason": r.purpose_business_reason or "",
+        "access_type": r.access_type or "",
+        "environment": r.environment or "",
+        "status": r.status or "",
+        "approved_by": r.approved_by or "",
+        "expiry_review_date": r.expiry_review_date.isoformat() if r.expiry_review_date else "",
+        "notes_risks": r.notes_risks or "",
+        "linked_documentation": r.linked_documentation or "",
+        "owner": r.owner or "",
+    }
+
+
+def _governance_filter_map_from_values(values) -> dict[str, str]:
+    """Build stable filter query parts for url_for (omit empties)."""
+    out: dict[str, str] = {}
+    for key in ("q", "status", "environment", "access_type", "team"):
+        raw = (values.get(key) if values is not None else None) or ""
+        s = str(raw).strip()
+        if s:
+            out[key] = s
+    return out
+
+
+def _governance_read_form_fields() -> tuple[dict[str, object] | None, str | None]:
+    request_date = _parse_html_date(request.form.get("request_date"))
+    if not request_date:
+        return None, "Request date is required."
+    api_software_name = (request.form.get("api_software_name") or "").strip()
+    if not api_software_name:
+        return None, "API / software name is required."
+    owner = (request.form.get("owner") or "").strip()
+    if not owner:
+        return None, "Owner is required."
+    access_type = (request.form.get("access_type") or "").strip()
+    if access_type not in GOVERNANCE_ACCESS_TYPES_SET:
+        return None, "Invalid access type."
+    environment = (request.form.get("environment") or "").strip()
+    if environment not in GOVERNANCE_ENVIRONMENTS_SET:
+        return None, "Invalid environment."
+    status = (request.form.get("status") or "").strip()
+    if status not in GOVERNANCE_STATUSES_SET:
+        return None, "Invalid status."
+    purpose_raw = request.form.get("purpose_business_reason")
+    purpose = (str(purpose_raw).strip() if purpose_raw is not None else "") or None
+    notes_raw = request.form.get("notes_risks")
+    notes = (str(notes_raw).strip() if notes_raw is not None else "") or None
+    docs_raw = request.form.get("linked_documentation")
+    docs = (str(docs_raw).strip() if docs_raw is not None else "") or None
+    msg = _governance_validate_text_fields(purpose, notes, docs)
+    if msg:
+        return None, msg
+    expiry = _parse_html_date(request.form.get("expiry_review_date"))
+    return {
+        "request_date": request_date,
+        "requested_by": (request.form.get("requested_by") or "").strip() or None,
+        "team_department": (request.form.get("team_department") or "").strip() or None,
+        "api_software_name": api_software_name,
+        "vendor_platform": (request.form.get("vendor_platform") or "").strip() or None,
+        "purpose_business_reason": purpose,
+        "access_type": access_type,
+        "environment": environment,
+        "status": status,
+        "approved_by": (request.form.get("approved_by") or "").strip() or None,
+        "expiry_review_date": expiry,
+        "notes_risks": notes,
+        "linked_documentation": docs,
+        "owner": owner,
+    }, None
+
+
 class UserActivityLog(db.Model):
     __tablename__ = "user_activity_logs"
     id = db.Column(db.Integer, primary_key=True)
@@ -2094,6 +2440,7 @@ def _ensure_db_tables() -> None:
         _ensure_awards_form_columns()
         _ensure_mapping_unmapped_row_columns()
         _ensure_evidence_tables_columns()
+        _ensure_governance_register_columns()
         _migrate_profile_photos_to_storage_once()
     except Exception:
         pass
@@ -5791,6 +6138,31 @@ def _ensure_evidence_tables_columns() -> None:
         pass
 
 
+def _ensure_governance_register_columns() -> None:
+    """SQLite-friendly additive DDL for governance_register."""
+    try:
+        from sqlalchemy import inspect, text
+
+        inspector = inspect(db.engine)
+        if not inspector.has_table("governance_register"):
+            return
+        existing = {col["name"] for col in inspector.get_columns("governance_register")}
+        alters: list[str] = []
+        if "created_by_user_id" not in existing:
+            alters.append("ALTER TABLE governance_register ADD COLUMN created_by_user_id INTEGER")
+        if "last_updated_by_user_id" not in existing:
+            alters.append("ALTER TABLE governance_register ADD COLUMN last_updated_by_user_id INTEGER")
+        if "attachments_stub_json" not in existing:
+            alters.append("ALTER TABLE governance_register ADD COLUMN attachments_stub_json TEXT")
+        if not alters:
+            return
+        with db.engine.begin() as conn:
+            for stmt in alters:
+                conn.execute(text(stmt))
+    except Exception:
+        pass
+
+
 def _infer_scope_from_sheet(sheet_name: str) -> int | None:
     s = (sheet_name or "").strip().lower()
     if "scope 1" in s or s.startswith("scope1"):
@@ -9094,6 +9466,208 @@ def admin_access_requests():
         requests=rows,
         approve_roles=ACCESS_REQUEST_APPROVE_ROLES,
     )
+
+
+def _admin_governance_denied_response():
+    flash("Access denied")
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/admin/governance-register", methods=["GET"])
+@login_required
+def admin_governance_register():
+    if not getattr(current_user, "is_admin", False):
+        return _admin_governance_denied_response()
+    _ensure_db_tables()
+    page = request.args.get("page", 1, type=int) or 1
+    if page < 1:
+        page = 1
+    sort_key = (request.args.get("sort") or "request_date").strip()
+    direction = (request.args.get("dir") or "desc").strip().lower()
+    if direction not in ("asc", "desc"):
+        direction = "desc"
+    col = _governance_sort_column(sort_key)
+    args_map = _governance_filter_map_from_values(request.args)
+    base = GovernanceRegister.query
+    base = _apply_governance_register_filters(base, args_map)
+    stats = _governance_register_stats_with_pct(base)
+    ordered = base.order_by(col.asc() if direction == "asc" else col.desc(), GovernanceRegister.id.asc() if direction == "asc" else GovernanceRegister.id.desc())
+    pagination = ordered.paginate(page=page, per_page=25, error_out=False)
+    rows_payload = [_governance_row_to_editor_dict(r) for r in pagination.items]
+    page_uids: set[int] = set()
+    for r in pagination.items:
+        if r.last_updated_by_user_id:
+            page_uids.add(int(r.last_updated_by_user_id))
+    gr_last_user_labels = _governance_user_label_map(page_uids)
+    recent_audit = _governance_recent_audit_payload(25)
+    return render_template(
+        "admin/governance_register.html",
+        pagination=pagination,
+        stats=stats,
+        rows_payload=rows_payload,
+        filter_args=args_map,
+        sort_key=sort_key,
+        sort_dir=direction,
+        governance_access_types=GOVERNANCE_ACCESS_TYPES,
+        governance_environments=GOVERNANCE_ENVIRONMENTS,
+        governance_statuses=GOVERNANCE_STATUSES,
+        default_request_date=date.today().isoformat(),
+        gr_url_placeholder_id=837265194,
+        gr_last_user_labels=gr_last_user_labels,
+        gr_today=date.today(),
+        gr_closed_statuses=tuple(GOVERNANCE_REGISTER_STATUSES_CLOSED_FOR_OVERDUE),
+        recent_audit=recent_audit,
+        governance_attachments_stub_label=_governance_attachments_stub_label,
+    )
+
+
+@app.route("/admin/governance-register/export", methods=["GET"])
+@login_required
+def admin_governance_register_export():
+    if not getattr(current_user, "is_admin", False):
+        return _admin_governance_denied_response()
+    _ensure_db_tables()
+    args_map = _governance_filter_map_from_values(request.args)
+    q = _apply_governance_register_filters(GovernanceRegister.query, args_map)
+    q = q.order_by(GovernanceRegister.request_date.desc(), GovernanceRegister.id.desc())
+    rows = q.all()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Governance Register"
+    headers = [
+        "Request Date",
+        "Requested By",
+        "Team / Department",
+        "API / Software Name",
+        "Vendor / Platform",
+        "Purpose / Business Reason",
+        "Access Type",
+        "Environment",
+        "Status",
+        "Approved By",
+        "Expiry / Review Date",
+        "Notes / Risks",
+        "Linked Documentation",
+        "Owner",
+        "Created By",
+        "Last Updated By",
+        "Attachments (Stub)",
+        "Created At",
+        "Updated At",
+    ]
+    ws.append(headers)
+    uids: set[int] = set()
+    for r in rows:
+        if r.created_by_user_id:
+            uids.add(int(r.created_by_user_id))
+        if r.last_updated_by_user_id:
+            uids.add(int(r.last_updated_by_user_id))
+    um = _governance_user_label_map(uids)
+    for r in rows:
+        cb = um.get(int(r.created_by_user_id)) if r.created_by_user_id else ""
+        lu = um.get(int(r.last_updated_by_user_id)) if r.last_updated_by_user_id else ""
+        att_txt, _ = _governance_attachments_stub_label(r.attachments_stub_json)
+        ws.append(
+            [
+                r.request_date.isoformat() if r.request_date else "",
+                r.requested_by or "",
+                r.team_department or "",
+                r.api_software_name or "",
+                r.vendor_platform or "",
+                r.purpose_business_reason or "",
+                r.access_type or "",
+                r.environment or "",
+                r.status or "",
+                r.approved_by or "",
+                r.expiry_review_date.isoformat() if r.expiry_review_date else "",
+                r.notes_risks or "",
+                r.linked_documentation or "",
+                r.owner or "",
+                cb,
+                lu,
+                att_txt,
+                r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "",
+                r.updated_at.strftime("%Y-%m-%d %H:%M") if r.updated_at else "",
+            ]
+        )
+    bio = BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    fn = f"governance_register_{datetime.utcnow().strftime('%Y%m%d_%H%M')}.xlsx"
+    return send_file(
+        bio,
+        as_attachment=True,
+        download_name=fn,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.route("/admin/governance-register/create", methods=["POST"])
+@login_required
+def admin_governance_register_create():
+    if not getattr(current_user, "is_admin", False):
+        return _admin_governance_denied_response()
+    _ensure_db_tables()
+    fields, err = _governance_read_form_fields()
+    if err:
+        flash(err)
+        return redirect(url_for("admin_governance_register"))
+    row = GovernanceRegister(**fields)
+    uid = int(current_user.id)
+    row.created_by_user_id = uid
+    row.last_updated_by_user_id = uid
+    row.attachments_stub_json = row.attachments_stub_json or "[]"
+    db.session.add(row)
+    db.session.flush()
+    _log_governance_audit(row.id, "create", record_label=row.api_software_name, user_id=uid)
+    db.session.commit()
+    flash("Governance record created.")
+    return redirect(url_for("admin_governance_register"))
+
+
+@app.route("/admin/governance-register/update/<int:row_id>", methods=["POST"])
+@login_required
+def admin_governance_register_update(row_id: int):
+    if not getattr(current_user, "is_admin", False):
+        return _admin_governance_denied_response()
+    _ensure_db_tables()
+    row = db.session.get(GovernanceRegister, row_id)
+    if not row:
+        flash("Record not found.")
+        return redirect(url_for("admin_governance_register"))
+    fields, err = _governance_read_form_fields()
+    if err:
+        flash(err)
+        return redirect(url_for("admin_governance_register"))
+    for k, v in fields.items():
+        setattr(row, k, v)
+    uid = int(current_user.id)
+    row.last_updated_by_user_id = uid
+    row.updated_at = datetime.utcnow()
+    _log_governance_audit(row.id, "update", record_label=row.api_software_name, user_id=uid)
+    db.session.commit()
+    flash("Governance record updated.")
+    return redirect(url_for("admin_governance_register"))
+
+
+@app.route("/admin/governance-register/delete/<int:row_id>", methods=["POST"])
+@login_required
+def admin_governance_register_delete(row_id: int):
+    if not getattr(current_user, "is_admin", False):
+        return _admin_governance_denied_response()
+    _ensure_db_tables()
+    row = db.session.get(GovernanceRegister, row_id)
+    if row:
+        label = (row.api_software_name or "")[:400]
+        rid = int(row.id)
+        uid = int(current_user.id)
+        _log_governance_audit(rid, "delete", record_label=label, user_id=uid)
+        db.session.delete(row)
+        db.session.commit()
+        flash("Governance record deleted.")
+    else:
+        flash("Record not found.")
+    return redirect(url_for("admin_governance_register"))
 
 
 @app.route("/forgot-password", methods=["GET", "POST"])
