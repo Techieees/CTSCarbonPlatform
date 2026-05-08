@@ -5581,6 +5581,7 @@ def _list_admin_data_entry_batches() -> list[dict[str, object]]:
         )
         uploaded_by_user_id = int(getattr(latest_entry, "uploaded_by_user_id", 0) or 0)
         uploaded_by_name = ""
+        uploaded_user = None
         if uploaded_by_user_id:
             uploaded_user = db.session.get(User, uploaded_by_user_id)
             uploaded_by_name = _display_name_for_user(uploaded_user)
@@ -5600,6 +5601,13 @@ def _list_admin_data_entry_batches() -> list[dict[str, object]]:
                 "mapped_at": mapped_at_dt,
                 "mapped_by": mapper_email,
                 "uploaded_by_user": uploaded_by_name,
+                "uploaded_by_user_id": uploaded_by_user_id,
+                "uploaded_by_job_title": _user_professional_title(uploaded_user),
+                "uploaded_by_has_profile_photo": bool(
+                    (getattr(uploaded_user, "profile_photo_path", None) or "").strip()
+                )
+                if uploaded_user
+                else False,
                 "download_run_id": str(getattr(mapped_run, "id", "") or "") if mapped_run else "",
             }
         )
@@ -5639,6 +5647,9 @@ def _list_admin_data_entry_batches() -> list[dict[str, object]]:
                     "mapped_at": None,
                     "mapped_by": "",
                     "uploaded_by_user": "System",
+                    "uploaded_by_user_id": 0,
+                    "uploaded_by_job_title": "",
+                    "uploaded_by_has_profile_photo": False,
                     "download_run_id": "",
                 }
             )
@@ -13455,6 +13466,9 @@ def api_admin_upload_notifications():
             {
                 "company_name": str(b.get("company_name") or ""),
                 "uploaded_by_user": str(b.get("uploaded_by_user") or "Unknown"),
+                "uploaded_by_user_id": int(b.get("uploaded_by_user_id") or 0),
+                "uploaded_by_job_title": str(b.get("uploaded_by_job_title") or ""),
+                "uploaded_by_has_profile_photo": bool(b.get("uploaded_by_has_profile_photo")),
                 "upload_timestamp": uploaded_at.strftime("%Y-%m-%d %H:%M"),
                 "category": str(b.get("sheet_name") or ""),
                 "row_count": int(b.get("row_count") or 0),

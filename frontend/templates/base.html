@@ -374,7 +374,8 @@
       window.__CTS_ADMIN_UPLOAD_MODAL = {
         lottieDir: {{ url_for('static', filename='lottie/') | tojson }},
         defaultCompanyLogo: {{ url_for('static', filename='images/logo.svg.png') | tojson }},
-        companyLogosDir: {{ url_for('static', filename='company_logos/') | tojson }}
+        companyLogosDir: {{ url_for('static', filename='company_logos/') | tojson }},
+        profilePhotoUrlPrefix: {{ url_for('api_profile_photo', user_id=837265194).replace('837265194', '') | tojson }}
       };
     </script>
     <script>
@@ -385,6 +386,7 @@
         const LOTTIE_DIR = (ASSETS.lottieDir || '/static/lottie/').replace(/\/?$/, '/');
         const DEFAULT_CO_LOGO = ASSETS.defaultCompanyLogo || '';
         const CO_LOGOS_DIR = (ASSETS.companyLogosDir || '').replace(/\/?$/, '/');
+        const PROFILE_PHOTO_PREFIX = String(ASSETS.profilePhotoUrlPrefix || '/api/profile-photo/').replace(/\/?$/, '/');
 
         const AVATAR_PAIRS = [
           ['#dbeafe', '#1d4ed8'],
@@ -440,12 +442,18 @@
           const c = String(category || '').toLowerCase();
           const rules = [
             [/waste|toxic|recycl|garbage|landfill|scrap/, 'recycling-truck.json'],
+            [
+              /purchased goods|goods & services|scope 3 category 1|scope 3 cat 1|procurement|supplier|\bcategory\s*1\b|\bcat\s*1\b/,
+              'box.json',
+            ],
             [/\bfera\b|fuel energy related|fuel and energy|cat 3|category 3/, 'carbon-footprint.json'],
-            [/business travel|employee commute|upstream transportation|downstream transportation|flight|train|(cat|category)\s*6|(cat|category)\s*4|transport(?!\s*factor)/, 'sustainable-travel.json'],
+            [
+              /business travel|employee commute|upstream transportation|downstream transportation|flight|train|rail|luggage|(\bcat\b|\bcategory\b)\s*6|(\bcat\b|\bcategory\b)\s*4|transport(?!\s*factor)/,
+              'travel-destination.json',
+            ],
             [/water|wastewater|aqua|effluent|rain|hydro/, 'water.json'],
             [/\bfuel\b|combust|diesel|petrol|gasoline|scope 1/, 'eco-fuel.json'],
             [/electric|energy|renewable|scope 2|steam|heating/, 'renewable-energy.json'],
-            [/purchased|goods|services|cat 1|category 1|procurement/, 'recycled-paper.json'],
             [/factory|manufactur|production site|process/, 'eco-factory.json'],
             [/end of life|eol|cat 12|category 12/, 'zero-waste.json'],
             [/emission factor|carbon|co2|ghg|inventory/, 'carbon-footprint.json'],
@@ -461,17 +469,34 @@
           return LOTTIE_DIR + encodeURIComponent(file);
         }
 
-        function statusPillKind(label) {
-          const t = String(label || '').toLowerCase();
+        function statusPillLabel(statusRaw) {
+          const raw = String(statusRaw || '').trim();
+          const t = raw.toLowerCase();
+          if (t.indexOf('not mapped') !== -1) return 'Not mapped';
+          if (t.indexOf('failed') !== -1) return 'Failed';
+          if (t.indexOf('processing') !== -1) return 'Processing';
+          if (t.indexOf('progress') !== -1) return 'Processing';
+          if (t.indexOf('partial') !== -1) return 'Partially mapped';
+          if (t.indexOf('waiting') !== -1) return 'Waiting review';
+          if (t.indexOf('pending review') !== -1) return 'Waiting review';
+          if (t.indexOf('review') !== -1) return 'Waiting review';
+          if (t.indexOf('completed') !== -1) return 'Mapped';
+          if (t.indexOf('mapped') !== -1 && t.indexOf('not mapped') === -1) return 'Mapped';
+          return raw || 'Unknown';
+        }
+
+        function statusPillKind(statusRaw) {
+          const t = String(statusRaw || '').toLowerCase();
           if (t.indexOf('not mapped') !== -1) return 'pending';
           if (t.indexOf('failed') !== -1) return 'failed';
           if (t.indexOf('processing') !== -1) return 'processing';
           if (t.indexOf('progress') !== -1) return 'processing';
           if (t.indexOf('partial') !== -1) return 'partial';
-          if (t.indexOf('review') !== -1) return 'review';
-          if (t.indexOf('waiting') !== -1) return 'review';
           if (t.indexOf('completed') !== -1) return 'done';
           if (t.indexOf('mapped') !== -1 && t.indexOf('not mapped') === -1) return 'done';
+          if (t.indexOf('waiting') !== -1) return 'review';
+          if (t.indexOf('pending review') !== -1) return 'review';
+          if (t.indexOf('review') !== -1) return 'review';
           return 'neutral';
         }
 
@@ -500,14 +525,29 @@
           const companyName = item.company_name || '';
           const logoSrc = companyLogoUrlFromName(companyName) || DEFAULT_CO_LOGO;
           const uploaderName = item.uploaded_by_user || '';
-          const avatarSrc = (item.uploaded_by_avatar_url || '').trim();
-          const avSrc = avatarSrc || avatarDataUrl(uploaderName);
+          const uidRaw = item.uploaded_by_user_id;
+          const uid =
+            uidRaw === null || uidRaw === undefined || uidRaw === ''
+              ? null
+              : String(uidRaw).trim();
+          const hasProfPhoto = item.uploaded_by_has_profile_photo === true || item.uploaded_by_has_profile_photo === 'true';
+          const externalAvatar = (item.uploaded_by_avatar_url || '').trim();
+          let avSrc = '';
+          if (uid && hasProfPhoto) {
+            avSrc = PROFILE_PHOTO_PREFIX + encodeURIComponent(uid);
+          } else if (externalAvatar) {
+            avSrc = externalAvatar;
+          } else {
+            avSrc = avatarDataUrl(uploaderName);
+          }
+          const avatarFallback = avatarDataUrl(uploaderName);
           const role = String(item.uploaded_by_job_title || '').trim();
           const roleBlock = role
             ? '<div class="admin-upload-notification-card__role text-truncate" title="' + escAttr(role) + '">' + esc(role) + '</div>'
             : '';
           const lottieSrc = lottieUrlForCategory(item.category);
           const pillKind = statusPillKind(item.mapping_status);
+          const pillText = statusPillLabel(item.mapping_status);
           const mappedLine = item.mapped && item.mapped_by_admin && item.mapping_timestamp
             ? '<div class="admin-upload-notification-card__mapped-foot text-truncate">' +
               'Mapped by ' + esc(item.mapped_by_admin) + ' at ' + esc(item.mapping_timestamp) +
@@ -517,11 +557,11 @@
           return (
             '<div class="admin-upload-notification-card">' +
               '<div class="admin-upload-notification-card__company">' +
-                '<img class="admin-upload-notification-card__co-logo" src="' + escAttr(logoSrc) + '" alt="" width="40" height="40" loading="lazy" decoding="async" data-fallback-logo="' + escAttr(DEFAULT_CO_LOGO) + '"/>' +
                 '<span class="admin-upload-notification-card__co-name text-truncate">' + esc(companyName) + '</span>' +
+                '<img class="admin-upload-notification-card__co-logo" src="' + escAttr(logoSrc) + '" alt="" loading="lazy" decoding="async" data-fallback-logo="' + escAttr(DEFAULT_CO_LOGO) + '"/>' +
               '</div>' +
               '<div class="admin-upload-notification-card__uploader">' +
-                '<img class="admin-upload-notification-card__avatar" src="' + escAttr(avSrc) + '" alt="" width="36" height="36" loading="lazy" decoding="async"/>' +
+                '<img class="admin-upload-notification-card__avatar" src="' + escAttr(avSrc) + '" alt="" width="30" height="30" loading="lazy" decoding="async" data-fallback-avatar="' + escAttr(avatarFallback) + '"/>' +
                 '<div class="admin-upload-notification-card__uploader-meta">' +
                   '<div class="admin-upload-notification-card__uploader-name text-truncate" title="' + escAttr(uploaderName) + '">' + esc(uploaderName) + '</div>' +
                   roleBlock +
@@ -538,7 +578,7 @@
               '<div class="admin-upload-notification-card__status">' +
                 '<span class="admin-upload-notification-status-pill admin-upload-notification-status-pill--' + pillKind + '">' +
                   '<span class="admin-upload-notification-status-pill__dot" aria-hidden="true"></span>' +
-                  '<span class="admin-upload-notification-status-pill__label">' + esc(item.mapping_status) + '</span>' +
+                  '<span class="admin-upload-notification-status-pill__label">' + esc(pillText) + '</span>' +
                 '</span>' +
               '</div>' +
               mappedLine +
@@ -579,6 +619,14 @@
             body.querySelectorAll('.admin-upload-notification-card__co-logo').forEach(function (img) {
               function onErr() {
                 const fb = img.getAttribute('data-fallback-logo');
+                if (fb && img.src !== fb) img.src = fb;
+                img.removeEventListener('error', onErr);
+              }
+              img.addEventListener('error', onErr);
+            });
+            body.querySelectorAll('.admin-upload-notification-card__avatar').forEach(function (img) {
+              function onErr() {
+                const fb = img.getAttribute('data-fallback-avatar');
                 if (fb && img.src !== fb) img.src = fb;
                 img.removeEventListener('error', onErr);
               }

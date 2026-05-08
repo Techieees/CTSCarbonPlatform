@@ -138,7 +138,9 @@ body.dark-mode .cts-busy-overlay__backdrop {
   background: var(--surface-strong);
   color: var(--ink);
   border: 1px solid var(--border);
-  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.18);
+  box-shadow:
+    0 20px 56px rgba(15, 23, 42, 0.16),
+    0 1px 0 rgba(255, 255, 255, 0.5) inset;
 }
 
 .admin-upload-notification-modal .modal-header {
@@ -163,17 +165,22 @@ body.dark-mode .cts-busy-overlay__backdrop {
 body.dark-mode .admin-upload-notification-modal .modal-content {
   background: rgba(15, 23, 42, 0.98);
   color: #f8fafc;
-  border-color: rgba(148, 163, 184, 0.24);
-  box-shadow: 0 28px 72px rgba(2, 6, 23, 0.52);
+  border-color: rgba(148, 163, 184, 0.32);
+  box-shadow:
+    0 26px 64px rgba(2, 6, 23, 0.5),
+    0 1px 0 rgba(255, 255, 255, 0.04) inset;
 }
 
 body.dark-mode .admin-upload-notification-modal .modal-header {
-  border-bottom-color: rgba(148, 163, 184, 0.18);
+  border-bottom-color: rgba(148, 163, 184, 0.22);
 }
 
 body.dark-mode .admin-upload-notification-card {
   background: rgba(30, 41, 59, 0.92);
-  border-color: rgba(148, 163, 184, 0.16);
+  border-color: rgba(148, 163, 184, 0.22);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.28),
+    0 6px 18px rgba(0, 0, 0, 0.12);
 }
 
 body.dark-mode .admin-upload-notification-modal .modal-title,
@@ -223,13 +230,13 @@ body.dark-mode .admin-upload-notification-meta {
 }
 
 .admin-upload-notification-modal__body {
-  padding: 0.6rem 0.9rem 1rem;
+  padding: 0.52rem 0.82rem 0.85rem;
 }
 
 .admin-upload-notification-modal__list {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.42rem;
   max-height: min(62vh, 520px);
   overflow-y: auto;
   padding: 2px 4px 2px 0;
@@ -239,62 +246,77 @@ body.dark-mode .admin-upload-notification-meta {
 .admin-upload-notification-card {
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
-  padding: 0.6rem 0.75rem;
+  gap: 0.3rem;
+  padding: 0.48rem 0.62rem;
   border-radius: 12px;
   border: 1px solid var(--border);
   background: var(--card-bg-soft);
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.05),
+    0 6px 16px rgba(15, 23, 42, 0.04);
   transition:
-    border-color 0.18s ease,
-    box-shadow 0.18s ease;
+    border-color 0.24s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.24s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .admin-upload-notification-card:hover {
-  border-color: rgba(0, 71, 186, 0.2);
-  box-shadow: 0 6px 22px rgba(15, 23, 42, 0.09);
+  border-color: rgba(0, 71, 186, 0.18);
+  box-shadow:
+    0 2px 6px rgba(15, 23, 42, 0.06),
+    0 10px 26px rgba(15, 23, 42, 0.07);
 }
 
 .admin-upload-notification-card__company {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
-  min-height: 2.5rem;
+  justify-content: flex-start;
+  gap: 0.42rem;
+  min-height: 1.75rem;
 }
 
 .admin-upload-notification-card__co-logo {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
+  max-height: 28px;
+  width: auto;
+  max-width: 108px;
+  height: auto;
   object-fit: contain;
-  background: rgba(148, 163, 184, 0.12);
-  border: 1px solid var(--border);
+  object-position: center;
   flex-shrink: 0;
-  padding: 3px;
+  border-radius: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
 }
 
 .admin-upload-notification-card__co-name {
-  font-weight: 650;
-  font-size: 0.95rem;
-  letter-spacing: -0.01em;
+  font-weight: 600;
+  font-size: 0.9rem;
+  letter-spacing: -0.008em;
   color: var(--ink);
   min-width: 0;
+  flex: 0 1 auto;
+  max-width: calc(100% - 7.35rem);
+  line-height: 1.35;
 }
 
 .admin-upload-notification-card__uploader {
   display: flex;
-  align-items: flex-start;
-  gap: 0.55rem;
+  align-items: center;
+  gap: 0.48rem;
 }
 
 .admin-upload-notification-card__avatar {
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   object-fit: cover;
+  object-position: center;
   flex-shrink: 0;
-  border: 1px solid var(--border);
-  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(148, 163, 184, 0.08);
+  image-rendering: auto;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
 }
 
 .admin-upload-notification-card__uploader-meta {
@@ -302,46 +324,54 @@ body.dark-mode .admin-upload-notification-meta {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 0.08rem;
-  line-height: 1.3;
+  gap: 0.14rem;
+  line-height: 1.28;
 }
 
 .admin-upload-notification-card__uploader-name {
   font-size: 0.875rem;
-  font-weight: 600;
+  font-weight: 650;
+  letter-spacing: -0.01em;
   color: var(--ink);
 }
 
 .admin-upload-notification-card__role {
-  font-size: 0.78rem;
+  font-size: 0.765rem;
   font-weight: 500;
   color: var(--muted);
+  line-height: 1.25;
 }
 
 .admin-upload-notification-card__category {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
-  padding: 0.15rem 0;
-  min-height: 1.75rem;
+  gap: 0.38rem;
+  padding: 0;
+  margin: 0.02rem 0 0;
+  min-height: 0;
 }
 
 .admin-upload-notification-modal .admin-upload-notification-category-lottie.lottie-icon {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   flex-shrink: 0;
+  margin: -4px 0 -3px;
+  transform: translateY(0.5px) scale(1.05);
+  transform-origin: center;
+  opacity: 0.98;
+  filter: contrast(1.06) saturate(1.03);
 }
 
 .admin-upload-notification-modal .admin-upload-notification-category-lottie.lottie-icon svg {
-  width: 22px !important;
-  height: 22px !important;
+  width: 24px !important;
+  height: 24px !important;
 }
 
 .admin-upload-notification-card__category-text {
   font-size: 0.8125rem;
   font-weight: 500;
   color: var(--ink);
-  line-height: 1.35;
+  line-height: 1.4;
   min-width: 0;
 }
 
@@ -349,8 +379,9 @@ body.dark-mode .admin-upload-notification-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 0.65rem 1rem;
-  font-size: 0.78rem;
+  gap: 0.5rem 0.9rem;
+  margin-top: 0.02rem;
+  font-size: 0.765rem;
   color: var(--muted);
 }
 
@@ -371,7 +402,7 @@ body.dark-mode .admin-upload-notification-meta {
   align-items: center;
   flex-wrap: wrap;
   gap: 0.35rem;
-  margin-top: 0.05rem;
+  margin-top: 0;
 }
 
 .admin-upload-notification-status-pill {
@@ -468,17 +499,24 @@ body.dark-mode .admin-upload-notification-meta {
 }
 
 .admin-upload-notification-card__mapped-foot {
-  margin-top: 0.15rem;
-  padding-top: 0.35rem;
-  border-top: 1px dashed var(--border);
-  font-size: 0.75rem;
+  margin-top: 0.1rem;
+  padding-top: 0.26rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.35);
+  font-size: 0.7rem;
+  font-weight: 400;
+  letter-spacing: 0.01em;
   color: var(--muted);
+  opacity: 0.92;
 }
 
-body.dark-mode .admin-upload-notification-card__co-logo,
+body.dark-mode .admin-upload-notification-card__co-logo {
+  filter: brightness(1.05);
+  opacity: 0.96;
+}
+
 body.dark-mode .admin-upload-notification-card__avatar {
-  background: rgba(15, 23, 42, 0.55);
-  border-color: rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.45);
+  border-color: rgba(148, 163, 184, 0.26);
 }
 
 body.dark-mode .admin-upload-notification-card__co-name,
@@ -491,12 +529,23 @@ body.dark-mode .admin-upload-notification-card__stat-value {
 body.dark-mode .admin-upload-notification-card__role,
 body.dark-mode .admin-upload-notification-card__stats,
 body.dark-mode .admin-upload-notification-card__mapped-foot {
-  color: #cbd5e1;
+  color: #94a3b8;
+}
+
+body.dark-mode .admin-upload-notification-card__mapped-foot {
+  border-top-color: rgba(148, 163, 184, 0.22);
+  opacity: 0.88;
 }
 
 body.dark-mode .admin-upload-notification-card:hover {
-  border-color: rgba(127, 177, 255, 0.35);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  border-color: rgba(127, 177, 255, 0.38);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.32),
+    0 12px 30px rgba(0, 0, 0, 0.22);
+}
+
+body.dark-mode .admin-upload-notification-modal .admin-upload-notification-category-lottie.lottie-icon {
+  filter: contrast(1.08) saturate(1.05) brightness(1.04);
 }
 
 body.dark-mode .admin-upload-notification-status-pill--pending {
