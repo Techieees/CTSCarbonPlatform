@@ -4,7 +4,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file, send_from_directory, Response, session, abort, g
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from sqlalchemy import and_, desc, exists, func, or_
+from sqlalchemy import and_, desc, exists, func, or_, update
 from sqlalchemy.exc import IntegrityError
 from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -98,6 +98,7 @@ from preprocess_jobs import (
 )
 from frontend.evidence_processing import MAX_UPLOAD_BYTES
 from frontend.services import messaging_service, notification_service, search_service
+from frontend.services.presence_utils import is_online_from_last_seen
 from frontend.utils.template_registry import (
     TEMPLATE_MODE_2026,
     TEMPLATE_MODE_LEGACY,
@@ -1053,6 +1054,7 @@ def _log_authenticated_activity(response: Response):
         if request.environ.get("skip_activity_log"):
             return response
         _write_activity_log_for_user(current_user, action=_classify_activity_action())
+        _touch_user_last_seen_throttled(current_user)
     except Exception:
         pass
     return response
@@ -1099,6 +1101,7 @@ class User(UserMixin, db.Model):
     heating_source = db.Column(db.String(100), nullable=True)
     travel_provider = db.Column(db.String(20), nullable=True)
     operating_locations_json = db.Column(db.Text, nullable=True)
+    last_seen_at = db.Column(db.DateTime, nullable=True, index=True)
 
 
 USER_ROLES: tuple[str, ...] = ("owner", "super_admin", "admin", "manager", "auditor", "user")
@@ -1251,7 +1254,32 @@ def _contact_payload(u: "User") -> dict[str, object]:
         "job_title": (getattr(u, "job_title", None) or "").strip(),
         "company_name": (getattr(u, "company_name", None) or "").strip(),
         "profile_photo_url": _profile_photo_url_for_user(u),
+        "is_online": bool(is_online_from_last_seen(getattr(u, "last_seen_at", None))),
     }
+
+
+_LAST_SEEN_TOUCH_MIN_INTERVAL = timedelta(seconds=60)
+
+
+def _touch_user_last_seen_throttled(user: "User") -> None:
+    """Persist last_seen_at at most once per minute per user (separate DB transaction)."""
+    if user is None or not getattr(user, "id", None):
+        return
+    try:
+        uid = int(user.id)
+        now = datetime.utcnow()
+        cutoff = now - _LAST_SEEN_TOUCH_MIN_INTERVAL
+        tbl = User.__table__
+        stmt = (
+            update(tbl)
+            .where(tbl.c.id == uid)
+            .where(or_(tbl.c.last_seen_at.is_(None), tbl.c.last_seen_at < cutoff))
+            .values(last_seen_at=now)
+        )
+        with db.engine.begin() as conn:
+            conn.execute(stmt)
+    except Exception:
+        pass
 
 
 _MESSAGE_TYPING_STATE_LOCK = threading.Lock()
@@ -2435,6 +2463,7 @@ def _ensure_db_tables() -> None:
         _ensure_data_entry_columns()
         _ensure_mapping_run_source_entry_group_column()
         _ensure_user_profile_columns()
+        _ensure_user_last_seen_column()
         _ensure_feed_post_reference_columns()
         _ensure_report_category_columns()
         _ensure_awards_form_columns()
@@ -4639,6 +4668,22 @@ def _ensure_user_profile_columns() -> None:
             if role_added:
                 conn.execute(text("UPDATE user SET role = 'admin' WHERE is_admin = 1"))
                 conn.execute(text("UPDATE user SET role = 'user' WHERE role IS NULL"))
+    except Exception:
+        pass
+
+
+def _ensure_user_last_seen_column() -> None:
+    try:
+        from sqlalchemy import inspect, text
+
+        inspector = inspect(db.engine)
+        if not inspector.has_table("user"):
+            return
+        existing = {col["name"] for col in inspector.get_columns("user")}
+        if "last_seen_at" in existing:
+            return
+        with db.engine.begin() as conn:
+            conn.execute(text("ALTER TABLE user ADD COLUMN last_seen_at DATETIME"))
     except Exception:
         pass
 

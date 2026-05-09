@@ -302,11 +302,17 @@
         return;
       }
       const meta = personMeta(person);
+      const onlineDot = person.is_online
+        ? '<span class="chat-widget__online-dot" aria-hidden="true"></span>'
+        : "";
       title.innerHTML = '' +
         '<span class="chat-widget__person">' +
           renderAvatar(person) +
           '<span class="chat-widget__person-copy">' +
-            '<span class="chat-widget__thread-name">' + escapeHtml(person.name || "") + '</span>' +
+            '<span class="chat-widget__conversation-name-wrap">' +
+              '<span class="chat-widget__thread-name">' + escapeHtml(person.name || "") + '</span>' +
+              onlineDot +
+            '</span>' +
             (meta ? '<span class="chat-widget__thread-meta">' + escapeHtml(meta) + '</span>' : '') +
           '</span>' +
         '</span>';
@@ -470,6 +476,10 @@
       if (!activeUserId) return;
       fetchJson("/api/messages/thread?user_id=" + encodeURIComponent(activeUserId))
         .then(function (data) {
+          if (data && data.contact) {
+            activeContact = data.contact;
+            renderThreadTitle(activeContact);
+          }
           const rows = Array.isArray(data.messages) ? data.messages : [];
           syncThread(rows, { replace: false });
           if (rows.some(function (item) { return !item.is_mine && !item.is_read; })) {
@@ -517,13 +527,16 @@
         const unread = kind === "conversation" && row.unread_count
           ? '<span class="chat-widget__conversation-badge">' + Number(row.unread_count) + '</span>'
           : '';
+        const onlineDot = person.is_online
+          ? '<span class="chat-widget__online-dot" aria-hidden="true"></span>'
+          : "";
         return '' +
           '<button type="button" class="chat-widget__conversation-row' + (Number(person.id) === Number(activeId) ? ' is-active' : '') + '" data-user-id="' + Number(person.id) + '">' +
             '<div class="chat-widget__person-row">' +
               renderAvatar(person) +
               '<div class="chat-widget__conversation-copy">' +
                 '<div class="chat-widget__conversation-topline">' +
-                  '<span class="chat-widget__conversation-name-wrap"><span class="chat-widget__conversation-name">' + escapeHtml(person.name) + '</span><span class="chat-widget__online-dot" aria-hidden="true"></span></span>' +
+                  '<span class="chat-widget__conversation-name-wrap"><span class="chat-widget__conversation-name">' + escapeHtml(person.name) + '</span>' + onlineDot + '</span>' +
                   (timeLabel ? '<span class="chat-widget__conversation-time">' + escapeHtml(timeLabel) + '</span>' : '') +
                 '</div>' +
                 '<div class="chat-widget__conversation-preview">' + escapeHtml(preview) + '</div>' +
