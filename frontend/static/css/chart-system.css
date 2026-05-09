@@ -53,6 +53,13 @@
 --color-darkmode: #2563EB;
 --color-darkmode2: #003049;
 --Color-darkmode3:#9FB3FF;
+/* CTS analytics visualization anchors (charts consume JS tokens; CSS for docs / future use) */
+--cts-viz-navy: #1e3a5f;
+--cts-viz-blue: #2f5fb3;
+--cts-viz-cyan: #0ea5e9;
+--cts-viz-teal: #14b8a6;
+--cts-viz-teal-deep: #0f766e;
+--cts-viz-green: #1f9d55;
 
 }
 

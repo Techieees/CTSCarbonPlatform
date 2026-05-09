@@ -709,7 +709,8 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
         mid: 10,
         max: 40,
         unit: "°C",
-        gradient: "linear-gradient(180deg, #b91c1c 0%, #f97316 20%, #facc15 45%, #67e8f9 72%, #2563eb 100%)"
+        gradient:
+          "linear-gradient(180deg, #0c4a6e 0%, #0369a1 18%, #0ea5e9 38%, #14b8a6 58%, #22c55e 78%, #ca8a04 100%)"
       },
       getTileUrl: function (month, yearRange, scenario, model) {
         if (!isHistoricalRange(yearRange) && config.climateFutureTileTemplate) {
@@ -728,7 +729,8 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
         mid: 2,
         max: 30,
         unit: "°C",
-        gradient: "linear-gradient(180deg, #fb7185 0%, #c084fc 26%, #818cf8 54%, #38bdf8 78%, #0f172a 100%)"
+        gradient:
+          "linear-gradient(180deg, #0f172a 0%, #1e3a5f 22%, #1d4ed8 48%, #0ea5e9 72%, #67e8f9 100%)"
       },
       getTileUrl: function (month, yearRange, scenario, model) {
         if (!isHistoricalRange(yearRange) && config.climateFutureTileTemplate) {
@@ -1060,8 +1062,8 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
         const precipGradient = precipContext ? precipContext.createLinearGradient(0, 0, 0, precipCanvas.height || 260) : null;
 
         if (dayGradient) {
-          dayGradient.addColorStop(0, "rgba(249, 115, 22, 0.38)");
-          dayGradient.addColorStop(1, "rgba(249, 115, 22, 0.02)");
+          dayGradient.addColorStop(0, "rgba(14, 165, 233, 0.34)");
+          dayGradient.addColorStop(1, "rgba(14, 165, 233, 0.02)");
         }
         if (nightGradient) {
           nightGradient.addColorStop(0, "rgba(37, 99, 235, 0.28)");
@@ -1087,8 +1089,8 @@ mapboxgl.accessToken = window.MAPBOX_TOKEN;
               {
                 label: "Temperature (Day)",
                 data: data.temperatureDay,
-                borderColor: "#f97316",
-                backgroundColor: dayGradient || "rgba(249, 115, 22, 0.16)",
+                borderColor: "#0ea5e9",
+                backgroundColor: dayGradient || "rgba(14, 165, 233, 0.14)",
                 borderWidth: 2.5,
                 fill: true,
                 pointRadius: 0,

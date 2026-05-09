@@ -142,12 +142,13 @@ body.dark-mode .feed-page {
 }
 
 .feed-profile-card__company-logo {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  object-fit: cover;
-  border: 1px solid var(--feed-border-color);
-  background: var(--feed-card-soft);
+  width: 24px;
+  height: 24px;
+  border-radius: 0;
+  object-fit: contain;
+  object-position: center;
+  border: 0;
+  background: transparent;
 }
 
 .feed-sidebar-card {
@@ -719,13 +720,8 @@ body.dark-mode .feed-post__type-badge--alert {
 }
 
 .profile-hero-banner__logo {
-  position: absolute;
-  right: 24px;
-  bottom: 24px;
-  width: clamp(72px, 12vw, 120px);
-  height: auto;
-  object-fit: contain;
-  filter: drop-shadow(0 10px 18px rgba(15, 23, 42, 0.18));
+  /* Positioning lives on .profile-hero-banner__logo-frame (company-brand.css) */
+  display: block;
 }
 
 .profile-hero-card__body {
@@ -1649,7 +1645,7 @@ body.dark-mode .feed-action.is-reacted.feed-action--funny {
     min-height: 156px;
   }
 
-  .profile-hero-banner__logo {
+  .profile-hero-banner__logo-frame {
     right: 16px;
     bottom: 16px;
   }

@@ -13,7 +13,18 @@ function getCssVar(name, fallback) {
 }
 
 const themeDefinition = {
-  color: ["#3b82f6", "#8b5cf6", "#14b8a6", "#f59e0b", "#ec4899", "#06b6d4"],
+  color: [
+    "#2f5fb3",
+    "#0ea5e9",
+    "#06b6d4",
+    "#14b8a6",
+    "#0f766e",
+    "#1f9d55",
+    "#15803d",
+    "#2563eb",
+    "#0891b2",
+    "#22c55e"
+  ],
   backgroundColor: "transparent",
   textStyle: {
     fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif'
@@ -43,11 +54,13 @@ const themeDefinition = {
 };
 
 const palettes = [
-  ["#3b82f6", "#8b5cf6"],
-  ["#14b8a6", "#22c55e"],
-  ["#f59e0b", "#f97316"],
-  ["#ec4899", "#8b5cf6"],
-  ["#06b6d4", "#3b82f6"],
+  ["#2f5fb3", "#0ea5e9"],
+  ["#06b6d4", "#14b8a6"],
+  ["#1e4d8c", "#22d3ee"],
+  ["#0f766e", "#1f9d55"],
+  ["#2563eb", "#15803d"],
+  ["#155e75", "#22c55e"],
+  ["#1e3a5f", "#06b6d4"],
   ["#64748b", "#334155"]
 ];
 

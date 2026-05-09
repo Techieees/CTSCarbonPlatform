@@ -31,8 +31,8 @@ function colorsForLineSeries(name, index, total, seriesColorKind) {
   }
   if (total === 1) {
     return {
-      line: withOpacity("#3b82f6", 0.96),
-      itemColor: "#3b82f6",
+      line: withOpacity("#2f5fb3", 0.96),
+      itemColor: "#2f5fb3",
       area: makeGradient(0, false, 0.28, 0.02)
     };
   }

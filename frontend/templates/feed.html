@@ -19,7 +19,9 @@
               <h1 class="feed-profile-card__name">{{ feed_profile.name }}</h1>
               <p class="feed-profile-card__title">{{ feed_profile.title }}</p>
               <div class="feed-profile-card__company">
-                <img class="feed-profile-card__company-logo" src="{{ feed_profile.company_logo_url }}" alt="{{ feed_profile.company_name }}">
+                <span class="cts-company-logo-frame cts-company-logo-frame--flush" style="width:32px;height:32px;">
+                  <img class="feed-profile-card__company-logo cts-company-logo" src="{{ feed_profile.company_logo_url }}" alt="{{ feed_profile.company_name }}">
+                </span>
                 <span>{{ feed_profile.company_name }}</span>
               </div>
             </div>

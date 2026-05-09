@@ -1,4 +1,49 @@
 (function () {
+  if (typeof echarts !== "undefined") {
+    try {
+      if (!window.__CTS_OWNER_ANALYTICS_THEME__) {
+        window.__CTS_OWNER_ANALYTICS_THEME__ = true;
+        echarts.registerTheme("cts-enterprise-saas", {
+          color: [
+            "#2f5fb3",
+            "#0ea5e9",
+            "#06b6d4",
+            "#14b8a6",
+            "#0f766e",
+            "#1f9d55",
+            "#15803d",
+            "#2563eb",
+            "#0891b2",
+            "#22c55e"
+          ],
+          backgroundColor: "transparent",
+          textStyle: {
+            fontFamily:
+              'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif'
+          },
+          grid: { top: 24, right: 20, bottom: 24, left: 20, containLabel: true },
+          categoryAxis: {
+            axisLine: { lineStyle: { color: "rgba(148, 163, 184, 0.22)" } },
+            axisTick: { show: false },
+            splitLine: { show: false },
+            axisLabel: { color: "#0f172a", fontSize: 12, fontWeight: 700 }
+          },
+          valueAxis: {
+            axisLine: { show: false },
+            axisTick: { show: false },
+            splitLine: { lineStyle: { color: "rgba(148, 163, 184, 0.10)" } },
+            axisLabel: { color: "#0f172a", fontSize: 12, fontWeight: 700 }
+          },
+          legend: {
+            textStyle: { color: "#0f172a", fontSize: 12, fontWeight: 700 }
+          }
+        });
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
   const payloadNode = document.getElementById("owner-analytics-chart-data");
   if (!payloadNode || typeof echarts === "undefined") return;
 
@@ -131,7 +176,7 @@
   const instances = charts.map(([id, option]) => {
     const node = document.getElementById(id);
     if (!node) return null;
-    const chart = echarts.init(node);
+    const chart = echarts.init(node, "cts-enterprise-saas");
     const { ownerHeight, ...echartsOption } = option;
     if (ownerHeight) {
       node.style.minHeight = ownerHeight + "px";

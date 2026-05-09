@@ -14,7 +14,9 @@
                         <div class="col-md-8">
                             <h2 class="card-title mb-2 d-flex align-items-center flex-wrap gap-2">
                                 {% if company_logo_rel %}
-                                <img src="{{ url_for('static', filename=company_logo_rel) }}" alt="" width="40" height="40" style="object-fit:contain;" class="flex-shrink-0">
+                                <span class="cts-company-logo-frame cts-company-logo-frame--flush" style="width:44px;height:44px;" aria-hidden="true">
+                                  <img src="{{ url_for('static', filename=company_logo_rel) }}" alt="" width="36" height="36" class="cts-company-logo flex-shrink-0">
+                                </span>
                                 {% endif %}
                                 <span class="d-inline-flex align-items-center">Data Entry, {{ user.company_name }}</span>
                             </h2>

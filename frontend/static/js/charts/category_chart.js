@@ -97,7 +97,7 @@ function renderHorizontalCategoryChart(config) {
           borderRadius: [0, 12, 12, 0],
           color: makeGradient(3, true, 0.98, 0.74),
           shadowBlur: 18,
-          shadowColor: withOpacity("#8b5cf6", 0.16),
+          shadowColor: withOpacity("#2f5fb3", 0.14),
           shadowOffsetY: 8
         }
       }

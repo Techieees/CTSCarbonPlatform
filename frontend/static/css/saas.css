@@ -131,7 +131,7 @@ body.dark-mode{
   --chart-tooltip-muted: rgba(226,232,240,.82);
   --chart-surface-start: rgba(15,23,42,.96);
   --chart-surface-end: rgba(15,23,42,.88);
-  --chart-surface-glow: rgba(59,130,246,.14);
+  --chart-surface-glow: rgba(47, 95, 179, 0.14);
   --chart-highlight: rgba(255,255,255,.06);
   --light-bg: rgba(15,23,42,.92);
   --body-text: rgba(255, 255, 255, 0.78);
