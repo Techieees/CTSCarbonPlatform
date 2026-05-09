@@ -170,6 +170,39 @@ canvas{
   max-width: 100%;
 }
 
+/* Centralized company logos: single canonical file per company; no frames/pills */
+.cts-company-logo-inline {
+  display: inline-block;
+  vertical-align: middle;
+  object-fit: contain;
+  object-position: center;
+  flex-shrink: 0;
+}
+
+.cts-company-logo-inline--sm {
+  max-height: 28px;
+  max-width: 132px;
+  width: auto;
+  height: auto;
+}
+
+.cts-company-logo-inline--md {
+  max-height: 40px;
+  max-width: 168px;
+  width: auto;
+  height: auto;
+}
+
+.cts-company-logo-inline--banner {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  max-width: min(120px, 12vw);
+  max-height: 72px;
+  width: auto;
+  height: auto;
+}
+
 .animated-icon {
   display: inline-block;
   width: 3rem;

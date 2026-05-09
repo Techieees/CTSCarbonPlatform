@@ -142,13 +142,7 @@ body.dark-mode .feed-page {
 }
 
 .feed-profile-card__company-logo {
-  width: 24px;
-  height: 24px;
-  border-radius: 0;
-  object-fit: contain;
-  object-position: center;
-  border: 0;
-  background: transparent;
+  margin: 0;
 }
 
 .feed-sidebar-card {
@@ -717,11 +711,6 @@ body.dark-mode .feed-post__type-badge--alert {
 
 .profile-hero-banner__edit:hover {
   background: rgba(15, 23, 42, 0.58);
-}
-
-.profile-hero-banner__logo {
-  /* Positioning lives on .profile-hero-banner__logo-frame (company-brand.css) */
-  display: block;
 }
 
 .profile-hero-card__body {
@@ -1645,7 +1634,7 @@ body.dark-mode .feed-action.is-reacted.feed-action--funny {
     min-height: 156px;
   }
 
-  .profile-hero-banner__logo-frame {
+  .profile-hero-banner .cts-company-logo-inline--banner {
     right: 16px;
     bottom: 16px;
   }

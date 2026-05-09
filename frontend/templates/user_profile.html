@@ -28,9 +28,7 @@
         <input type="file" accept="image/png,image/jpeg,image/webp" hidden data-profile-cover-input>
         {% endif %}
         {% if profile_company_logo_url %}
-        <span class="profile-hero-banner__logo-frame cts-company-logo-frame">
-          <img class="profile-hero-banner__logo cts-company-logo" src="{{ profile_company_logo_url }}" alt="{{ profile_company }}">
-        </span>
+        <img class="profile-hero-banner__logo cts-company-logo-inline cts-company-logo-inline--banner" src="{{ profile_company_logo_url }}" alt="{{ profile_company }}">
         {% endif %}
       </div>
       <div class="profile-hero-card__body">

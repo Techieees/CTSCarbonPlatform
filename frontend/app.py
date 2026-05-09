@@ -179,7 +179,6 @@ def _migrate_profile_photos_to_storage_once() -> None:
         _PROFILE_PHOTOS_FS_MIGRATED = True
 
 
-COMPANY_LOGO_ALLOWED_EXT = frozenset({".png"})
 TRAVEL_ALLOWED_EXT = frozenset({".xlsb", ".xlsx"})
 FEED_IMAGE_ALLOWED_EXT = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif"})
 FEED_VIDEO_ALLOWED_EXT = frozenset({".mp4", ".webm", ".mov", ".m4v"})
@@ -494,12 +493,10 @@ def _profile_template_context(
     *,
     companies: list[str] | None = None,
     resolved_company: str = "",
-    show_logo_upload: bool = False,
 ) -> dict[str, object]:
     return {
         "companies": companies or [],
         "resolved_company": resolved_company,
-        "show_logo_upload": show_logo_upload,
         "iso_countries": ISO_COUNTRIES,
         "template_mode_options": TEMPLATE_MODE_OPTIONS,
         "business_type_options": BUSINESS_TYPE_OPTIONS,
@@ -3040,18 +3037,29 @@ def _save_upload_image(
     return rel
 
 
-def _company_has_logo_for_key(template_company_key: str) -> bool:
-    row = Company.query.filter_by(company_name=template_company_key).first()
-    if not row or not row.company_logo_path:
-        return False
+def _canonical_company_logo_slug_rel(template_company_key: str) -> str | None:
+    """Official logo file under static/company_logos/{slug}.png (company-controlled)."""
+    key = (template_company_key or "").strip()
+    if not key:
+        return None
+    slug_rel = f"company_logos/{_company_logo_slug_filename(key)}"
     try:
-        return (APP_DIR / "static" / row.company_logo_path).is_file()
+        if (APP_DIR / "static" / slug_rel).is_file():
+            return slug_rel
     except Exception:
-        return bool(row.company_logo_path)
+        pass
+    return None
 
 
 def _company_logo_static_rel(template_company_key: str) -> str | None:
-    row = Company.query.filter_by(company_name=template_company_key).first()
+    """Prefer canonical slug file on disk; fall back to Company row path (legacy)."""
+    key = (template_company_key or "").strip()
+    if not key:
+        return None
+    slug_rel = _canonical_company_logo_slug_rel(key)
+    if slug_rel:
+        return slug_rel
+    row = Company.query.filter_by(company_name=key).first()
     if not row or not row.company_logo_path:
         return None
     p = APP_DIR / "static" / row.company_logo_path
@@ -3061,19 +3069,6 @@ def _company_logo_static_rel(template_company_key: str) -> str | None:
     except Exception:
         pass
     return None
-
-
-def _save_company_logo_png(storage, company_key: str) -> str | None:
-    if not storage or not getattr(storage, "filename", None):
-        return None
-    ext = Path(secure_filename(storage.filename or "")).suffix.lower()
-    if ext not in COMPANY_LOGO_ALLOWED_EXT:
-        return None
-    dest_dir = _static_subdir("company_logos")
-    dest_name = _company_logo_slug_filename(company_key)
-    dest = dest_dir / dest_name
-    storage.save(str(dest))
-    return f"company_logos/{dest_name}"
 
 
 def _save_profile_photo_file(storage, user_id: int) -> str | None:
@@ -10186,11 +10181,9 @@ def profile_setup():
 
     companies = list(COMPANIES)
     resolved_company = _resolve_template_company_name(current_user.company_name or "") or (current_user.company_name or "").strip()
-    show_logo_upload = bool(resolved_company) and not _company_has_logo_for_key(resolved_company)
     template_ctx = _profile_template_context(
         companies=companies,
         resolved_company=resolved_company,
-        show_logo_upload=show_logo_upload,
     )
 
     if request.method == "POST":
@@ -10214,15 +10207,6 @@ def profile_setup():
             flash("Please select a valid country.")
             return render_template("profile_setup.html", **template_ctx)
 
-        logo_rel_to_set: str | None = None
-        if show_logo_upload:
-            lfile = request.files.get("company_logo")
-            if lfile and lfile.filename:
-                logo_rel_to_set = _save_company_logo_png(lfile, co)
-                if not logo_rel_to_set:
-                    flash("Company logo must be a PNG file.")
-                    return render_template("profile_setup.html", **template_ctx)
-
         current_user.first_name = first_name
         current_user.last_name = last_name
         current_user.job_title = job_title
@@ -10238,14 +10222,6 @@ def profile_setup():
         rel_photo = _save_profile_photo_file(pfile, int(current_user.id))
         if rel_photo:
             current_user.profile_photo_path = rel_photo
-
-        if logo_rel_to_set:
-            row = Company.query.filter_by(company_name=co).first()
-            if not row:
-                row = Company(company_name=co, created_by_user_id=current_user.id)
-                db.session.add(row)
-            row.company_logo_path = logo_rel_to_set
-            row.created_by_user_id = row.created_by_user_id or current_user.id
 
         current_user.is_profile_complete = True
         db.session.commit()
