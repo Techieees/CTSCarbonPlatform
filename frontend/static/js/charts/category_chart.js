@@ -9,9 +9,10 @@ import {
   getTooltipBase,
   initChart,
   makeGradient,
-  withOpacity
+  withOpacity,
+  companyPairGradient
 } from "./echarts_theme.js";
-import { getColorByKey } from "./chart_colors.js";
+import { getColorByKey, getCompanyColorPair } from "./chart_colors.js";
 
 export function renderCategoryChart(config) {
   const variant = config.variant || "bar";
@@ -139,14 +140,22 @@ function renderDonutCategoryChart(config) {
   }
 
   const seriesData = labels.map((label, index) => {
-    const base = getColorByKey(label, pieColorKind || "category");
+    const kind = pieColorKind || "category";
+    const base = getColorByKey(label, kind);
+    let fill = withOpacity(base, 0.94);
+    let shadow = withOpacity(base, 0.18);
+    if (kind === "company") {
+      const { primary, secondary } = getCompanyColorPair(label);
+      fill = companyPairGradient(primary, secondary, false, 0.94, 0.78);
+      shadow = withOpacity(primary, 0.16);
+    }
     return {
       name: label,
       value: values[index] || 0,
       itemStyle: {
-        color: withOpacity(base, 0.94),
+        color: fill,
         shadowBlur: 14,
-        shadowColor: withOpacity(base, 0.18)
+        shadowColor: shadow
       }
     };
   });

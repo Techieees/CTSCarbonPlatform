@@ -24,8 +24,8 @@ import { mountHeatmapChart } from "./HeatmapChart.js";
 import { mountCategoryContributionChart } from "./CategoryContributionChart.js";
 import { mountMultiLineChart } from "./MultiLineChart.js";
 import { mountHorizontalBarChart } from "./HorizontalBarChart.js";
-import { formatFull, formatCompact, getAxisLabel, getTooltipBase, initChart, withOpacity } from "../../charts/echarts_theme.js";
-import { getColorByKey } from "../../charts/chart_colors.js";
+import { formatFull, formatCompact, getAxisLabel, getTooltipBase, initChart, withOpacity, companyPairGradient } from "../../charts/echarts_theme.js";
+import { getColorByKey, getCompanyColorPair } from "../../charts/chart_colors.js";
 
 function nf(n) {
   return formatFull(Number(n || 0));
@@ -87,11 +87,22 @@ function mountFlatTreemap(container, items, height = 320) {
         nodeClick: false,
         label: { show: true, fontSize: 11, fontWeight: 600 },
         itemStyle: { borderColor: "#fff", borderWidth: 1, gapWidth: 2 },
-        data: items.map((item) => ({
-          name: item.name,
-          value: item.value,
-          itemStyle: { color: withOpacity(getColorByKey(item.name, item.colorKind || "company"), 0.92) }
-        }))
+        data: items.map((item) => {
+          const kind = item.colorKind || "company";
+          const name = item.name;
+          let color;
+          if (kind === "company") {
+            const { primary, secondary } = getCompanyColorPair(name);
+            color = companyPairGradient(primary, secondary, false, 0.92, 0.76);
+          } else {
+            color = withOpacity(getColorByKey(name, kind), 0.92);
+          }
+          return {
+            name,
+            value: item.value,
+            itemStyle: { color }
+          };
+        })
       }
     ]
   });

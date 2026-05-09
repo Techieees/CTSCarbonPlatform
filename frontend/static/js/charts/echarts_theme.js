@@ -132,6 +132,29 @@ export function withOpacity(hex, opacity) {
   return `rgba(${r}, ${g}, ${b}, ${opacity})`;
 }
 
+/** Company primary → secondary gradient for bars, donuts, sunburst (CTS enterprise). */
+export function companyPairGradient(
+  primary,
+  secondary,
+  horizontal = false,
+  opacityFrom = 0.96,
+  opacityTo = 0.82
+) {
+  if (typeof window === "undefined" || !window.echarts?.graphic) {
+    return primary;
+  }
+  return new window.echarts.graphic.LinearGradient(
+    horizontal ? 0 : 0,
+    horizontal ? 0 : 1,
+    horizontal ? 1 : 0,
+    horizontal ? 0 : 0,
+    [
+      { offset: 0, color: withOpacity(primary, opacityFrom) },
+      { offset: 1, color: withOpacity(secondary, opacityTo) }
+    ]
+  );
+}
+
 export function getPerformanceOptions(dataSize, kind = "bar") {
   const count = Math.max(0, Number(dataSize || 0));
   const veryLarge = count >= 100000;

@@ -9,9 +9,10 @@ import {
   getTooltipBase,
   initChart,
   makeGradient,
-  withOpacity
+  withOpacity,
+  companyPairGradient
 } from "./echarts_theme.js";
-import { getColorByKey } from "./chart_colors.js";
+import { getColorByKey, getCompanyColorPair } from "./chart_colors.js";
 
 export function renderCompanyChart(config) {
   const {
@@ -93,13 +94,20 @@ export function renderCompanyChart(config) {
       const c = getColorByKey(label, categoryColorKind);
       const radius = horizontal ? [0, 12, 12, 0] : [12, 12, 0, 0];
       const val = animateValues ? v : 0;
+      let fill = c;
+      let shadow = withOpacity(c, 0.16);
+      if (categoryColorKind === "company") {
+        const { primary, secondary } = getCompanyColorPair(label);
+        fill = companyPairGradient(primary, secondary, horizontal, 0.96, 0.82);
+        shadow = withOpacity(primary, 0.14);
+      }
       return {
         value: val,
         itemStyle: {
           borderRadius: radius,
-          color: c,
+          color: fill,
           shadowBlur: 18,
-          shadowColor: withOpacity(c, 0.16),
+          shadowColor: shadow,
           shadowOffsetY: 8
         }
       };
@@ -116,6 +124,13 @@ export function renderCompanyChart(config) {
       let itemStyle;
       if (seriesColorKind) {
         const c = getColorByKey(name, seriesColorKind);
+        let fill = c;
+        let shadow = withOpacity(c, 0.16);
+        if (seriesColorKind === "company") {
+          const { primary, secondary } = getCompanyColorPair(name);
+          fill = companyPairGradient(primary, secondary, horizontal, 0.96, 0.82);
+          shadow = withOpacity(primary, 0.14);
+        }
         itemStyle = {
           borderRadius: stacked
             ? horizontal
@@ -128,9 +143,9 @@ export function renderCompanyChart(config) {
             : horizontal
               ? [0, 12, 12, 0]
               : [12, 12, 0, 0],
-          color: c,
+          color: fill,
           shadowBlur: 18,
-          shadowColor: withOpacity(c, 0.16),
+          shadowColor: shadow,
           shadowOffsetY: 8
         };
       } else if (!categoryColorKind || normalizedSeries.length !== 1) {

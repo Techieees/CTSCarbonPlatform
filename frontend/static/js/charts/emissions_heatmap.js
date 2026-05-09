@@ -5,7 +5,7 @@ import {
   initChart,
   withOpacity
 } from "./echarts_theme.js";
-import { getColorByKey } from "./chart_colors.js";
+import { getCompanyColorPair } from "./chart_colors.js";
 import { sortedReportingMonthSlots, rowReportingSortKey } from "./row_aggregates.js";
 
 export function renderEmissionsHeatmap(config) {
@@ -47,9 +47,14 @@ export function renderEmissionsHeatmap(config) {
 
   const maxV = maxValue || 1;
   const seriesData = rawCells.map(({ monthIndex, companyIndex, value, company }) => {
-    const base = getColorByKey(company, "company");
+    const { primary, secondary } = getCompanyColorPair(company);
     const t = maxV > 0 ? Math.min(1, value / maxV) : 0;
-    const color = value <= 0 ? "rgba(148,163,184,0.12)" : withOpacity(base, 0.15 + t * 0.82);
+    const color =
+      value <= 0
+        ? "rgba(148,163,184,0.12)"
+        : t <= 0.42
+          ? withOpacity(primary, 0.14 + t * 0.62)
+          : withOpacity(secondary, 0.26 + (t - 0.42) * 0.92);
     return {
       value: [monthIndex, companyIndex, value],
       itemStyle: {

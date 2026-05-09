@@ -1,67 +1,89 @@
 /**
- * Deterministic colors for dashboards: same key → same color across all charts.
- * CTS ecosystem: deep blue, cyan, teal, and sustainability greens (no rainbow).
+ * Deterministic CTS enterprise colors: same company → same primary + secondary everywhere.
+ * Expanded muted palette (navy/cyan/teal/green + indigo/slate/steel/copper/amber/violet/rosewood/lime).
  */
 
-const companyColorMap = new Map();
+const companyVisualRegistry = new Map();
 const categoryColorMap = new Map();
 
-/** CTS-aligned hues only (blue → cyan → teal → green). Used when synthesizing steps. */
-export function generateColors(count) {
-  const total = Math.max(1, Number(count || 0));
-  const colors = [];
-  for (let index = 0; index < total; index += 1) {
-    const t = total <= 1 ? 0.5 : index / (total - 1);
-    const hue = 218 - t * 88;
-    const sat = 54 + (index % 3) * 5;
-    const light = 36 + (index % 4) * 3;
-    colors.push(`hsl(${Math.round(hue)}, ${Math.min(62, sat)}%, ${Math.min(48, light)}%)`);
-  }
-  return colors;
-}
-
-/** Canonical CTS visualization hues for multi-company charts (cycled deterministically). */
-const CTS_COMPANY_BASE = [
-  "#1e3a5f",
-  "#1e4d8c",
-  "#2f5fb3",
-  "#2563eb",
-  "#1d4ed8",
-  "#3b82f6",
-  "#0369a1",
-  "#0c4a6e",
-  "#155e75",
-  "#0f766e",
-  "#115e59",
-  "#14b8a6",
-  "#2dd4bf",
-  "#0891b2",
-  "#06b6d4",
-  "#0ea5e9",
-  "#22d3ee",
-  "#14532d",
-  "#166534",
-  "#15803d",
-  "#1f9d55",
-  "#22c55e",
-  "#312e81",
-  "#164e63"
+/**
+ * Curated [primary, secondary] pairs — premium, low-neon, dark-mode friendly.
+ * Order does not affect assignment (hash picks index); list length scales distinction for 24+ tenants.
+ */
+const CTS_ENTERPRISE_COMPANY_PAIRS = [
+  ["#1e3a5f", "#38bdf8"],
+  ["#2f5fb3", "#93c5fd"],
+  ["#1e40af", "#7dd3fc"],
+  ["#2563eb", "#67e8f9"],
+  ["#312e81", "#a5b4fc"],
+  ["#3730a3", "#818cf8"],
+  ["#4338ca", "#c7d2fe"],
+  ["#4c1d95", "#ddd6fe"],
+  ["#5b21b6", "#c4b5fd"],
+  ["#6b21a8", "#e9d5ff"],
+  ["#0c4a6e", "#bae6fd"],
+  ["#0369a1", "#7dd3fc"],
+  ["#0e7490", "#99f6e4"],
+  ["#155e75", "#67e8f9"],
+  ["#164e63", "#a5f3fc"],
+  ["#115e59", "#5eead4"],
+  ["#0f766e", "#6ee7b7"],
+  ["#134e4a", "#99f6e4"],
+  ["#065f46", "#6ee7b7"],
+  ["#047857", "#34d399"],
+  ["#14532d", "#86efac"],
+  ["#166534", "#65a30d"],
+  ["#365314", "#73a314"],
+  ["#57534e", "#22d3ee"],
+  ["#44403c", "#38bdf8"],
+  ["#334155", "#94a3b8"],
+  ["#475569", "#cbd5e1"],
+  ["#64748b", "#38bdf8"],
+  ["#52525b", "#a78bfa"],
+  ["#71717a", "#22d3ee"],
+  ["#78350f", "#fcd34d"],
+  ["#92400e", "#fdba74"],
+  ["#9a3412", "#93c5fd"],
+  ["#b45309", "#57534e"],
+  ["#a16207", "#64748b"],
+  ["#854d0e", "#14b8a6"],
+  ["#881337", "#94a3b8"],
+  ["#9d174d", "#cbd5e1"],
+  ["#86198f", "#64748b"],
+  ["#172554", "#38bdf8"],
+  ["#1e293b", "#22d3ee"],
+  ["#0f172a", "#60a5fa"],
+  ["#164e63", "#818cf8"],
+  ["#134e4a", "#c4b5fd"],
+  ["#365314", "#22d3ee"],
+  ["#3f6212", "#94a3b8"],
+  ["#3f3f46", "#22d3ee"],
+  ["#1d4ed8", "#86efac"],
+  ["#1e3a8a", "#fcd34d"]
 ];
 
-const COMPANY_PALETTE = Array.from({ length: 96 }, (_, i) => CTS_COMPANY_BASE[i % CTS_COMPANY_BASE.length]);
-
-/** Named CTS identities — still within the same hue family as the platform palette. */
-const COMPANY_COLOR_OVERRIDES = new Map(
+/** Optional anchor accents for known CTS ecosystem names (still scalable via pairs above). */
+const COMPANY_BRAND_PAIR_OVERRIDES = new Map(
   Object.entries({
-    "cts finland": "#1e3a5f",
-    "cts finland oy": "#1e3a5f",
-    "cts nordics": "#2f5fb3",
-    "cts nordics ab": "#2f5fb3",
-    bimms: "#0f766e",
-    "bimms ab": "#0f766e",
-    "carbon transparency solutions": "#1e4d8c",
-    cts: "#2f5fb3",
-    "cts ab": "#2f5fb3"
+    "cts nordics": ["#2f5fb3", "#38bdf8"],
+    "cts nordics ab": ["#2f5fb3", "#38bdf8"],
+    "cts finland": ["#1e3a5f", "#14b8a6"],
+    "cts finland oy": ["#1e3a5f", "#14b8a6"],
+    bimms: ["#0f766e", "#6ee7b7"],
+    "bimms ab": ["#0f766e", "#6ee7b7"],
+    "dc piping": ["#475569", "#22d3ee"],
+    "cts security": ["#334155", "#3b82f6"],
+    gapit: ["#047857", "#0d9488"],
+    "mc prefab": ["#3730a3", "#64748b"],
+    fortica: ["#b45309", "#57534e"],
+    "cts sweden": ["#1e40af", "#64748b"],
+    "caerus nordics": ["#5b21b6", "#475569"],
+    "cts eu": ["#0e7490", "#059669"],
+    mecwide: ["#9a3412", "#52525b"],
+    velox: ["#65a30d", "#166534"],
+    "carbon transparency solutions": ["#1e4d8c", "#22d3ee"],
+    cts: ["#2f5fb3", "#7dd3fc"],
+    "cts ab": ["#2f5fb3", "#7dd3fc"]
   })
 );
 
@@ -91,7 +113,6 @@ const CATEGORY_PALETTE = [
   "#14532d",
   "#166534",
   "#15803d",
-  "#166534",
   "#1f9d55",
   "#22c55e",
   "#4ade80",
@@ -101,6 +122,20 @@ const CATEGORY_PALETTE = [
   "#334155",
   "#64748b"
 ];
+
+/** CTS-biased synthesis for large category sets (no rainbow). */
+export function generateColors(count) {
+  const total = Math.max(1, Number(count || 0));
+  const colors = [];
+  for (let index = 0; index < total; index += 1) {
+    const t = total <= 1 ? 0.5 : index / (total - 1);
+    const hue = 238 - t * 118;
+    const sat = 38 + (index % 5) * 3;
+    const light = 34 + (index % 6) * 2;
+    colors.push(`hsl(${Math.round(hue)}, ${Math.min(52, sat)}%, ${Math.min(46, light)}%)`);
+  }
+  return colors;
+}
 
 function hashString(s) {
   let h = 2166136261;
@@ -125,10 +160,40 @@ function allocateMappedColor(registry, key, palette) {
   return color;
 }
 
+function pairFromIndex(index) {
+  const i = Math.abs(index) % CTS_ENTERPRISE_COMPANY_PAIRS.length;
+  const [primary, secondary] = CTS_ENTERPRISE_COMPANY_PAIRS[i];
+  return { primary, secondary };
+}
+
+/**
+ * Deterministic primary + secondary for a company name (hash-stable, no encounter-order coupling).
+ * @param {string} key raw company label
+ * @returns {{ primary: string, secondary: string }}
+ */
+export function getCompanyColorPair(key) {
+  const normalized = normalizeKey(key);
+  if (!normalized) {
+    return { primary: "#64748b", secondary: "#94a3b8" };
+  }
+  if (companyVisualRegistry.has(normalized)) {
+    return companyVisualRegistry.get(normalized);
+  }
+  const branded = COMPANY_BRAND_PAIR_OVERRIDES.get(normalized);
+  let pair;
+  if (branded) {
+    pair = { primary: branded[0], secondary: branded[1] };
+  } else {
+    pair = pairFromIndex(hashString(`cts-enterprise-company:${normalized}`));
+  }
+  companyVisualRegistry.set(normalized, pair);
+  return pair;
+}
+
 /**
  * @param {string} key
  * @param {"company" | "category" | "scope"} kind
- * @returns {string} hex color
+ * @returns {string} hex (primary anchor for companies)
  */
 export function getColorByKey(key, kind = "company") {
   const k = String(key || "").trim();
@@ -164,15 +229,7 @@ export function getColorByKey(key, kind = "company") {
   const normalized = normalizeKey(k);
 
   if (kind === "company") {
-    if (companyColorMap.has(normalized)) {
-      return companyColorMap.get(normalized);
-    }
-    const branded = COMPANY_COLOR_OVERRIDES.get(normalized);
-    if (branded) {
-      companyColorMap.set(normalized, branded);
-      return branded;
-    }
-    return allocateMappedColor(companyColorMap, normalized, COMPANY_PALETTE);
+    return getCompanyColorPair(normalized).primary;
   }
 
   if (kind === "category") {
@@ -180,6 +237,6 @@ export function getColorByKey(key, kind = "company") {
     return allocateMappedColor(categoryColorMap, normalized, categoryPalette);
   }
 
-  const pal = COMPANY_PALETTE;
-  return pal[hashString(`generic:${normalized}`) % pal.length];
+  const idx = hashString(`generic:${normalized}`) % CTS_ENTERPRISE_COMPANY_PAIRS.length;
+  return CTS_ENTERPRISE_COMPANY_PAIRS[idx][0];
 }

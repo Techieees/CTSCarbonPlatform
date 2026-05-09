@@ -2,9 +2,10 @@ import {
   formatFull,
   getTooltipBase,
   initChart,
-  withOpacity
+  withOpacity,
+  companyPairGradient
 } from "./echarts_theme.js";
-import { getColorByKey } from "./chart_colors.js";
+import { getColorByKey, getCompanyColorPair } from "./chart_colors.js";
 
 function buildHierarchy(rows) {
   const companyMap = new Map();
@@ -41,9 +42,12 @@ function buildHierarchy(rows) {
 
   return Array.from(companyMap.values()).map((company) => ({
     ...company,
-    itemStyle: {
-      color: withOpacity(getColorByKey(company.name, "company"), 0.95)
-    },
+    itemStyle: (() => {
+      const { primary, secondary } = getCompanyColorPair(company.name);
+      return {
+        color: companyPairGradient(primary, secondary, false, 0.93, 0.8)
+      };
+    })(),
     children: company.children.map((scope) => ({
       ...scope,
       itemStyle: {
