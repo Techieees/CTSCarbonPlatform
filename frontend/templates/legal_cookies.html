@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Cookie Policy — CTS Carbon Platform{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/legal_pages.css') }}">
+{% endblock %}
+
+{% block content %}
+<article class="page-legal">
+  <div class="container">
+    <div class="page-legal__inner">
+      <h1 class="page-legal__title">Cookie Policy</h1>
+      <p class="page-legal__meta"><strong>Effective date:</strong> 9 May 2026. This policy explains how the CTS Carbon Platform (“Platform”) may use cookies and similar technologies in browsers. It is informational and may be supplemented by your organisation’s own notices.</p>
+
+      <p class="page-legal__intro">Cookies are small text files stored on your device when you visit a site. They help maintain sessions, remember preferences, and understand how the application behaves in your browser.</p>
+
+      <section aria-labelledby="cookies-essential">
+        <h2 id="cookies-essential">1. Strictly necessary / functional</h2>
+        <p>We use cookies or similar storage that are needed to operate the Platform—for example, to keep you signed in after authentication, maintain security tokens, load balance requests, or remember UI preferences such as light or dark theme where that choice is stored locally.</p>
+      </section>
+
+      <section aria-labelledby="cookies-analytics">
+        <h2 id="cookies-analytics">2. Analytics and performance</h2>
+        <p>Depending on configuration, we may use first-party or tightly scoped analytics to understand feature usage, errors, or performance. We do not use third-party advertising cookies on the Platform as part of this policy’s default description. If your deployment enables additional tools, your administrator should document them separately.</p>
+      </section>
+
+      <section aria-labelledby="cookies-third">
+        <h2 id="cookies-third">3. Embedded content and integrations</h2>
+        <p>Where the Platform loads resources from other domains (for example, maps, fonts, or future integration frames), those providers may set their own cookies subject to their policies. Review your browser’s developer tools or network panel if you need visibility into specific requests.</p>
+      </section>
+
+      <section aria-labelledby="cookies-control">
+        <h2 id="cookies-control">4. Your choices</h2>
+        <p>Most browsers let you block or delete cookies. Blocking strictly necessary cookies may prevent login or core features from working. You can often clear storage for this site through browser settings. Local theme preferences may be stored in <code>localStorage</code> rather than cookies; clearing site data removes them.</p>
+      </section>
+
+      <section aria-labelledby="cookies-updates">
+        <h2 id="cookies-updates">5. Updates</h2>
+        <p>We may update this Cookie Policy when our practices change. The effective date above will be revised accordingly.</p>
+      </section>
+
+      <section aria-labelledby="cookies-contact">
+        <h2 id="cookies-contact">6. Contact</h2>
+        <p>Questions: <a href="mailto:sustainability@cts-nordics.com">sustainability@cts-nordics.com</a>.</p>
+      </section>
+    </div>
+  </div>
+</article>
+{% endblock %}

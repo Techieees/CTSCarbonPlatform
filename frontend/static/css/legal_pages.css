@@ -1,0 +1,110 @@
+/* CTS Carbon Platform — compact legal/static document pages */
+
+.page-legal{
+  padding: 1.5rem 0 2.25rem;
+}
+
+.page-legal__inner{
+  max-width: 40rem;
+  margin: 0 auto;
+}
+
+.page-legal__meta{
+  font-size: 0.88rem;
+  color: var(--muted);
+  margin-bottom: 1.25rem;
+  line-height: 1.45;
+}
+
+.page-legal__title{
+  font-size: 1.5rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: var(--ink);
+  margin: 0 0 0.75rem;
+}
+
+.page-legal .page-legal__intro{
+  font-size: 0.94rem;
+  line-height: 1.55;
+  color: var(--muted);
+  margin-bottom: 1.35rem;
+}
+
+.page-legal section{
+  margin-top: 1.35rem;
+}
+
+.page-legal section:first-of-type{
+  margin-top: 0;
+}
+
+.page-legal h2{
+  font-size: 0.98rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  margin: 0 0 0.45rem;
+  padding-top: 0.15rem;
+}
+
+.page-legal p,
+.page-legal li{
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--muted);
+  margin-bottom: 0.55rem;
+}
+
+.page-legal ul{
+  padding-left: 1.15rem;
+  margin: 0 0 0.55rem;
+}
+
+.page-legal li::marker{
+  color: var(--muted);
+}
+
+.page-legal strong,
+.page-legal b{
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.page-legal a{
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.page-legal a:hover{
+  text-decoration: underline;
+}
+
+.page-legal code{
+  font-size: 0.86em;
+  padding: 0.12rem 0.35rem;
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.06);
+  color: var(--ink);
+}
+
+body.dark-mode .page-legal code{
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--ink);
+}
+
+body.dark-mode .page-legal{
+  background: transparent;
+}
+
+body.dark-mode .page-legal__title,
+body.dark-mode .page-legal h2{
+  color: var(--ink);
+}
+
+body.dark-mode .page-legal p,
+body.dark-mode .page-legal li,
+body.dark-mode .page-legal__meta{
+  color: var(--muted);
+}

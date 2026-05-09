@@ -846,16 +846,6 @@ body.dark-mode .saas-nav .navbar-brand:hover img{
   transform: scale(1.03);
 }
 
-body.dark-mode .saas-footer .brand img{
-  opacity: 0.94;
-  mix-blend-mode: darken;
-  transition: opacity .22s var(--ease), transform .22s var(--ease);
-}
-body.dark-mode .saas-footer .brand:hover img{
-  opacity: 1;
-  transform: scale(1.02);
-}
-
 .logo-marquee__logo{
   transition: opacity .22s var(--ease), transform .22s var(--ease), filter .22s var(--ease);
 }

@@ -9083,6 +9083,21 @@ def trust():
     return render_template('trust.html')
 
 
+@app.route("/privacy-policy")
+def legal_privacy():
+    return render_template("legal_privacy.html")
+
+
+@app.route("/terms-of-service")
+def legal_terms():
+    return render_template("legal_terms.html")
+
+
+@app.route("/cookie-policy")
+def legal_cookies():
+    return render_template("legal_cookies.html")
+
+
 @app.route('/impact')
 def impact():
     return render_template('impact.html')

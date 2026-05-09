@@ -1128,25 +1128,7 @@ button.input-group-text.cts-pw-toggle:focus-visible{
   color: var(--muted);
 }
 
-/* Footer */
-.saas-footer{
-  border-top: 1px solid var(--border);
-  background: var(--footer-bg);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  padding: 8px 0 6px;
-  color: var(--muted);
-}
-.saas-footer .brand{
-  display:flex;
-  align-items:center;
-  gap: 6px;
-  color: var(--ink);
-  font-weight: 700;
-}
-.saas-footer small{ color: var(--muted); }
-.saas-footer-social a{ opacity: 0.92; }
-.saas-footer-social a:hover{ opacity: 1; }
+/* Footer — base + enterprise layout below (see .saas-footer--enterprise) */
 
 /* Scroll reveal */
 [data-reveal]{
@@ -1984,8 +1966,43 @@ body.dark-mode textarea::placeholder{
 
 .saas-footer{
   position: relative;
-  padding: 8px 0 6px;
+  width: 100%;
+  margin-top: auto;
+  border-top: 1px solid var(--border);
+  background: var(--footer-bg);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   color: var(--ink);
+}
+
+/* —— Enterprise footer (marketing + app shell) —— */
+.saas-footer--enterprise{
+  --footer-col-muted: rgba(30, 41, 59, 0.72);
+  --footer-heading: rgba(15, 23, 42, 0.94);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: #f3f4f7;
+  border-top-color: rgba(15, 23, 42, 0.08);
+  color: var(--footer-heading);
+}
+
+body.dark-mode .saas-footer--enterprise{
+  --footer-col-muted: rgba(203, 213, 225, 0.78);
+  --footer-heading: rgba(248, 250, 252, 0.94);
+  background: #070b14;
+  border-top-color: rgba(148, 163, 184, 0.14);
+}
+
+body:not(.dark-mode) .saas-footer--enterprise .small,
+body:not(.dark-mode) .saas-footer--enterprise small,
+body:not(.dark-mode) .saas-footer__tagline,
+body:not(.dark-mode) .saas-footer__address{
+  color: var(--footer-col-muted) !important;
+}
+
+.saas-footer__main{
+  position: relative;
+  z-index: 1;
 }
 
 /* Decorative duplicate of the brand logo — keep in DOM for structure, hide visually */
@@ -1999,69 +2016,201 @@ body.dark-mode textarea::placeholder{
   pointer-events: none;
 }
 
+.saas-footer__grid{
+  display: grid;
+  gap: 0.9rem 1.15rem;
+  align-items: stretch;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 576px){
+  .saas-footer__grid{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .saas-footer__brand-col{
+    grid-column: 1 / -1;
+  }
+}
+
+@media (min-width: 992px){
+  .saas-footer__grid{
+    grid-template-columns: minmax(200px, 1.02fr) repeat(6, minmax(0, 1fr));
+    gap: 0.9rem 1.2rem;
+  }
+  .saas-footer__brand-col{
+    grid-column: auto;
+  }
+}
+
+.saas-footer__brand-col{
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 0.3rem 0.5rem;
+}
+
+.saas-footer__link-col{
+  min-width: 0;
+}
+
+.saas-footer__brand-lockup{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  line-height: 0;
+  color: inherit;
+}
+
+@media (min-width: 992px){
+  .saas-footer__brand-col{
+    padding: 0.35rem 0.55rem 0.35rem 0.45rem;
+  }
+}
+
 .saas-footer__brand-logo{
-  max-height: 18px;
+  max-height: 22px;
   height: auto;
   width: auto;
-  max-width: 150px;
+  max-width: 160px;
   object-fit: contain;
   object-position: left center;
   display: block;
   flex-shrink: 0;
 }
 
-.saas-footer__row{
+.saas-footer__brand-logo--hero{
+  max-height: 40px;
+  max-width: 220px;
+  object-position: center center;
+}
+
+.saas-footer__heading{
+  font-size: 0.74rem;
+  font-weight: 670;
+  letter-spacing: 0.065em;
+  text-transform: uppercase;
+  color: var(--footer-heading);
+  margin: 0 0 0.52rem;
+  opacity: 0.98;
+}
+
+.saas-footer__links li + li{
+  margin-top: 0.28rem;
+}
+
+.saas-footer__link{
+  display: inline-block;
+  font-size: 0.875rem;
+  line-height: 1.38;
+  color: var(--footer-col-muted) !important;
+  text-decoration: none;
+  border-radius: 2px;
+  transition: color 0.15s ease, opacity 0.15s ease;
+}
+
+.saas-footer__link:hover{
+  color: var(--primary) !important;
+}
+
+.saas-footer__bottom{
   position: relative;
   z-index: 1;
-  display: grid;
-  gap: 0.3rem 0.85rem;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+body.dark-mode .saas-footer__bottom{
+  border-top-color: rgba(148, 163, 184, 0.12);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.saas-footer__bottom-inner{
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem 1rem;
+  margin-bottom: 0.55rem;
 }
 
-.saas-footer__row--primary{
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  margin-bottom: 0.28rem;
-}
-
-.saas-footer__row--primary > :last-child{
-  justify-self: end;
-  text-align: end;
-}
-
-.saas-footer__row--secondary{
+.saas-footer__bottom-meta{
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem 0.45rem;
   text-align: center;
-  line-height: 1.28;
-  row-gap: 0.18rem;
 }
 
-.saas-footer .brand,
-.saas-footer small,
-.saas-footer p,
-.saas-footer a{
-  color: inherit !important;
+@media (min-width: 992px){
+  .saas-footer__bottom-meta{
+    justify-content: flex-start;
+    text-align: left;
+  }
 }
 
-.saas-footer-social a{
-  color: inherit;
+.saas-footer__copy{
+  color: var(--footer-col-muted);
+}
+
+.saas-footer__muted{
+  color: var(--footer-col-muted);
+  opacity: 0.45;
+}
+
+.saas-footer__bottom-email{
+  color: var(--footer-col-muted) !important;
+  text-decoration: none;
+}
+
+.saas-footer__bottom-email:hover{
+  color: var(--primary) !important;
+}
+
+.saas-footer__tagline,
+.saas-footer__address{
+  color: var(--footer-col-muted);
+  line-height: 1.38;
+}
+
+.saas-footer-social{
+  line-height: 0;
+}
+
+.saas-footer-social a,
+.saas-footer__social-icon{
+  opacity: 0.9;
+  color: var(--footer-col-muted) !important;
+}
+
+.saas-footer-social a:hover,
+.saas-footer__social-icon:hover{
+  opacity: 1;
+  color: var(--primary) !important;
 }
 
 .saas-footer-social svg{
-  transform: scale(1.08);
+  transform: scale(1.05);
   transform-origin: center;
+  display: block;
 }
 
-body.dark-mode .saas-footer .brand{
+body.dark-mode .saas-footer__brand-lockup{
   isolation: isolate;
 }
 
-/* Knock out flat white plate common in raster logos on dark footer backgrounds */
-body.dark-mode .saas-footer .brand img{
-  mix-blend-mode: darken;
+body.dark-mode .saas-footer__brand-logo{
   opacity: 0.94;
+  mix-blend-mode: darken;
+  transition: opacity 0.15s ease, transform 0.15s ease;
 }
 
-body.dark-mode .saas-footer .brand:hover img{
+body.dark-mode .saas-footer__brand-lockup:hover .saas-footer__brand-logo{
   opacity: 1;
+  transform: scale(1.02);
 }
 
 .btn .dash-admin-illu svg,
@@ -2074,24 +2223,21 @@ body.dark-mode .saas-footer .brand:hover img{
 }
 
 @media (max-width: 767.98px){
-  .saas-footer__row--primary{
-    grid-template-columns: 1fr;
-    justify-items: center;
-    row-gap: 0.35rem;
+  .saas-footer--enterprise .container.py-3{
+    padding-top: 1rem !important;
+    padding-bottom: 1rem !important;
   }
 
-  .saas-footer__row--primary > :last-child{
-    justify-self: center;
-    text-align: center;
-  }
-
-  .saas-footer__brand-logo{
-    max-width: 130px;
+  .saas-footer__brand-lockup{
     margin-inline: auto;
   }
 
-  .saas-footer .brand{
-    justify-content: center;
+  .saas-footer__brand-logo--hero{
+    margin-inline: auto;
+  }
+
+  .saas-footer__link-col{
+    text-align: center;
   }
 
   html,

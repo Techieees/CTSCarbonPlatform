@@ -38,7 +38,7 @@
         }
       })();
     </script>
-    {% set public_landing_endpoints = ('index', 'platform', 'locations', 'methodology', 'methodology_reference', 'methodology_scope1', 'methodology_scope2', 'methodology_scope3', 'methodology_scope3_category1', 'methodology_scope3_category2', 'methodology_scope3_category3', 'methodology_scope3_category4', 'methodology_scope3_category5', 'methodology_scope3_category6', 'methodology_scope3_category7', 'methodology_scope3_category9', 'methodology_scope3_category10', 'methodology_scope3_category11', 'methodology_scope3_category12', 'methodology_scope3_category13', 'methodology_scope3_category14', 'methodology_scope3_category15', 'methodology_scope3_category16', 'trust', 'who_we_are', 'impact', 'impact_approach', 'impact_operations', 'impact_lca_epd', 'impact_collaboration', 'impact_corporate', 'impact_materiality', 'impact_carbon', 'impact_stakeholders', 'impact_sdgs', 'impact_governance', 'impact_reporting', 'esg', 'csrd', 'lca', 'lca_tool') %}
+    {% set public_landing_endpoints = ('index', 'platform', 'locations', 'methodology', 'methodology_reference', 'methodology_scope1', 'methodology_scope2', 'methodology_scope3', 'methodology_scope3_category1', 'methodology_scope3_category2', 'methodology_scope3_category3', 'methodology_scope3_category4', 'methodology_scope3_category5', 'methodology_scope3_category6', 'methodology_scope3_category7', 'methodology_scope3_category9', 'methodology_scope3_category10', 'methodology_scope3_category11', 'methodology_scope3_category12', 'methodology_scope3_category13', 'methodology_scope3_category14', 'methodology_scope3_category15', 'methodology_scope3_category16', 'trust', 'who_we_are', 'legal_privacy', 'legal_terms', 'legal_cookies', 'impact', 'impact_approach', 'impact_operations', 'impact_lca_epd', 'impact_collaboration', 'impact_corporate', 'impact_materiality', 'impact_carbon', 'impact_stakeholders', 'impact_sdgs', 'impact_governance', 'impact_reporting', 'esg', 'csrd', 'lca', 'lca_tool') %}
     {% set use_app_sidebar = current_user.is_authenticated and request.endpoint not in public_landing_endpoints %}
     {% set is_marketing = request.endpoint in public_landing_endpoints %}
     {% set account_display_name = ((current_user.first_name or '') ~ ' ' ~ (current_user.last_name or ''))|trim if current_user.is_authenticated else 'Account' %}
@@ -281,30 +281,95 @@
     </div>
     {% endif %}
 
-    <footer class="saas-footer">
-        <div class="container position-relative">
-            <img src="{{ url_for('static', filename='images/Logos/CTS-VDC_Logo_documents.png') }}" alt="" class="saas-footer__watermark" aria-hidden="true" />
-            <div class="saas-footer__row saas-footer__row--primary">
-                <div class="brand">
-                    <img src="{{ url_for('static', filename='images/Logos/CTS-VDC_Logo_documents.png') }}" alt="" class="saas-footer__brand-logo" />
+    <footer class="saas-footer saas-footer--enterprise">
+        <div class="saas-footer__main">
+            <div class="container position-relative py-3 py-lg-3">
+                <img src="{{ url_for('static', filename='images/Logos/CTS-VDC_Logo_documents.png') }}" alt="" class="saas-footer__watermark" aria-hidden="true" />
+                <div class="saas-footer__grid">
+                    <div class="saas-footer__brand-col">
+                        <a href="{{ url_for('index') }}" class="saas-footer__brand-lockup text-decoration-none" aria-label="CTS-VDC Services — Home">
+                            <img src="{{ url_for('static', filename='images/Logos/CTS-VDC_Logo_documents.png') }}" alt="CTS-VDC Services" class="saas-footer__brand-logo saas-footer__brand-logo--hero" width="160" height="40" />
+                        </a>
+                    </div>
+                    <div class="saas-footer__link-col">
+                        <h3 class="saas-footer__heading">Company</h3>
+                        <ul class="saas-footer__links list-unstyled mb-0">
+                            <li><a class="saas-footer__link" href="{{ url_for('who_we_are') }}">About</a></li>
+                            <li><a class="saas-footer__link" href="#">CTS-VDC Services</a></li>
+                            <li><a class="saas-footer__link" href="https://cts-group.co/" target="_blank" rel="noopener noreferrer">CTS Group</a></li>
+                            <li><a class="saas-footer__link" href="mailto:sustainability@cts-nordics.com">Contact</a></li>
+                        </ul>
+                    </div>
+                    <div class="saas-footer__link-col">
+                        <h3 class="saas-footer__heading">Platform</h3>
+                        <ul class="saas-footer__links list-unstyled mb-0">
+                            <li><a class="saas-footer__link" href="{{ url_for('platform') }}">Carbon Intelligence</a></li>
+                            <li><a class="saas-footer__link" href="{{ url_for('esg') }}">ESG Reporting Workspace</a></li>
+                            <li><a class="saas-footer__link" href="{{ url_for('governance_audit_ready_output') }}">Audit Center</a></li>
+                            <li><a class="saas-footer__link" href="{{ url_for('locations') }}">Climate Risk Map</a></li>
+                        </ul>
+                    </div>
+                    <div class="saas-footer__link-col">
+                        <h3 class="saas-footer__heading">Carbon Accounting</h3>
+                        <ul class="saas-footer__links list-unstyled mb-0">
+                            <li><a class="saas-footer__link" href="{{ url_for('mapping_runs') }}">Emission Factor Mapping</a></li>
+                            <li><a class="saas-footer__link" href="{{ url_for('methodology_scope1') }}">Scope 1 Emissions</a></li>
+                            <li><a class="saas-footer__link" href="{{ url_for('methodology_scope2') }}">Scope 2 Emissions</a></li>
+                            <li><a class="saas-footer__link" href="{{ url_for('methodology_scope3') }}">Scope 3 Emissions</a></li>
+                            <li><a class="saas-footer__link" href="{{ url_for('lca') }}">Lifecycle Assessment</a></li>
+                        </ul>
+                    </div>
+                    <div class="saas-footer__link-col">
+                        <h3 class="saas-footer__heading">Integrations</h3>
+                        <ul class="saas-footer__links list-unstyled mb-0">
+                            <li><a class="saas-footer__link" href="#">Power BI Integration</a></li>
+                            <li><a class="saas-footer__link" href="{{ url_for('data_sources_ccc_api') }}">API Connections</a></li>
+                            <li><a class="saas-footer__link" href="{{ url_for('dashboard') }}">Excel Pipelines</a></li>
+                            <li><a class="saas-footer__link" href="#">IoT Data Streams</a></li>
+                        </ul>
+                    </div>
+                    <div class="saas-footer__link-col">
+                        <h3 class="saas-footer__heading">Governance</h3>
+                        <ul class="saas-footer__links list-unstyled mb-0">
+                            <li><a class="saas-footer__link" href="{{ url_for('owner_analytics') }}">Audit Logs</a></li>
+                            <li><a class="saas-footer__link" href="#">Evidence Management</a></li>
+                            <li><a class="saas-footer__link" href="{{ url_for('governance_double_counting_check') }}">Validation Rules</a></li>
+                            <li><a class="saas-footer__link" href="{{ url_for('admin_users') }}">Access Control</a></li>
+                        </ul>
+                    </div>
+                    <div class="saas-footer__link-col">
+                        <h3 class="saas-footer__heading">Legal</h3>
+                        <ul class="saas-footer__links list-unstyled mb-0">
+                            <li><a class="saas-footer__link" href="{{ url_for('legal_privacy') }}">Privacy Policy</a></li>
+                            <li><a class="saas-footer__link" href="{{ url_for('legal_terms') }}">Terms of Service</a></li>
+                            <li><a class="saas-footer__link" href="{{ url_for('legal_cookies') }}">Cookie Policy</a></li>
+                        </ul>
+                    </div>
                 </div>
-                <div class="d-flex justify-content-center align-items-center gap-3 saas-footer-social" role="navigation" aria-label="Social links">
-                    <a href="https://www.linkedin.com/company/cts-vdc-services/" target="_blank" rel="noopener noreferrer" class="text-decoration-none" aria-label="LinkedIn" style="line-height:0;">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
-                    </a>
-                    <a href="https://www.instagram.com/cts__group/" target="_blank" rel="noopener noreferrer" class="text-decoration-none" aria-label="Instagram" style="line-height:0;">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
-                    </a>
-                    <a href="https://cts-group.co/" target="_blank" rel="noopener noreferrer" class="text-decoration-none" aria-label="Website" style="line-height:0;">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                    </a>
-                </div>
-                <small>&copy; 2026 CTS Group Carbon Platform</small>
             </div>
-            <div class="saas-footer__row saas-footer__row--secondary small">
-                <p class="mb-0">We do Data Centers. Faster. Better. Cheaper.</p>
-                <p class="mb-0"><a href="mailto:sustainability@cts-nordics.com">sustainability@cts-nordics.com</a></p>
-                <p class="mb-0">The Water Marque Building, Ringsend road, Dublin 4, Dublin, Ireland</p>
+        </div>
+        <div class="saas-footer__bottom">
+            <div class="container py-3">
+                <div class="saas-footer__bottom-inner">
+                    <div class="saas-footer__bottom-meta small">
+                        <span class="saas-footer__copy">&copy; 2026 CTS Group Carbon Platform</span>
+                        <span class="saas-footer__muted" aria-hidden="true">·</span>
+                        <a class="saas-footer__bottom-email" href="mailto:sustainability@cts-nordics.com">sustainability@cts-nordics.com</a>
+                    </div>
+                    <div class="d-flex flex-shrink-0 justify-content-center align-items-center gap-3 saas-footer-social" role="navigation" aria-label="Social links">
+                        <a href="https://www.linkedin.com/company/cts-vdc-services/" target="_blank" rel="noopener noreferrer" class="saas-footer__social-icon text-decoration-none" aria-label="LinkedIn">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+                        </a>
+                        <a href="https://www.instagram.com/cts__group/" target="_blank" rel="noopener noreferrer" class="saas-footer__social-icon text-decoration-none" aria-label="Instagram">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+                        </a>
+                        <a href="https://cts-group.co/" target="_blank" rel="noopener noreferrer" class="saas-footer__social-icon text-decoration-none" aria-label="Website">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                        </a>
+                    </div>
+                </div>
+                <p class="saas-footer__tagline small text-center text-lg-start mb-2 mb-lg-0">We do Data Centers. Faster. Better. Cheaper.</p>
+                <p class="saas-footer__address small text-center text-lg-start mb-0">The Water Marque Building, Ringsend road, Dublin 4, Dublin, Ireland</p>
             </div>
         </div>
     </footer>

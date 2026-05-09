@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}Privacy Policy — CTS Carbon Platform{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/legal_pages.css') }}">
+{% endblock %}
+
+{% block content %}
+<article class="page-legal">
+  <div class="container">
+    <div class="page-legal__inner">
+      <h1 class="page-legal__title">Privacy Policy</h1>
+      <p class="page-legal__meta"><strong>Effective date:</strong> 9 May 2026. This policy describes how CTS-VDC Services, operating within the CTS Group context (“we”, “us”), handles personal information in connection with the CTS Carbon Platform (“Platform”). It is provided for transparency and internal governance; it does not constitute legal advice.</p>
+
+      <p class="page-legal__intro">The Platform supports sustainability data workflows, including carbon accounting, ESG-related reporting preparation, audit-oriented outputs, evidence and file handling associated with authorised users, analytics, and integration touchpoints with enterprise systems. This policy is written for a professional, enterprise audience.</p>
+
+      <section id="scope" aria-labelledby="privacy-scope">
+        <h2 id="privacy-scope">1. Scope</h2>
+        <p>This policy applies to personal information processed when you visit public areas of the Platform, request access, create or use an account, upload or link data (including evidence and attachments where enabled), use analytics or integration features, or otherwise interact with the Platform as permitted by your organisation and your account role.</p>
+      </section>
+
+      <section aria-labelledby="privacy-roles">
+        <h2 id="privacy-roles">2. Roles and responsibility</h2>
+        <p>Depending on your organisation’s deployment and agreements, your employer or contracting entity may be the primary controller for certain datasets, while we act as a processor or service operator for the Platform as configured. Where we determine purposes and means for specific processing (for example, access-request handling), we act as a controller for that limited processing. Contractual arrangements with customers govern details where they exist.</p>
+      </section>
+
+      <section aria-labelledby="privacy-data">
+        <h2 id="privacy-data">3. Categories of information we may process</h2>
+        <p>We may process the following types of information, as applicable:</p>
+        <ul>
+          <li><strong>Account and profile data:</strong> identifiers such as name, work email, organisation or company affiliation, role or title, and credentials used for authentication.</li>
+          <li><strong>Usage and security data:</strong> technical logs, device and browser type, approximate location derived from network information where available, session identifiers, and similar metadata needed to operate and secure the service.</li>
+          <li><strong>Operational and sustainability content:</strong> data you or your organisation submits through workflows supported by the Platform—for example, activity data for emissions calculations, procurement or travel records where used, supporting documentation or evidence files, and outputs generated for reporting or internal review.</li>
+          <li><strong>Communications:</strong> messages you send to us (for example, via a designated contact channel) regarding access, support, or contractual matters.</li>
+        </ul>
+      </section>
+
+      <section aria-labelledby="privacy-purposes">
+        <h2 id="privacy-purposes">4. Purposes of processing</h2>
+        <p>We process personal information to provide and maintain the Platform; authenticate users and enforce role-based access; support sustainability, ESG, and audit-readiness workflows authorised by your organisation; operate analytics and integrations where enabled; detect and respond to misuse or security incidents; comply with law where applicable; and communicate about operational or contractual matters.</p>
+      </section>
+
+      <section aria-labelledby="privacy-sharing">
+        <h2 id="privacy-sharing">5. Sharing and sub-processors</h2>
+        <p>We do not sell personal information. We may share information with service providers that host infrastructure, provide security monitoring, or deliver narrowly scoped functions on our instructions, subject to confidentiality and security expectations. We may also disclose information if required by law or to protect rights, safety, or the integrity of the Platform.</p>
+      </section>
+
+      <section aria-labelledby="privacy-retention">
+        <h2 id="privacy-retention">6. Retention</h2>
+        <p>We retain information for as long as necessary to fulfil the purposes in this policy, meet contractual or legal obligations, and resolve disputes. Retention periods may depend on your organisation’s configuration, regulatory context, and the nature of uploaded content (for example, evidence tied to reporting periods).</p>
+      </section>
+
+      <section aria-labelledby="privacy-security">
+        <h2 id="privacy-security">7. Security</h2>
+        <p>We implement administrative, technical, and organisational measures appropriate to the nature of the Platform and the sensitivity of data handled. No method of transmission or storage is completely secure; we encourage customers to apply least-privilege access, strong authentication practices, and internal data-handling policies aligned with their regulatory context.</p>
+      </section>
+
+      <section aria-labelledby="privacy-rights">
+        <h2 id="privacy-rights">8. Your choices and rights</h2>
+        <p>Depending on applicable law, you may have rights to access, rectify, delete, restrict, or object to certain processing, or to lodge a complaint with a supervisory authority. To exercise rights, contact us using the details below. We may need to verify your identity and consider overlapping obligations to your organisation.</p>
+      </section>
+
+      <section aria-labelledby="privacy-international">
+        <h2 id="privacy-international">9. International transfers</h2>
+        <p>Where data is accessed from or stored in jurisdictions other than your own, appropriate safeguards (such as contractual clauses adopted by your organisation) may apply. Details are often set out in customer agreements.</p>
+      </section>
+
+      <section aria-labelledby="privacy-changes">
+        <h2 id="privacy-changes">10. Changes</h2>
+        <p>We may update this policy from time to time. The effective date at the top will be revised when material changes are made. Continued use of the Platform after updates may constitute notice where permitted by law and contract.</p>
+      </section>
+
+      <section aria-labelledby="privacy-contact">
+        <h2 id="privacy-contact">11. Contact</h2>
+        <p>For privacy-related requests concerning the CTS Carbon Platform, contact <a href="mailto:sustainability@cts-nordics.com">sustainability@cts-nordics.com</a>. CTS-VDC Services operates within the broader CTS Group ecosystem described on public corporate channels.</p>
+      </section>
+    </div>
+  </div>
+</article>
+{% endblock %}

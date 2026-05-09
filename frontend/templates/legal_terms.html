@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Terms of Service — CTS Carbon Platform{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/legal_pages.css') }}">
+{% endblock %}
+
+{% block content %}
+<article class="page-legal">
+  <div class="container">
+    <div class="page-legal__inner">
+      <h1 class="page-legal__title">Terms of Service</h1>
+      <p class="page-legal__meta"><strong>Effective date:</strong> 9 May 2026. These Terms govern access to and use of the CTS Carbon Platform (“Platform”) offered by CTS-VDC Services in connection with CTS Group sustainability operations, unless superseded by a separate written agreement between your organisation and us.</p>
+
+      <p class="page-legal__intro">The Platform is an enterprise tool for sustainability data management, carbon and ESG-oriented workflows, analytics, and related integrations. By accessing or using the Platform, you agree to these Terms on behalf of yourself and, where applicable, the organisation you represent.</p>
+
+      <section aria-labelledby="terms-accept">
+        <h2 id="terms-accept">1. Acceptance</h2>
+        <p>If you do not agree to these Terms, do not use the Platform. We may refuse service or suspend access for violations or security concerns.</p>
+      </section>
+
+      <section aria-labelledby="terms-service">
+        <h2 id="terms-service">2. The service</h2>
+        <p>The Platform provides software features for authorised users to load, structure, analyse, and report sustainability-related data; generate outputs intended to support internal review and external reporting preparation; manage evidence or attachments where enabled; and use analytics and integration pathways as configured for your organisation. Features may vary by role, environment, and contract.</p>
+      </section>
+
+      <section aria-labelledby="terms-accounts">
+        <h2 id="terms-accounts">3. Accounts and access</h2>
+        <p>Access may be limited to approved organisations and user roles. You are responsible for safeguarding credentials and for activity under your account. You must provide accurate registration information and notify your administrator or us promptly of unauthorised use.</p>
+      </section>
+
+      <section aria-labelledby="terms-content">
+        <h2 id="terms-content">4. Customer data and responsibilities</h2>
+        <p>Your organisation retains responsibility for the accuracy, legality, and appropriateness of data submitted to the Platform, including personal data contained in operational datasets or evidence. You warrant that you have the rights and authority needed to upload or connect such data and that processing aligns with your internal policies and applicable law.</p>
+      </section>
+
+      <section aria-labelledby="terms-evidence">
+        <h2 id="terms-evidence">5. Evidence, uploads, and audit materials</h2>
+        <p>Features that accept files or evidence are provided to support documentation workflows. You should classify and label content appropriately, avoid uploading unnecessary sensitive data, and follow your organisation’s retention and confidentiality rules. We do not guarantee that any particular output will satisfy a third-party audit or regulator without independent verification.</p>
+      </section>
+
+      <section aria-labelledby="terms-integrations">
+        <h2 id="terms-integrations">6. Integrations and analytics</h2>
+        <p>Optional integrations (for example, connections to other systems or export formats) depend on technical configuration and third-party services your organisation enables. You are responsible for the data shared through those channels and for complying with the terms of connected systems.</p>
+      </section>
+
+      <section aria-labelledby="terms-acceptable">
+        <h2 id="terms-acceptable">7. Acceptable use</h2>
+        <p>You must not misuse the Platform, including attempting unauthorised access, introducing malware, probing vulnerabilities beyond authorised testing, circumventing access controls, or using the service in violation of law or export restrictions. We may investigate and cooperate with authorities where required.</p>
+      </section>
+
+      <section aria-labelledby="terms-disclaimer">
+        <h2 id="terms-disclaimer">8. Disclaimers</h2>
+        <p>The Platform is provided on an “as is” and “as available” basis to the extent permitted by law. We disclaim implied warranties of merchantability, fitness for a particular purpose, and non-infringement except where such disclaimers are not legally enforceable.</p>
+      </section>
+
+      <section aria-labelledby="terms-liability">
+        <h2 id="terms-liability">9. Limitation of liability</h2>
+        <p>To the maximum extent permitted by applicable law, neither CTS-VDC Services nor CTS Group entities will be liable for indirect, incidental, special, consequential, or punitive damages, or for loss of profits, data, or goodwill, arising from use of the Platform. Aggregate liability for direct damages may be limited as set out in an overriding customer agreement; where no such agreement exists, liability is limited to the fees paid for the Platform in the twelve months preceding the claim, or fifty euros, whichever is greater.</p>
+      </section>
+
+      <section aria-labelledby="terms-changes">
+        <h2 id="terms-changes">10. Changes</h2>
+        <p>We may modify these Terms by posting an updated version with a new effective date. Material changes may require additional notice under your organisation’s contract. Continued use may constitute acceptance where permitted.</p>
+      </section>
+
+      <section aria-labelledby="terms-contact">
+        <h2 id="terms-contact">11. Contact</h2>
+        <p>Questions about these Terms: <a href="mailto:sustainability@cts-nordics.com">sustainability@cts-nordics.com</a>.</p>
+      </section>
+    </div>
+  </div>
+</article>
+{% endblock %}
