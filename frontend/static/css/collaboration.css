@@ -198,6 +198,11 @@
   transform: translate(35%, -35%);
 }
 
+/* Launcher unread count: same pill as navbar; ring matches chat chrome (light/dark) */
+.chat-widget__collapsed-main > .notification-badge {
+  box-shadow: 0 0 0 2px var(--chat-card-bg);
+}
+
 .collab-dropdown-panel {
   width: min(24rem, calc(100vw - 2rem));
   padding: 0;
