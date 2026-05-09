@@ -157,10 +157,15 @@
   font-size: 0.72rem;
   font-weight: 700;
   line-height: 1;
+  letter-spacing: 0;
   box-shadow: 0 0 0 2px var(--surface-elevated, #fff);
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
-.collab-icon-button--notification .collab-badge {
+/* Navbar bell + messaging launcher: same pill (size, alignment, blue tone) */
+.collab-icon-button--notification .collab-badge,
+.collab-badge.notification-badge {
   top: 0;
   right: 0;
   min-width: 18px;
@@ -168,8 +173,17 @@
   padding: 0 5px;
   border-radius: 999px;
   font-size: 10px;
-  z-index: 3;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  letter-spacing: 0;
+  z-index: 5;
   transform: translate(35%, -35%);
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .collab-notification {
@@ -181,25 +195,8 @@
   overflow: visible;
 }
 
-.notification-badge {
-  position: absolute;
-  top: 0;
-  right: 0;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 999px;
-  font-size: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  white-space: nowrap;
-  z-index: 5;
-  transform: translate(35%, -35%);
-}
-
-/* Launcher unread count: same pill as navbar; ring matches chat chrome (light/dark) */
-.chat-widget__collapsed-main > .notification-badge {
+/* Messaging launcher: ring matches chat chrome (navbar uses default surface ring via .collab-badge) */
+.chat-widget__collapsed-main > .chat-widget__launcher-unread-badge {
   box-shadow: 0 0 0 2px var(--chat-card-bg);
 }
 
@@ -318,7 +315,7 @@
   align-items: stretch;
   border-bottom: 0;
   border-radius: 12px 12px 0 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .chat-widget__collapsed-main {
@@ -333,6 +330,7 @@
   background: transparent;
   color: inherit;
   text-align: left;
+  overflow: visible;
 }
 
 .chat-widget__collapsed-main strong,
