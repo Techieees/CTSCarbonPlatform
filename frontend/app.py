@@ -1719,6 +1719,33 @@ class MappingReviewSnapshot(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
+class MappingPreviewArchive(db.Model):
+    """
+    Persisted mapped dataframe preview for audit/reopen after navigation or restart.
+    Row-level data lives on disk (JSONL); DB holds metadata and bundle path only.
+    """
+
+    __tablename__ = "mapping_preview_archive"
+    __table_args__ = (
+        db.Index("ix_mpa_run_id", "run_id"),
+        db.Index("ix_mpa_user_created", "user_id", "created_at"),
+        db.Index("ix_mpa_company_sheet", "company_name", "sheet_name"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    run_id = db.Column(db.String(32), db.ForeignKey("mapping_run.id"), unique=True, nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    company_name = db.Column(db.String(200), nullable=False)
+    sheet_name = db.Column(db.String(200), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    mapped_row_count = db.Column(db.Integer, nullable=False, default=0)
+    unmapped_row_count = db.Column(db.Integer, nullable=False, default=0)
+    totals_summary_json = db.Column(db.Text, nullable=True)
+    mapped_excel_path = db.Column(db.String(900), nullable=True)
+    preview_bundle_rel = db.Column(db.String(500), nullable=False)
+    data_row_count = db.Column(db.Integer, nullable=False, default=0)
+
+
 class DataEntry(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     company_name = db.Column(db.String(200), nullable=False)
@@ -2563,6 +2590,7 @@ def _ensure_db_tables() -> None:
         _ensure_mapping_unmapped_perf_indexes()
         _ensure_mapping_review_snapshot_columns()
         _ensure_mapping_review_snapshot_perf_indexes()
+        _ensure_mapping_preview_archive_indexes()
         _ensure_evidence_tables_columns()
         _ensure_governance_register_columns()
         _ensure_notification_meta_json_column()
@@ -3904,6 +3932,7 @@ def _run_mapping_for_virtual_sheet(user_id: int, company_name: str, sheet_name: 
     except Exception:
         db.session.rollback()
 
+    unmapped_count_vs = 0
     try:
         _upsert_mapping_run_summary(
             run_id=run_id,
@@ -3912,16 +3941,20 @@ def _run_mapping_for_virtual_sheet(user_id: int, company_name: str, sheet_name: 
             mapped_df=mapped_df,
             output_path=out_path,
         )
-        _sync_unmapped_rows_for_mapping_run(
-            run_id=run_id,
-            user_id=int(user_id),
-            company_name=company_name,
-            sheet_name=sheet_name,
-            source_entry_group="averages",
-            mapped_df=mapped_df,
+        unmapped_count_vs = int(
+            _sync_unmapped_rows_for_mapping_run(
+                run_id=run_id,
+                user_id=int(user_id),
+                company_name=company_name,
+                sheet_name=sheet_name,
+                source_entry_group="averages",
+                mapped_df=mapped_df,
+            )
+            or 0
         )
         db.session.commit()
     except Exception:
+        unmapped_count_vs = 0
         db.session.rollback()
 
     try:
@@ -3935,6 +3968,17 @@ def _run_mapping_for_virtual_sheet(user_id: int, company_name: str, sheet_name: 
     except Exception as exc:
         db.session.rollback()
         print(f"[MAPPING_REVIEW] snapshot_error pipeline=virtual_sheet run={run_id} exc={exc!r}")
+
+    _try_persist_mapping_preview_archive(
+        run_id=run_id,
+        user_id=int(user_id),
+        company_name=company_name,
+        sheet_name=sheet_name,
+        mapped_df=mapped_df,
+        mapped_excel_path=str(out_path) if out_path else None,
+        unmapped_row_count=unmapped_count_vs,
+        source_entry_group="averages",
+    )
 
     return {
         "ok": True,
@@ -4973,6 +5017,37 @@ def _ensure_mapping_review_snapshot_perf_indexes() -> None:
         if "ix_mrs_reviewed_at" not in names:
             stmts.append(
                 "CREATE INDEX IF NOT EXISTS ix_mrs_reviewed_at ON mapping_review_snapshot (reviewed_at)"
+            )
+        if not stmts:
+            return
+        with db.engine.begin() as conn:
+            for stmt in stmts:
+                conn.execute(text(stmt))
+    except Exception:
+        pass
+
+
+def _ensure_mapping_preview_archive_indexes() -> None:
+    """SQLite: indexes for mapping preview history filters."""
+    try:
+        from sqlalchemy import inspect, text
+
+        inspector = inspect(db.engine)
+        if not inspector.has_table("mapping_preview_archive"):
+            return
+        names = {str(idx.get("name") or "") for idx in inspector.get_indexes("mapping_preview_archive")}
+        stmts: list[str] = []
+        if "ix_mpa_run_id" not in names:
+            stmts.append(
+                "CREATE INDEX IF NOT EXISTS ix_mpa_run_id ON mapping_preview_archive (run_id)"
+            )
+        if "ix_mpa_user_created" not in names:
+            stmts.append(
+                "CREATE INDEX IF NOT EXISTS ix_mpa_user_created ON mapping_preview_archive (user_id, created_at)"
+            )
+        if "ix_mpa_company_sheet" not in names:
+            stmts.append(
+                "CREATE INDEX IF NOT EXISTS ix_mpa_company_sheet ON mapping_preview_archive (company_name, sheet_name)"
             )
         if not stmts:
             return
@@ -7396,6 +7471,10 @@ def _mapping_review_quality_badges(row: MappingReviewSnapshot) -> dict[str, obje
 MAPPING_REVIEW_ALLOWED_STATUSES: frozenset[str] = frozenset({"Pending", "Approved", "Rejected", "Needs Review"})
 MAPPING_REVIEW_NOTES_MAX_LEN = 4000
 MAPPING_REVIEW_PAGE_SIZE_MAX = 100
+MAPPING_PREVIEW_PAGE_SIZE_MAX = 100
+MAPPING_PREVIEW_MAX_FILTER_SCAN_LINES = 250_000
+MAPPING_PREVIEW_ANALYTICS_MAX_ROWS = 60000
+MAPPING_PREVIEW_ANALYTICS_CHART_POINT_CAP = 36
 
 
 def _mapping_review_company_scope_values_for_user() -> list[str]:
@@ -7578,6 +7657,636 @@ def _mapping_review_base_query():
     conds: list = [MappingReviewSnapshot.company_name.in_(vals)]
     conds.extend([lc == lv for lv in lowered])
     return q.filter(or_(*conds))
+
+
+def _mapping_preview_bundle_abs(run_id: str) -> Path:
+    rid = os.path.basename(str(run_id or "").strip())
+    return INSTANCE_DIR / "mapping_previews" / rid
+
+
+def _mapping_preview_write_bundle(run_id: str, mapped_df: pd.DataFrame) -> tuple[str, int, list[str]]:
+    if mapped_df is None or getattr(mapped_df, "empty", False):
+        raise ValueError("empty mapped dataframe")
+    cols = [str(c) for c in mapped_df.columns]
+    root = _mapping_preview_bundle_abs(run_id)
+    if root.exists():
+        shutil.rmtree(root, ignore_errors=True)
+    root.mkdir(parents=True, exist_ok=True)
+    rows_path = root / "rows.jsonl"
+    offsets: list[int] = []
+    with open(rows_path, "wb") as rf:
+        for i in range(len(mapped_df)):
+            pos = rf.tell()
+            offsets.append(int(pos))
+            row = mapped_df.iloc[i]
+            rec = {c: _json_safe_value(row[c]) for c in cols}
+            rf.write((json.dumps(rec, ensure_ascii=True, default=str) + "\n").encode("utf-8"))
+    with open(root / "columns.json", "w", encoding="utf-8") as cf:
+        json.dump(cols, cf, ensure_ascii=True)
+    with open(root / "row_offsets.json", "w", encoding="utf-8") as jf:
+        json.dump(offsets, jf, ensure_ascii=True)
+    rel = f"mapping_previews/{(run_id or '').strip()}"
+    return rel, len(offsets), cols
+
+
+def _mapping_preview_load_offsets(bundle_abs: Path) -> list[int]:
+    p = bundle_abs / "row_offsets.json"
+    if not p.is_file():
+        return []
+    try:
+        raw = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    if not isinstance(raw, list):
+        return []
+    out: list[int] = []
+    for item in raw:
+        try:
+            out.append(int(item))
+        except Exception:
+            continue
+    return out
+
+
+def _mapping_preview_read_rows_at_indices(bundle_abs: Path, offsets: list[int], indices: list[int]) -> list[dict[str, object]]:
+    rows_path = bundle_abs / "rows.jsonl"
+    if not rows_path.is_file() or not offsets:
+        return []
+    out: list[dict[str, object]] = []
+    with open(rows_path, "rb") as rf:
+        for idx in indices:
+            if idx < 0 or idx >= len(offsets):
+                continue
+            rf.seek(offsets[idx])
+            line = rf.readline()
+            if not line:
+                continue
+            try:
+                out.append(json.loads(line.decode("utf-8")))
+            except Exception:
+                continue
+    return out
+
+
+def _mapping_preview_filter_row_indices(bundle_abs: Path, q: str) -> tuple[list[int], bool]:
+    qn = (q or "").strip().lower()
+    if not qn:
+        return [], False
+    rows_path = bundle_abs / "rows.jsonl"
+    if not rows_path.is_file():
+        return [], False
+    hits: list[int] = []
+    capped = False
+    with open(rows_path, "rb") as rf:
+        for idx, line in enumerate(rf):
+            if idx >= MAPPING_PREVIEW_MAX_FILTER_SCAN_LINES:
+                capped = True
+                break
+            try:
+                obj = json.loads(line.decode("utf-8"))
+            except Exception:
+                continue
+            if not isinstance(obj, dict):
+                continue
+            blob = " ".join(str(v).lower() for v in obj.values())
+            if qn in blob:
+                hits.append(idx)
+    return hits, capped
+
+
+def _mapping_preview_sheet_is_water_tracker(sheet_name: str) -> bool:
+    s = (sheet_name or "").strip().lower()
+    return s.startswith("water tracker") or "water tracker" in s
+
+
+def _mapping_preview_water_hidden_column(col_name: str) -> bool:
+    c = (col_name or "").strip().lower().replace("_", " ")
+    if not c:
+        return False
+    needles = (
+        "ef id",
+        "ef_id",
+        "ef name",
+        "ef_name",
+        "ef unit",
+        "ef_unit",
+        "ef value",
+        "ef_value",
+        "ef source",
+        "mapped ef",
+        "match method",
+        "match_method",
+        "mapping status",
+        "mapping_status",
+        "emissions tco2e",
+        "emissions_tco2e",
+        "emissions kg",
+        "emissions_kg",
+        "kg co2e",
+        "confidence score",
+        "confidence_score",
+        "anomaly",
+        "mapped_by",
+        "mapping confidence",
+    )
+    return any(n in c for n in needles)
+
+
+def _mapping_preview_display_columns_for_sheet(sheet_name: str, columns: list[str]) -> list[str]:
+    cols = [str(x) for x in (columns or []) if str(x).strip()]
+    if _mapping_preview_sheet_is_water_tracker(sheet_name):
+        return [c for c in cols if not _mapping_preview_water_hidden_column(c)]
+    return cols
+
+
+def _mapping_preview_analytics_profile(sheet_name: str) -> str:
+    s = (sheet_name or "").strip().lower()
+    if _mapping_preview_sheet_is_water_tracker(sheet_name):
+        return "water_tracker"
+    if "business travel" in s:
+        return "business_travel"
+    if "scope 1" in s and "fuel" in s:
+        return "scope1_fuel"
+    if "scope 3" in s and "category 1" in s:
+        return "scope3_cat1"
+    return "generic_emissions"
+
+
+def _mapping_preview_load_jsonl_rows_capped(bundle_abs: Path, max_rows: int) -> list[dict[str, object]]:
+    rows_path = bundle_abs / "rows.jsonl"
+    out: list[dict[str, object]] = []
+    if not rows_path.is_file() or max_rows <= 0:
+        return out
+    with open(rows_path, "rb") as rf:
+        for i, line in enumerate(rf):
+            if i >= max_rows:
+                break
+            try:
+                obj = json.loads(line.decode("utf-8"))
+            except Exception:
+                continue
+            if isinstance(obj, dict):
+                out.append(obj)
+    return out
+
+
+def _mp_pick_first_matching_column(columns: list[str], keywords: tuple[str, ...]) -> str | None:
+    for kw in keywords:
+        kl = kw.lower()
+        for c in columns:
+            if kl in str(c).lower():
+                return str(c)
+    return None
+
+
+def _mapping_preview_find_emissions_column(columns: list[str]) -> str | None:
+    best: tuple[int, str] | None = None
+    for c in columns:
+        cl = str(c).lower()
+        score = 0
+        if "emissions" in cl and ("tco2e" in cl or "tco2" in cl):
+            score += 10
+        elif "emissions" in cl and "kg" in cl:
+            score += 8
+        elif cl.strip() in {"emissions tco2e", "emissions_tco2e"}:
+            score += 10
+        elif "emissions" in cl:
+            score += 4
+        if score > 0:
+            cur = (score, str(c))
+            if best is None or cur[0] > best[0]:
+                best = cur
+    return best[1] if best else None
+
+
+def _mp_aggregate_sum_by_key(
+    rows: list[dict[str, object]],
+    key_col: str | None,
+    val_col: str | None,
+    *,
+    top_n: int | None = 14,
+) -> tuple[list[str], list[float]]:
+    if not key_col or not val_col:
+        return [], []
+    sums: defaultdict[str, float] = defaultdict(float)
+    for r in rows:
+        k = str(r.get(key_col) or "").strip() or "(blank)"
+        sums[k] += float(_safe_float(r.get(val_col)))
+    items = sorted(sums.items(), key=lambda x: (-x[1], x[0]))
+    if top_n is not None:
+        items = items[:top_n]
+    labels = [a for a, _ in items]
+    values = [float(b) for _, b in items]
+    return labels, values
+
+
+def _mp_water_usage_column(columns: list[str]) -> str | None:
+    scored: list[tuple[int, str]] = []
+    for c in columns:
+        cl = str(c).lower()
+        score = 0
+        for kw, w in (
+            ("consumption", 5),
+            ("volume", 5),
+            ("withdrawn", 6),
+            ("usage", 4),
+            ("water", 3),
+            ("m³", 7),
+            ("m3", 6),
+            ("cubic", 4),
+            ("quantity", 2),
+        ):
+            if kw in cl:
+                score += w
+        if "emission" in cl or "tco2" in cl:
+            score -= 12
+        if score > 0:
+            scored.append((score, str(c)))
+    if not scored:
+        return None
+    scored.sort(reverse=True)
+    return scored[0][1]
+
+
+def _mp_water_analytics(
+    columns: list[str], rows: list[dict[str, object]]
+) -> tuple[list[dict[str, object]], dict[str, object]]:
+    charts: list[dict[str, object]] = []
+    usage_col = _mp_water_usage_column(columns)
+    period_col = _mp_pick_first_matching_column(
+        columns,
+        ("reporting period", "reporting month", "period", "invoice period", "month year", "year", "date"),
+    )
+    site_col = _mp_pick_first_matching_column(
+        columns,
+        ("site tag", "site", "location", "facility", "plant", "building"),
+    )
+    unit_col = _mp_pick_first_matching_column(columns, ("unit", "uom", "water unit", "volume unit"))
+    unit_hint = ""
+    if unit_col:
+        ctr: Counter[str] = Counter()
+        for r in rows:
+            u = str(r.get(unit_col) or "").strip()
+            if u:
+                ctr[u] += 1
+        if ctr:
+            unit_hint = ctr.most_common(1)[0][0]
+    total_usage = sum(float(_safe_float(r.get(usage_col))) for r in rows) if usage_col else 0.0
+    suffix = f" {unit_hint}".rstrip() if unit_hint else ""
+
+    if usage_col and period_col:
+        labs, vals = _mp_aggregate_sum_by_key(rows, period_col, usage_col, top_n=None)
+        pairs = sorted(zip(labs, vals), key=lambda x: str(x[0]))
+        labs = [p[0] for p in pairs][-MAPPING_PREVIEW_ANALYTICS_CHART_POINT_CAP :]
+        vals = [p[1] for p in pairs][-MAPPING_PREVIEW_ANALYTICS_CHART_POINT_CAP :]
+        charts.append(
+            {
+                "renderer": "trend",
+                "title": "Water usage by period",
+                "subtitle": "Totals from uploaded usage values (snapshot sample)",
+                "labels": labs,
+                "values": vals,
+                "series_name": f"Water usage{suffix or ' (uploaded units)'}",
+                "tooltip_suffix": suffix if unit_hint else "",
+            }
+        )
+    elif usage_col:
+        charts.append(
+            {
+                "renderer": "bar",
+                "horizontal": False,
+                "title": "Total water usage (sample)",
+                "labels": ["Total"],
+                "values": [total_usage],
+                "series_name": f"Water usage{suffix or ''}",
+                "tooltip_suffix": suffix if unit_hint else "",
+            }
+        )
+
+    if usage_col and site_col:
+        lab2, val2 = _mp_aggregate_sum_by_key(rows, site_col, usage_col, top_n=15)
+        if lab2:
+            charts.append(
+                {
+                    "renderer": "bar",
+                    "horizontal": True,
+                    "title": "Water usage by site / location",
+                    "labels": lab2,
+                    "values": val2,
+                    "series_name": f"Water usage{suffix or ''}",
+                    "tooltip_suffix": suffix if unit_hint else "",
+                }
+            )
+
+    summary = {
+        "total_usage_sampled": round(total_usage, 6),
+        "unit_hint": unit_hint,
+        "usage_column": usage_col or "",
+        "period_column": period_col or "",
+        "site_column": site_col or "",
+    }
+    return charts[:2], summary
+
+
+def _mp_scope1_fuel_analytics(columns: list[str], rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    em_col = _mapping_preview_find_emissions_column(columns)
+    veh_col = _mp_pick_first_matching_column(
+        columns,
+        ("vehicle type", "vehicle category", "equipment type", "fuel type", "fuel", "vehicle"),
+    )
+    country_col = _mp_pick_first_matching_column(columns, ("country",))
+    spend_col = _mp_pick_first_matching_column(columns, ("spend_euro", "spend euro", "spend", "amount"))
+    out: list[dict[str, object]] = []
+    if em_col and veh_col:
+        lab, val = _mp_aggregate_sum_by_key(rows, veh_col, em_col, top_n=15)
+        if lab:
+            out.append(
+                {
+                    "renderer": "bar",
+                    "horizontal": True,
+                    "title": "Emissions by vehicle / fuel type",
+                    "labels": lab,
+                    "values": val,
+                    "series_name": "Emissions (reported)",
+                    "tooltip_suffix": "",
+                }
+            )
+    if em_col and country_col:
+        lab2, val2 = _mp_aggregate_sum_by_key(rows, country_col, em_col, top_n=15)
+        if lab2:
+            out.append(
+                {
+                    "renderer": "bar",
+                    "horizontal": True,
+                    "title": "Emissions by country",
+                    "labels": lab2,
+                    "values": val2,
+                    "series_name": "Emissions (reported)",
+                    "tooltip_suffix": "",
+                }
+            )
+    if spend_col and len(out) < 2:
+        dim = veh_col or country_col
+        if dim:
+            lab3, val3 = _mp_aggregate_sum_by_key(rows, dim, spend_col, top_n=15)
+            if lab3:
+                stitle = "Spend by vehicle / fuel type" if dim == veh_col else "Spend by country"
+                out.append(
+                    {
+                        "renderer": "bar",
+                        "horizontal": True,
+                        "title": stitle,
+                        "labels": lab3,
+                        "values": val3,
+                        "series_name": "Spend (reported)",
+                        "tooltip_suffix": "",
+                    }
+                )
+    return out[:2]
+
+
+def _mp_scope3_cat1_analytics(columns: list[str], rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    em_col = _mapping_preview_find_emissions_column(columns)
+    sup_col = _mp_pick_first_matching_column(columns, ("supplier", "vendor"))
+    spend_col = _mp_pick_first_matching_column(columns, ("spend_euro", "spend euro", "spend", "amount"))
+    cat_col = _mp_pick_first_matching_column(columns, ("spend category", "category", "purchased goods"))
+    out: list[dict[str, object]] = []
+    if spend_col and sup_col:
+        lab, val = _mp_aggregate_sum_by_key(rows, sup_col, spend_col, top_n=15)
+        if lab:
+            out.append(
+                {
+                    "renderer": "bar",
+                    "horizontal": True,
+                    "title": "Spend by supplier",
+                    "labels": lab,
+                    "values": val,
+                    "series_name": "Spend (reported)",
+                    "tooltip_suffix": "",
+                }
+            )
+    if em_col and sup_col:
+        lab2, val2 = _mp_aggregate_sum_by_key(rows, sup_col, em_col, top_n=15)
+        if lab2:
+            out.append(
+                {
+                    "renderer": "bar",
+                    "horizontal": True,
+                    "title": "Top emission contributors (supplier)",
+                    "labels": lab2,
+                    "values": val2,
+                    "series_name": "Emissions (reported)",
+                    "tooltip_suffix": "",
+                }
+            )
+    if len(out) < 2 and spend_col and cat_col:
+        lab3, val3 = _mp_aggregate_sum_by_key(rows, cat_col, spend_col, top_n=15)
+        if lab3:
+            out.append(
+                {
+                    "renderer": "bar",
+                    "horizontal": True,
+                    "title": "Spend by category",
+                    "labels": lab3,
+                    "values": val3,
+                    "series_name": "Spend (reported)",
+                    "tooltip_suffix": "",
+                }
+            )
+    return out[:2]
+
+
+def _mp_business_travel_analytics(columns: list[str], rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    em_col = _mapping_preview_find_emissions_column(columns)
+    mode_col = _mp_pick_first_matching_column(
+        columns,
+        ("travel mode", "mode of travel", "travel type", "class", "flight", "rail", "hotel"),
+    )
+    country_col = _mp_pick_first_matching_column(columns, ("country", "destination"))
+    out: list[dict[str, object]] = []
+    if em_col and mode_col:
+        lab, val = _mp_aggregate_sum_by_key(rows, mode_col, em_col, top_n=15)
+        if lab:
+            out.append(
+                {
+                    "renderer": "bar",
+                    "horizontal": True,
+                    "title": "Emissions by travel type",
+                    "labels": lab,
+                    "values": val,
+                    "series_name": "Emissions (reported)",
+                    "tooltip_suffix": "",
+                }
+            )
+    if em_col and country_col:
+        lab2, val2 = _mp_aggregate_sum_by_key(rows, country_col, em_col, top_n=15)
+        if lab2:
+            out.append(
+                {
+                    "renderer": "bar",
+                    "horizontal": True,
+                    "title": "Emissions by country / destination",
+                    "labels": lab2,
+                    "values": val2,
+                    "series_name": "Emissions (reported)",
+                    "tooltip_suffix": "",
+                }
+            )
+    return out[:2]
+
+
+def _mp_generic_emissions_analytics(columns: list[str], rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    em_col = _mapping_preview_find_emissions_column(columns)
+    if not em_col:
+        return []
+    cat_col = _mp_pick_first_matching_column(
+        columns,
+        ("description", "supplier", "vendor", "activity", "service provided", "product type", "category"),
+    )
+    if not cat_col:
+        return []
+    lab, val = _mp_aggregate_sum_by_key(rows, cat_col, em_col, top_n=15)
+    if not lab:
+        return []
+    return [
+        {
+            "renderer": "bar",
+            "horizontal": True,
+            "title": "Top contributors (auto-detected column)",
+            "subtitle": str(cat_col),
+            "labels": lab,
+            "values": val,
+            "series_name": "Emissions (reported)",
+            "tooltip_suffix": "",
+        }
+    ]
+
+
+def _mapping_preview_build_analytics_payload(
+    sheet_name: str, columns: list[str], rows: list[dict[str, object]]
+) -> dict[str, object]:
+    profile = _mapping_preview_analytics_profile(sheet_name)
+    preview_mode = "water" if profile == "water_tracker" else "emissions"
+    summary: dict[str, object] = {}
+    charts: list[dict[str, object]] = []
+
+    if profile == "water_tracker":
+        charts, summary = _mp_water_analytics(columns, rows)
+    elif profile == "scope1_fuel":
+        charts = _mp_scope1_fuel_analytics(columns, rows)
+    elif profile == "scope3_cat1":
+        charts = _mp_scope3_cat1_analytics(columns, rows)
+    elif profile == "business_travel":
+        charts = _mp_business_travel_analytics(columns, rows)
+    else:
+        charts = _mp_generic_emissions_analytics(columns, rows)
+
+    return {
+        "preview_mode": preview_mode,
+        "analytics_profile": profile,
+        "rows_sampled": len(rows),
+        "rows_cap": MAPPING_PREVIEW_ANALYTICS_MAX_ROWS,
+        "charts": charts[:2],
+        "summary": summary,
+    }
+
+
+def _mapping_preview_base_query():
+    q = MappingPreviewArchive.query
+    if bool(getattr(current_user, "is_admin", False)):
+        return q
+    uid = int(getattr(current_user, "id", 0) or 0)
+    vals = _mapping_review_company_scope_values_for_user()
+    if not vals:
+        return q.filter(MappingPreviewArchive.id.in_([]))
+    lc = func.lower(func.trim(MappingPreviewArchive.company_name))
+    lowered = {str(v).strip().lower() for v in vals if str(v).strip()}
+    conds: list = [
+        MappingPreviewArchive.user_id == uid,
+        MappingPreviewArchive.company_name.in_(vals),
+    ]
+    conds.extend([lc == lv for lv in lowered])
+    return q.filter(or_(*conds))
+
+
+def _mapping_preview_user_can_access_archive(archive: MappingPreviewArchive) -> bool:
+    if archive is None:
+        return False
+    if bool(getattr(current_user, "is_admin", False)):
+        return True
+    if int(archive.user_id or 0) == int(getattr(current_user, "id", 0) or 0):
+        return True
+    return _mapping_review_user_can_access_snapshot_company(archive.company_name)
+
+
+def _persist_mapping_preview_archive(
+    *,
+    run_id: str,
+    user_id: int,
+    company_name: str,
+    sheet_name: str,
+    mapped_df: pd.DataFrame,
+    mapped_excel_path: str | None,
+    unmapped_row_count: int,
+    source_entry_group: str | None = None,
+) -> None:
+    bundle_rel, n_rows, cols = _mapping_preview_write_bundle(run_id, mapped_df)
+    total_tco2e, sheet_rows_count, _ = _sum_tco2e(mapped_df)
+    totals = {
+        "columns": cols,
+        "tco2e_total": float(total_tco2e or 0.0),
+        "sheet_rows_count": int(sheet_rows_count or 0),
+        "dataframe_rows": int(len(mapped_df)),
+        "source_entry_group": str(source_entry_group or "").strip(),
+    }
+    prev = MappingPreviewArchive.query.filter_by(run_id=run_id).first()
+    if prev:
+        db.session.delete(prev)
+        db.session.flush()
+    arch = MappingPreviewArchive(
+        run_id=run_id,
+        user_id=int(user_id),
+        company_name=(company_name or "").strip(),
+        sheet_name=(sheet_name or "").strip(),
+        created_at=datetime.utcnow(),
+        mapped_row_count=int(len(mapped_df)),
+        unmapped_row_count=int(unmapped_row_count or 0),
+        totals_summary_json=json.dumps(totals, ensure_ascii=True, default=str),
+        mapped_excel_path=(str(mapped_excel_path).strip() if mapped_excel_path else None),
+        preview_bundle_rel=bundle_rel,
+        data_row_count=int(n_rows),
+    )
+    db.session.add(arch)
+
+
+def _try_persist_mapping_preview_archive(
+    *,
+    run_id: str,
+    user_id: int,
+    company_name: str,
+    sheet_name: str,
+    mapped_df: pd.DataFrame | None,
+    mapped_excel_path: str | None,
+    unmapped_row_count: int,
+    source_entry_group: str | None = None,
+) -> None:
+    if mapped_df is None or getattr(mapped_df, "empty", False):
+        return
+    try:
+        _persist_mapping_preview_archive(
+            run_id=run_id,
+            user_id=user_id,
+            company_name=company_name,
+            sheet_name=sheet_name,
+            mapped_df=mapped_df,
+            mapped_excel_path=mapped_excel_path,
+            unmapped_row_count=unmapped_row_count,
+            source_entry_group=source_entry_group,
+        )
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        print(f"[MAPPING_PREVIEW] persist_failed run={run_id} exc={exc!r}")
 
 
 def _unmapped_row_preview(row: MappingUnmappedRow) -> dict[str, object]:
@@ -12456,6 +13165,12 @@ def dashboard():
         .limit(10)
         .all()
     )
+    run_ids = [r.id for r in mapping_runs]
+    mapping_preview_run_ids: set[str] = set()
+    if run_ids:
+        mapping_preview_run_ids = {
+            a.run_id for a in MappingPreviewArchive.query.filter(MappingPreviewArchive.run_id.in_(run_ids)).all()
+        }
     t_db_ms = (time.perf_counter() - t_db0) * 1000.0
 
     companies = _list_template_companies_for_user()
@@ -12474,6 +13189,7 @@ def dashboard():
         companies=companies,
         default_company=default_company,
         mapping_runs=mapping_runs,
+        mapping_preview_run_ids=mapping_preview_run_ids,
         total_mapping_runs=total_mapping_runs,
         recent_mapping_runs_count=recent_mapping_runs_count,
         company_logo_rel=company_logo_rel,
@@ -14121,6 +14837,17 @@ def _run_mapping_job(
     except Exception as exc:
         db.session.rollback()
         print(f"[MAPPING_REVIEW] snapshot_error pipeline=run_mapping_job run={run_id} exc={exc!r}")
+
+    _try_persist_mapping_preview_archive(
+        run_id=run_id,
+        user_id=int(user_id),
+        company_name=resolved_company,
+        sheet_name=resolved_sheet,
+        mapped_df=mapped_df,
+        mapped_excel_path=str(out_path) if out_path else None,
+        unmapped_row_count=int(unmapped_count or 0),
+        source_entry_group=entry_group_filter or None,
+    )
 
     if _is_job_cancel_requested(job_id):
         mr.status = "cancelled"
@@ -15906,6 +16633,235 @@ def mapping_review_page():
         "mapping_review.html",
         user=current_user,
         mapping_review_notes_max=MAPPING_REVIEW_NOTES_MAX_LEN,
+    )
+
+
+@app.route("/mapping-previews", methods=["GET"])
+@login_required
+def mapping_previews_page():
+    _ensure_db_tables()
+    archives = (
+        _mapping_preview_base_query()
+        .order_by(desc(MappingPreviewArchive.created_at))
+        .limit(300)
+        .all()
+    )
+    status_by_run: dict[str, str] = {}
+    excel_ok_by_run: dict[str, bool] = {}
+    rids = [a.run_id for a in archives]
+    if rids:
+        for rid, st, op in (
+            db.session.query(MappingRun.id, MappingRun.status, MappingRun.output_path)
+            .filter(MappingRun.id.in_(rids))
+            .all()
+        ):
+            rid_s = str(rid)
+            status_by_run[rid_s] = str(st or "")
+            excel_ok_by_run[rid_s] = bool(op and os.path.exists(str(op)))
+    return render_template(
+        "mapping_previews.html",
+        user=current_user,
+        preview_archives=archives,
+        mapping_run_status_by_id=status_by_run,
+        excel_available_by_run_id=excel_ok_by_run,
+    )
+
+
+@app.route("/mapping-preview/<run_id>", methods=["GET"])
+@login_required
+def mapping_preview_detail(run_id: str):
+    _ensure_db_tables()
+    rid = (run_id or "").strip()
+    arch = MappingPreviewArchive.query.filter_by(run_id=rid).first()
+    if not arch or not _mapping_preview_user_can_access_archive(arch):
+        flash("Preview not found or access denied.")
+        return redirect(url_for("mapping_previews_page"))
+    mr = MappingRun.query.get(rid)
+    preview_excel_available = bool(mr and mr.output_path and os.path.exists(str(mr.output_path)))
+    return render_template(
+        "mapping_preview_detail.html",
+        user=current_user,
+        archive=arch,
+        mapping_run=mr,
+        run_id=rid,
+        mapping_preview_page_size_max=MAPPING_PREVIEW_PAGE_SIZE_MAX,
+        mapping_preview_max_filter_scan_lines=MAPPING_PREVIEW_MAX_FILTER_SCAN_LINES,
+        preview_excel_available=preview_excel_available,
+    )
+
+
+@app.route("/api/mapping-preview/<run_id>/meta", methods=["GET"])
+@login_required
+def api_mapping_preview_meta(run_id: str):
+    _ensure_db_tables()
+    rid = (run_id or "").strip()
+    arch = MappingPreviewArchive.query.filter_by(run_id=rid).first()
+    if not arch or not _mapping_preview_user_can_access_archive(arch):
+        return jsonify({"error": "Not found"}), 404
+    bundle_abs = _mapping_preview_bundle_abs(arch.run_id)
+    columns: list[str] = []
+    cols_path = bundle_abs / "columns.json"
+    if cols_path.is_file():
+        try:
+            loaded = json.loads(cols_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, list):
+                columns = [str(c) for c in loaded]
+        except Exception:
+            columns = []
+    totals: dict[str, object] = {}
+    try:
+        raw_totals = json.loads(arch.totals_summary_json or "{}")
+        if isinstance(raw_totals, dict):
+            totals = raw_totals
+    except Exception:
+        totals = {}
+    if not columns:
+        cj = totals.get("columns")
+        if isinstance(cj, list):
+            columns = [str(c) for c in cj]
+    mr = MappingRun.query.get(rid)
+    excel_ok = bool(getattr(mr, "output_path", None) and os.path.exists(str(mr.output_path)))
+    preview_mode = "water" if _mapping_preview_sheet_is_water_tracker(arch.sheet_name) else "emissions"
+    display_columns = _mapping_preview_display_columns_for_sheet(arch.sheet_name, columns)
+    return jsonify(
+        {
+            "run_id": arch.run_id,
+            "company_name": arch.company_name,
+            "sheet_name": arch.sheet_name,
+            "created_at": arch.created_at.isoformat() + "Z" if arch.created_at else None,
+            "mapped_row_count": arch.mapped_row_count,
+            "unmapped_row_count": arch.unmapped_row_count,
+            "data_row_count": arch.data_row_count,
+            "columns": columns,
+            "display_columns": display_columns if display_columns else columns,
+            "preview_mode": preview_mode,
+            "totals_summary": totals,
+            "mapping_run_status": getattr(mr, "status", None) if mr else None,
+            "excel_available": excel_ok,
+            "preview_download_url": url_for("api_mapping_preview_export", run_id=arch.run_id),
+        }
+    )
+
+
+@app.route("/api/mapping-preview/<run_id>/analytics", methods=["GET"])
+@login_required
+def api_mapping_preview_analytics(run_id: str):
+    _ensure_db_tables()
+    rid = (run_id or "").strip()
+    arch = MappingPreviewArchive.query.filter_by(run_id=rid).first()
+    if not arch or not _mapping_preview_user_can_access_archive(arch):
+        return jsonify({"error": "Not found"}), 404
+    bundle_abs = _mapping_preview_bundle_abs(arch.run_id)
+    columns: list[str] = []
+    cols_path = bundle_abs / "columns.json"
+    if cols_path.is_file():
+        try:
+            loaded = json.loads(cols_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, list):
+                columns = [str(c) for c in loaded]
+        except Exception:
+            columns = []
+    rows = _mapping_preview_load_jsonl_rows_capped(bundle_abs, MAPPING_PREVIEW_ANALYTICS_MAX_ROWS)
+    payload = _mapping_preview_build_analytics_payload(arch.sheet_name, columns, rows)
+    payload["sheet_name"] = arch.sheet_name
+    payload["company_name"] = arch.company_name
+    return jsonify(payload)
+
+
+@app.route("/api/mapping-preview/<run_id>/rows", methods=["GET"])
+@login_required
+def api_mapping_preview_rows(run_id: str):
+    _ensure_db_tables()
+    rid = (run_id or "").strip()
+    arch = MappingPreviewArchive.query.filter_by(run_id=rid).first()
+    if not arch or not _mapping_preview_user_can_access_archive(arch):
+        return jsonify({"error": "Not found"}), 404
+    try:
+        page = max(1, int(request.args.get("page") or 1))
+    except Exception:
+        page = 1
+    try:
+        page_size = int(request.args.get("page_size") or 50)
+    except Exception:
+        page_size = 50
+    page_size = min(MAPPING_PREVIEW_PAGE_SIZE_MAX, max(1, page_size))
+    qstr = (request.args.get("q") or "").strip()
+
+    bundle_abs = _mapping_preview_bundle_abs(arch.run_id)
+    offsets = _mapping_preview_load_offsets(bundle_abs)
+    n = int(len(offsets))
+    scan_capped = False
+    if qstr:
+        hits, scan_capped = _mapping_preview_filter_row_indices(bundle_abs, qstr)
+        total = len(hits)
+        start = (page - 1) * page_size
+        page_indices = hits[start : start + page_size]
+        rows_out = _mapping_preview_read_rows_at_indices(bundle_abs, offsets, page_indices)
+    else:
+        total = n
+        start = (page - 1) * page_size
+        indices = list(range(start, min(start + page_size, n)))
+        rows_out = _mapping_preview_read_rows_at_indices(bundle_abs, offsets, indices)
+
+    return jsonify(
+        {
+            "rows": rows_out,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "has_more": page * page_size < total,
+            "filter_scan_capped": scan_capped,
+        }
+    )
+
+
+@app.route("/api/mapping-preview/<run_id>/export.csv", methods=["GET"])
+@login_required
+def api_mapping_preview_export(run_id: str):
+    """Audit-friendly CSV export of the persisted preview bundle (not the full Excel)."""
+    _ensure_db_tables()
+    rid = (run_id or "").strip()
+    arch = MappingPreviewArchive.query.filter_by(run_id=rid).first()
+    if not arch or not _mapping_preview_user_can_access_archive(arch):
+        flash("Preview export not available.")
+        return redirect(url_for("mapping_previews_page"))
+    bundle_abs = _mapping_preview_bundle_abs(arch.run_id)
+    rows_path = bundle_abs / "rows.jsonl"
+    cols_path = bundle_abs / "columns.json"
+    if not rows_path.is_file():
+        flash("Preview data file missing.")
+        return redirect(url_for("mapping_preview_detail", run_id=rid))
+    columns: list[str] = []
+    if cols_path.is_file():
+        try:
+            loaded = json.loads(cols_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, list):
+                columns = [str(c) for c in loaded]
+        except Exception:
+            columns = []
+    if not columns:
+        flash("Preview column metadata missing.")
+        return redirect(url_for("mapping_preview_detail", run_id=rid))
+    export_cols = _mapping_preview_display_columns_for_sheet(arch.sheet_name, columns)
+    if not export_cols:
+        export_cols = columns
+    buf = StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(export_cols)
+    with open(rows_path, "rb") as rf:
+        for raw_line in rf:
+            try:
+                rec = json.loads(raw_line.decode("utf-8"))
+            except Exception:
+                continue
+            if not isinstance(rec, dict):
+                continue
+            writer.writerow([rec.get(c, "") for c in export_cols])
+    fn = secure_filename(f"mapping_preview_{arch.company_name}_{arch.sheet_name}_{rid}.csv") or f"mapping_preview_{rid}.csv"
+    return Response(
+        buf.getvalue().encode("utf-8-sig"),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{fn}"'},
     )
 
 

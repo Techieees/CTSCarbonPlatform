@@ -210,7 +210,12 @@
                                             <span class="badge bg-secondary">{{ r.status }}</span>
                                         {% endif %}
                                     </td>
-                                    <td class="text-end">
+                                    <td class="text-end text-nowrap">
+                                        {% if r.status == 'succeeded' and r.id in mapping_preview_run_ids %}
+                                            <a class="btn btn-sm btn-outline-primary d-inline-flex align-items-center me-1" href="{{ url_for('mapping_preview_detail', run_id=r.id) }}">
+                                                Open preview
+                                            </a>
+                                        {% endif %}
                                         {% if r.status == 'succeeded' and r.output_path %}
                                             <a class="btn btn-sm btn-ghost d-inline-flex align-items-center" href="{{ url_for('api_mapping_download', run_id=r.id) }}">
                                                 {{ illu.illu_btn_download('me-1') }}Download

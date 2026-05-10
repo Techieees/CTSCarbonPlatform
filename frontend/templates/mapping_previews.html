@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% import 'macros/ui_illustrations.html' as illu %}
+
+{% block title %}Mapping preview history{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4 px-3 px-md-4">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
+    <div>
+      <h2 class="mb-1">Mapping preview history</h2>
+      <p class="text-muted mb-0 small">
+        Read-only snapshots of mapped outputs (same column layout as the dashboard preview). Use this to reopen results after refresh or server restart. Full calculations remain in the pipeline outputs and Excel workbooks.
+      </p>
+    </div>
+  </div>
+
+  <div class="card shadow-sm border-secondary-subtle">
+    <div class="card-body p-0">
+      {% if preview_archives %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Company</th>
+              <th>Sheet</th>
+              <th>Created</th>
+              <th class="text-end">Rows</th>
+              <th class="text-end">Unmapped</th>
+              <th>Run status</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in preview_archives %}
+            {% set st = mapping_run_status_by_id.get(a.run_id, '') %}
+            {% set xlsx_ok = excel_available_by_run_id.get(a.run_id, false) %}
+            <tr>
+              <td>{{ a.company_name }}</td>
+              <td class="text-muted">{{ a.sheet_name }}</td>
+              <td class="text-muted small">{{ a.created_at.strftime('%Y-%m-%d %H:%M') if a.created_at else '' }}</td>
+              <td class="text-end">{{ a.mapped_row_count }}</td>
+              <td class="text-end">{{ a.unmapped_row_count }}</td>
+              <td>
+                {% if st == 'succeeded' %}
+                  <span class="badge bg-success">Succeeded</span>
+                {% elif st == 'failed' %}
+                  <span class="badge bg-danger">Failed</span>
+                {% elif st %}
+                  <span class="badge bg-secondary">{{ st }}</span>
+                {% else %}
+                  <span class="badge bg-secondary">Unknown</span>
+                {% endif %}
+              </td>
+              <td class="text-end text-nowrap">
+                <a class="btn btn-sm btn-primary" href="{{ url_for('mapping_preview_detail', run_id=a.run_id) }}">
+                  Open preview
+                </a>
+                {% if xlsx_ok %}
+                <a class="btn btn-sm btn-ghost" href="{{ url_for('api_mapping_download', run_id=a.run_id) }}">
+                  {{ illu.illu_btn_download('me-1') }}Excel
+                </a>
+                {% else %}
+                <button type="button" class="btn btn-sm btn-ghost" disabled title="Mapped Excel not found on disk">Excel</button>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center py-5 px-3">
+        <p class="text-muted mb-1">No saved previews yet.</p>
+        <p class="text-muted small mb-0">Successful mapping runs automatically archive a preview bundle under your instance directory.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

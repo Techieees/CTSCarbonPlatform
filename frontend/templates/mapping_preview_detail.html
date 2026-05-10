@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% import 'macros/ui_illustrations.html' as illu %}
+
+{% block title %}Mapping preview · {{ run_id }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .mp-wrap { border-radius: 0.5rem; border: 1px solid var(--bs-border-color); background: var(--bs-body-bg); }
+  .mp-scroll {
+    max-height: min(70vh, 720px);
+    overflow: auto;
+  }
+  .mp-scroll thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--bs-body-bg);
+    box-shadow: inset 0 -1px 0 var(--bs-border-color);
+    white-space: nowrap;
+    font-weight: 600;
+    font-size: 0.75rem;
+  }
+  .mp-scroll tbody td {
+    white-space: nowrap;
+    font-size: 0.8rem;
+    vertical-align: top;
+  }
+  .mp-meta-line code { font-size: 0.8rem; }
+  .mp-chart-host {
+    min-height: 200px;
+    width: 100%;
+  }
+  .mp-root--emissions .mp-analytics-card {
+    border-left: 4px solid #2f5fb3;
+  }
+  .mp-root--water .mp-analytics-card {
+    border-left: 4px solid #0ea5e9;
+  }
+  .mp-root--water .mp-water-badge {
+    display: inline-flex;
+  }
+  .mp-water-badge {
+    display: none;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--bs-info);
+    border: 1px solid rgba(14, 165, 233, 0.35);
+    border-radius: 999px;
+    padding: 0.15rem 0.55rem;
+    vertical-align: middle;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set is_water = 'water tracker' in ((archive.sheet_name or '')|lower) %}
+<div id="mpRoot" class="container-fluid py-4 px-3 px-md-4 mp-root {{ 'mp-root--water' if is_water else 'mp-root--emissions' }}">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
+    <div>
+      <h2 class="mb-1 d-flex flex-wrap align-items-center gap-2">
+        <span id="mpPageTitle">{% if is_water %}Water usage preview{% else %}Mapping preview{% endif %}</span>
+        <span class="mp-water-badge" id="mpWaterBadge">Water usage</span>
+      </h2>
+      <p class="text-muted mb-0 small" id="mpPageSubtitle">{% if is_water %}Operational water usage snapshot — read-only.{% else %}Mapped output snapshot — read-only audit view.{% endif %}</p>
+      <p class="text-muted mb-0 small mp-meta-line mt-2">
+        Run <code>{{ run_id }}</code>
+        · {{ archive.company_name }} · {{ archive.sheet_name }}
+        · snapshot {{ archive.created_at.strftime('%Y-%m-%d %H:%M') if archive.created_at else '' }} UTC
+      </p>
+      <p class="text-muted small mb-0 mt-2">
+        Rows load in pages from the persisted snapshot. Search scans up to {{ "{:,}".format(mapping_preview_max_filter_scan_lines) }} lines per request on the server.
+      </p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-sm btn-ghost" href="{{ url_for('mapping_previews_page') }}">← History</a>
+      {% if preview_excel_available %}
+      <a class="btn btn-sm btn-ghost d-inline-flex align-items-center" href="{{ url_for('api_mapping_download', run_id=run_id) }}">{{ illu.illu_btn_download('me-1') }}Download Excel</a>
+      {% endif %}
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('api_mapping_preview_export', run_id=run_id) }}">Export CSV snapshot</a>
+    </div>
+  </div>
+
+  <div id="mpAlert" class="alert alert-warning py-2 small d-none" role="status"></div>
+
+  <div id="mpAnalyticsCard" class="card shadow-sm border-secondary-subtle mb-3 mp-analytics-card">
+    <div class="card-header py-2 d-flex flex-wrap justify-content-between align-items-start gap-2 bg-transparent border-secondary-subtle">
+      <div>
+        <div class="fw-semibold small" id="mpAnalyticsHeading">Preview analytics</div>
+        <div class="text-muted small" id="mpAnalyticsSub"></div>
+      </div>
+      <span class="text-muted small" id="mpAnalyticsSampled"></span>
+    </div>
+    <div class="card-body pt-2 pb-3">
+      <div class="row g-3">
+        <div class="col-lg-6">
+          <div class="small fw-semibold text-secondary mb-1 min-vh-0" id="mpChartTitleA"></div>
+          <div id="mpChartA" class="mp-chart-host border rounded-3 bg-body-secondary-subtle">
+            <div class="text-muted small p-3 text-center">Loading chart…</div>
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="small fw-semibold text-secondary mb-1 min-vh-0" id="mpChartTitleB"></div>
+          <div id="mpChartB" class="mp-chart-host border rounded-3 bg-body-secondary-subtle">
+            <div class="text-muted small p-3 text-center">Loading chart…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm border-secondary-subtle mb-3">
+    <div class="card-body py-3">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-4">
+          <label class="form-label small text-muted mb-0" for="mpSearch">Search (server-side filter)</label>
+          <input type="search" class="form-control form-control-sm" id="mpSearch" placeholder="Substring across visible columns…" autocomplete="off">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small text-muted mb-0" for="mpPageSize">Page size</label>
+          <select class="form-select form-select-sm" id="mpPageSize">
+            <option value="25">25</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+          </select>
+        </div>
+        <div class="col-md-3 ms-md-auto text-md-end">
+          <span class="small text-muted" id="mpStats">Loading…</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mp-wrap">
+    <div class="mp-scroll" id="mpScroll">
+      <table class="table table-sm table-striped mb-0" id="mpTable">
+        <thead><tr id="mpHeadRow"></tr></thead>
+        <tbody id="mpBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3">
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="mpPrev" disabled>Previous</button>
+    <span class="small text-muted" id="mpPageLabel"></span>
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="mpNext" disabled>Next</button>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<script type="module">
+  import { bootMappingPreviewPage } from "{{ url_for('static', filename='js/charts/mapping_preview_page.js') }}";
+  bootMappingPreviewPage({
+    runId: {{ run_id | tojson }},
+    maxPageSize: {{ mapping_preview_page_size_max | int }},
+  });
+</script>
+{% endblock %}
