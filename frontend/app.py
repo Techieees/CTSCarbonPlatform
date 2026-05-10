@@ -7196,15 +7196,11 @@ def _find_unmapped_ef_option(ef_key_or_id: str, preferred_sheet: str | None = No
     return None
 
 
-def _unmapped_query_from_request():
-    status_filter = (request.args.get("status") or "open").strip().lower()
-    company_filter = (request.args.get("company") or "").strip()
-    sheet_filter = (request.args.get("sheet") or "").strip()
-    search = (request.args.get("search") or "").strip()
-
-    query = MappingUnmappedRow.query
-    if status_filter and status_filter != "all":
-        query = query.filter(MappingUnmappedRow.review_status == status_filter)
+def _apply_unmapped_sheet_filters(query, company_filter: str, sheet_filter: str, search: str):
+    """Company / sheet / text filters shared by the admin unmapped table and summary tiles."""
+    company_filter = (company_filter or "").strip()
+    sheet_filter = (sheet_filter or "").strip()
+    search = (search or "").strip()
     if company_filter:
         query = query.filter(MappingUnmappedRow.company_name.ilike(f"%{company_filter}%"))
     if sheet_filter:
@@ -7219,6 +7215,19 @@ def _unmapped_query_from_request():
                 MappingUnmappedRow.owner_notes.ilike(like),
             )
         )
+    return query
+
+
+def _unmapped_query_from_request():
+    status_filter = (request.args.get("status") or "open").strip().lower()
+    company_filter = (request.args.get("company") or "").strip()
+    sheet_filter = (request.args.get("sheet") or "").strip()
+    search = (request.args.get("search") or "").strip()
+
+    query = MappingUnmappedRow.query
+    query = _apply_unmapped_sheet_filters(query, company_filter, sheet_filter, search)
+    if status_filter and status_filter != "all":
+        query = query.filter(MappingUnmappedRow.review_status == status_filter)
     return query, status_filter, company_filter, sheet_filter, search
 
 
@@ -7246,10 +7255,20 @@ def _refresh_open_unmapped_against_live_rows() -> int:
     return total
 
 
-def _unmapped_review_status_counts() -> dict[str, int]:
-    """Single round-trip for admin unmapped status tiles (avoids five COUNT queries)."""
+def _unmapped_review_status_counts(
+    *,
+    company_filter: str = "",
+    sheet_filter: str = "",
+    search: str = "",
+) -> dict[str, int]:
+    """
+    Grouped counts for summary tiles — must apply the same list filters as the visible table.
+    Uses one GROUP BY round-trip when no dedupe-distinct correction is requested.
+    """
+    base = MappingUnmappedRow.query
+    base = _apply_unmapped_sheet_filters(base, company_filter, sheet_filter, search)
     rows = (
-        db.session.query(MappingUnmappedRow.review_status, func.count(MappingUnmappedRow.id))
+        base.with_entities(MappingUnmappedRow.review_status, func.count(MappingUnmappedRow.id))
         .group_by(MappingUnmappedRow.review_status)
         .all()
     )
@@ -7267,6 +7286,58 @@ def _unmapped_review_status_counts() -> dict[str, int]:
         "superseded": int(by_status.get("superseded", 0)),
         "all": total,
     }
+
+
+def _unmapped_open_distinct_description_count(
+    *,
+    company_filter: str = "",
+    sheet_filter: str = "",
+    search: str = "",
+) -> int:
+    """Open rows only: unique descriptions (aligned with dedupe=description table view semantics)."""
+    q = MappingUnmappedRow.query
+    q = _apply_unmapped_sheet_filters(q, company_filter, sheet_filter, search)
+    q = q.filter(MappingUnmappedRow.review_status == "open")
+    desc_keys: set[str] = set()
+    for row in q.all():
+        desc_keys.add(_unmapped_description_key(row))
+    return len(desc_keys)
+
+
+def _admin_unmapped_page_counts(
+    *,
+    company_filter: str,
+    sheet_filter: str,
+    search: str,
+    dedupe_mode: str,
+) -> dict[str, int]:
+    """Summary tiles — same scoped filters as the table; dedupe mode adjusts Open to distinct descriptions."""
+    counts = _unmapped_review_status_counts(
+        company_filter=company_filter,
+        sheet_filter=sheet_filter,
+        search=search,
+    )
+    if (dedupe_mode or "").strip().lower() == "description":
+        distinct_open = _unmapped_open_distinct_description_count(
+            company_filter=company_filter,
+            sheet_filter=sheet_filter,
+            search=search,
+        )
+        counts["open"] = int(distinct_open)
+        counts["all"] = (
+            int(counts.get("resolved", 0))
+            + int(counts.get("ignored", 0))
+            + int(counts.get("superseded", 0))
+            + int(distinct_open)
+        )
+    print(
+        f"[UNMAPPED_COUNTERS]\n"
+        f"open={counts['open']}\n"
+        f"resolved={counts['resolved']}\n"
+        f"superseded={counts['superseded']}\n"
+        f"ignored={counts['ignored']}"
+    )
+    return counts
 
 
 def _backup_stage2_ef_workbook(action: str) -> None:
@@ -14667,7 +14738,12 @@ def admin_unmapped_mappings():
         ef_options_by_row[int(row.id)] = ef_cache_by_sheet[sn]
     t_unmapped_ms = (time.perf_counter() - t_unmapped0) * 1000.0
 
-    counts = _unmapped_review_status_counts()
+    counts = _admin_unmapped_page_counts(
+        company_filter=company_filter,
+        sheet_filter=sheet_filter,
+        search=search,
+        dedupe_mode=dedupe_mode,
+    )
     companies = [
         item[0]
         for item in db.session.query(MappingUnmappedRow.company_name)
@@ -14813,7 +14889,12 @@ def admin_unmapped_mappings_fuzzy():
         if sn not in ef_cache_by_sheet:
             ef_cache_by_sheet[sn] = _load_unmapped_ef_options_for_sheet(sn)
         ef_options_by_row[int(row.id)] = ef_cache_by_sheet[sn]
-    counts = _unmapped_review_status_counts()
+    counts = _admin_unmapped_page_counts(
+        company_filter=company_filter,
+        sheet_filter=sheet_filter,
+        search=search,
+        dedupe_mode=dedupe_mode,
+    )
     companies = [
         item[0]
         for item in db.session.query(MappingUnmappedRow.company_name)
