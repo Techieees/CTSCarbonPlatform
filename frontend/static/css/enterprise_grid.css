@@ -1,0 +1,302 @@
+/**
+ * CTS Enterprise Grid / table shell — shared presentation layer.
+ * Scope: .eg-* classes only; safe to load globally. Pair with compact Bootstrap tables.
+ */
+
+:root {
+  --eg-stack-gap: 1.25rem;
+  --eg-card-radius: 0.5rem;
+  --eg-border: var(--bs-border-color);
+  --eg-scroll-max-h: min(70vh, 720px);
+  --eg-row-density-y: 0.42rem;
+  --eg-row-density-x: 0.65rem;
+  --eg-head-font-size: 0.6875rem;
+  --eg-cell-font-size: 0.8125rem;
+  --eg-head-track-bg: var(--bs-body-bg);
+  --eg-cell-bg: var(--bs-body-bg);
+  --eg-cell-bg-stripe: rgba(var(--bs-emphasis-color-rgb, 33, 37, 41), 0.035);
+  --eg-scrollbar-thumb: rgba(var(--bs-secondary-rgb, 108, 117, 125), 0.35);
+  --eg-scrollbar-track: transparent;
+  --eg-chart-min-h: 260px;
+  --eg-analytics-min-h: 320px;
+}
+
+body.dark-mode {
+  --eg-cell-bg-stripe: rgba(255, 255, 255, 0.04);
+  --eg-scrollbar-thumb: rgba(148, 163, 184, 0.35);
+}
+
+/* ---- Page stack (analytics → toolbar → grid → pagination) ---- */
+.eg-stack > * + * {
+  margin-top: var(--eg-stack-gap);
+}
+
+.eg-section-label {
+  font-size: 0.6875rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--bs-secondary-color);
+  margin-bottom: 0.35rem;
+}
+
+/* ---- Cards (enterprise shell; works with Bootstrap .card) ---- */
+.eg-card {
+  border-radius: var(--eg-card-radius);
+  border: 1px solid var(--eg-border);
+  background: var(--bs-body-bg);
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(16, 24, 40, 0.06));
+}
+
+.eg-card .card-header {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.eg-card--analytics .card-body {
+  padding-top: 0.65rem;
+}
+
+/* Stable analytics block height — avoids chart/grid visual collision */
+.eg-analytics__body {
+  min-height: var(--eg-analytics-min-h);
+}
+
+.eg-analytics__charts {
+  min-height: calc(var(--eg-chart-min-h) + 2rem);
+}
+
+.eg-chart-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--bs-secondary-color);
+  margin-bottom: 0.35rem;
+  min-height: 1.25rem;
+}
+
+.eg-chart-host {
+  min-height: var(--eg-chart-min-h);
+  height: var(--eg-chart-min-h);
+  width: 100%;
+  border-radius: 0.65rem;
+  border: 1px solid var(--eg-border);
+  background: var(--bs-secondary-bg);
+  overflow: hidden;
+  contain: layout style;
+}
+
+.eg-chart-host > .eg-chart-canvas-host {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Inner canvas target created by chart helpers */
+.eg-chart-canvas-host {
+  width: 100%;
+  height: 100%;
+}
+
+/* ---- Toolbar band ---- */
+.eg-toolbar .card-body {
+  padding-top: 0.85rem;
+  padding-bottom: 0.85rem;
+}
+
+.eg-toolbar__meta {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (min-width: 768px) {
+  .eg-toolbar__meta {
+    text-align: right;
+  }
+}
+
+/* ---- Grid shell: border + horizontal scroll + sticky header ---- */
+.eg-grid-shell {
+  border-radius: var(--eg-card-radius);
+  border: 1px solid var(--eg-border);
+  background: var(--bs-body-bg);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(16, 24, 40, 0.06));
+}
+
+.eg-scroll {
+  max-height: var(--eg-scroll-max-h);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--eg-scrollbar-thumb) var(--eg-scrollbar-track);
+}
+
+/* Pages with short tables (history lists): avoid forcing a tall scroll viewport */
+.eg-scroll--fit {
+  max-height: none;
+}
+
+.eg-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.eg-scroll::-webkit-scrollbar-thumb {
+  background: var(--eg-scrollbar-thumb);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.eg-scroll::-webkit-scrollbar-track {
+  background: var(--eg-scrollbar-track);
+}
+
+/* Dense enterprise table */
+.table.eg-table {
+  --bs-table-bg: transparent;
+  margin-bottom: 0;
+  font-size: var(--eg-cell-font-size);
+  border-color: var(--eg-border);
+}
+
+.table.eg-table > :not(caption) > * > * {
+  padding: var(--eg-row-density-y) var(--eg-row-density-x);
+  vertical-align: top;
+}
+
+.table.eg-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  font-size: var(--eg-head-font-size);
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  white-space: nowrap;
+  background: var(--eg-head-track-bg);
+  box-shadow: inset 0 -1px 0 var(--eg-border);
+  border-bottom-color: var(--eg-border);
+}
+
+.table.eg-table tbody td {
+  white-space: nowrap;
+  background-color: var(--eg-cell-bg);
+}
+
+.table.eg-table.table-striped > tbody > tr:nth-of-type(odd) > * {
+  --bs-table-accent-bg: transparent;
+  background-color: var(--eg-cell-bg-stripe);
+}
+
+.table.eg-table tbody tr:hover > * {
+  box-shadow: inset 0 0 0 9999px rgba(var(--brand-blue-rgb, 47, 95, 179), 0.045);
+}
+
+body.dark-mode .table.eg-table tbody tr:hover > * {
+  box-shadow: inset 0 0 0 9999px rgba(255, 255, 255, 0.04);
+}
+
+/* Inputs / controls inside grid cells keep alignment */
+.table.eg-table .form-control,
+.table.eg-table .form-select {
+  font-size: var(--eg-cell-font-size);
+  min-height: calc(var(--eg-cell-font-size) * 2.1);
+  padding-top: 0.2rem;
+  padding-bottom: 0.2rem;
+}
+
+/* ---- Pagination bar ---- */
+.eg-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.eg-pagination__hint {
+  font-size: 0.8125rem;
+  color: var(--bs-secondary-color);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Skeleton ---- */
+@keyframes eg-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.eg-skeleton {
+  display: block;
+  position: relative;
+  overflow: hidden;
+  border-radius: 6px;
+  background: rgba(var(--bs-secondary-rgb, 108, 117, 125), 0.14);
+  min-height: 0.85rem;
+}
+
+.eg-skeleton--text {
+  width: 100%;
+}
+
+.eg-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.22),
+    transparent
+  );
+  animation: eg-shimmer 1.1s infinite;
+}
+
+body.dark-mode .eg-skeleton::after {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.08),
+    transparent
+  );
+}
+
+tr.eg-skeleton-row td {
+  padding-top: 0.55rem !important;
+  padding-bottom: 0.55rem !important;
+}
+
+/* ---- Mapping preview accents (domain tint, not logic) ---- */
+.eg-page--emissions .eg-card--analytics {
+  border-left: 4px solid #2f5fb3;
+}
+
+.eg-page--water .eg-card--analytics {
+  border-left: 4px solid #0ea5e9;
+}
+
+.eg-page--water .eg-water-badge {
+  display: inline-flex;
+}
+
+.eg-water-badge {
+  display: none;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bs-info);
+  border: 1px solid rgba(14, 165, 233, 0.35);
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+  vertical-align: middle;
+}
+
+/* Virtualization hook: single scroll parent + explicit row height class */
+.eg-table--virtual-ready tbody tr {
+  height: 2.35rem;
+}

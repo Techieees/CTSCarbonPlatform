@@ -4,8 +4,8 @@
 {% block title %}Mapping preview history{% endblock %}
 
 {% block content %}
-<div class="container-fluid py-4 px-3 px-md-4">
-  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
+<div class="container-fluid py-4 px-3 px-md-4 eg-stack">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
     <div>
       <h2 class="mb-1">Mapping preview history</h2>
       <p class="text-muted mb-0 small">
@@ -14,12 +14,13 @@
     </div>
   </div>
 
-  <div class="card shadow-sm border-secondary-subtle">
+  <div class="card shadow-sm border-secondary-subtle eg-card">
     <div class="card-body p-0">
       {% if preview_archives %}
-      <div class="table-responsive">
-        <table class="table table-hover align-middle mb-0">
-          <thead class="table-light">
+      <div class="eg-grid-shell border-0 rounded-0 shadow-none">
+        <div class="eg-scroll eg-scroll--fit">
+        <table class="table table-hover align-middle mb-0 eg-table">
+          <thead class="small">
             <tr>
               <th>Company</th>
               <th>Sheet</th>
@@ -67,6 +68,7 @@
             {% endfor %}
           </tbody>
         </table>
+        </div>
       </div>
       {% else %}
       <div class="text-center py-5 px-3">

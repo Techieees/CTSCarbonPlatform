@@ -1,5 +1,6 @@
 import { renderTrendChart } from "./trend_chart.js";
 import { renderCompanyChart } from "./company_chart.js";
+import { bindChartHostResizeObserver, resizeHostedCharts } from "../enterprise_grid.js";
 
 function esc(s) {
   const d = document.createElement("div");
@@ -7,15 +8,19 @@ function esc(s) {
   return d.innerHTML;
 }
 
-function renderChartSpec(container, spec, height) {
+function renderChartSpec(container, spec, heightFallback) {
   if (!container || !spec) {
     return null;
   }
   container.innerHTML = "";
   const inner = document.createElement("div");
-  inner.style.height = `${height}px`;
+  inner.className = "eg-chart-canvas-host";
   inner.style.width = "100%";
   container.appendChild(inner);
+
+  const box = Math.round(container.getBoundingClientRect().height);
+  const height = Math.max(180, box || heightFallback || 260);
+  inner.style.height = `${height}px`;
 
   const suf = spec.tooltip_suffix || "";
   const name = spec.series_name || "Series";
@@ -81,9 +86,9 @@ function applyAnalytics(payload) {
     if (ta) ta.textContent = "";
     if (tb) tb.textContent = "";
     hostA.innerHTML =
-      '<div class="text-muted small p-3 text-center">No chart — insufficient numeric columns for this sheet profile.</div>';
+      '<div class="text-muted small p-3 text-center h-100 d-flex align-items-center justify-content-center">No chart — insufficient numeric columns for this sheet profile.</div>';
     hostB.innerHTML =
-      '<div class="text-muted small p-3 text-center text-secondary">—</div>';
+      '<div class="text-muted small p-3 text-center text-secondary h-100 d-flex align-items-center justify-content-center">—</div>';
     return;
   }
 
@@ -103,8 +108,14 @@ function applyAnalytics(payload) {
     renderChartSpec(hostB, s1, 260);
   } else {
     hostB.innerHTML =
-      '<div class="text-muted small p-3 text-center">No secondary chart for this snapshot.</div>';
+      '<div class="text-muted small p-3 text-center h-100 d-flex align-items-center justify-content-center">No secondary chart for this snapshot.</div>';
   }
+
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      resizeHostedCharts(card);
+    });
+  });
 
   const elStats = document.getElementById("mpStats");
   if (mode === "water" && payload.summary && elStats) {
@@ -178,8 +189,8 @@ export function bootMappingPreviewPage(cfg) {
     const m = await fetchJson(metaUrl);
     const mode = m.preview_mode === "water" ? "water" : "emissions";
     if (root) {
-      root.classList.remove("mp-root--water", "mp-root--emissions");
-      root.classList.add(mode === "water" ? "mp-root--water" : "mp-root--emissions");
+      root.classList.remove("eg-page--water", "eg-page--emissions");
+      root.classList.add(mode === "water" ? "eg-page--water" : "eg-page--emissions");
     }
     if (elTitle) {
       elTitle.textContent = mode === "water" ? "Water usage preview" : "Mapping preview";
@@ -232,27 +243,47 @@ export function bootMappingPreviewPage(cfg) {
     }
   }
 
+  function renderSkeletonRows(pageSize) {
+    if (!elBody || !columns.length) return;
+    elBody.innerHTML = "";
+    const n = Math.min(14, Math.max(6, Math.min(pageSize, 12)));
+    for (let i = 0; i < n; i++) {
+      const tr = document.createElement("tr");
+      tr.className = "eg-skeleton-row";
+      tr.innerHTML = columns
+        .map(() => '<td><span class="eg-skeleton eg-skeleton--text"></span></td>')
+        .join("");
+      elBody.appendChild(tr);
+    }
+  }
+
   async function loadRows() {
     showAlert("");
     const q = (elSearch && elSearch.value) || "";
     const qs = q.trim();
     const ps = Math.min(maxPageSize, Math.max(1, parseInt(elPageSize.value || "50", 10) || 50));
+    renderSkeletonRows(ps);
     const u = new URL(rowsUrl, window.location.origin);
     u.searchParams.set("page", String(page));
     u.searchParams.set("page_size", String(ps));
     if (qs) u.searchParams.set("q", qs);
-    const data = await fetchJson(u.toString());
-    total = Number(data.total || 0);
-    if (data.filter_scan_capped) {
-      showAlert(
-        "Search scanned the maximum number of rows for this snapshot; some matches may be omitted."
-      );
+    try {
+      const data = await fetchJson(u.toString());
+      total = Number(data.total || 0);
+      if (data.filter_scan_capped) {
+        showAlert(
+          "Search scanned the maximum number of rows for this snapshot; some matches may be omitted."
+        );
+      }
+      renderRows(Array.isArray(data.rows) ? data.rows : []);
+      const pages = Math.max(1, Math.ceil(total / ps));
+      if (elPageLabel) elPageLabel.textContent = `Page ${page} / ${pages} · ${total} row(s)`;
+      if (elPrev) elPrev.disabled = page <= 1;
+      if (elNext) elNext.disabled = page >= pages;
+    } catch (e) {
+      if (elBody) elBody.innerHTML = "";
+      throw e;
     }
-    renderRows(Array.isArray(data.rows) ? data.rows : []);
-    const pages = Math.max(1, Math.ceil(total / ps));
-    if (elPageLabel) elPageLabel.textContent = `Page ${page} / ${pages} · ${total} row(s)`;
-    if (elPrev) elPrev.disabled = page <= 1;
-    if (elNext) elNext.disabled = page >= pages;
   }
 
   async function init() {
@@ -310,6 +341,19 @@ export function bootMappingPreviewPage(cfg) {
       }, 350);
     });
   }
+
+  const analyticsCard = document.getElementById("mpAnalyticsCard");
+  let releaseAnalyticsRo = () => {};
+  if (analyticsCard) {
+    releaseAnalyticsRo = bindChartHostResizeObserver(analyticsCard, { wait: 90 });
+  }
+  window.addEventListener(
+    "beforeunload",
+    () => {
+      releaseAnalyticsRo();
+    },
+    { once: true }
+  );
 
   init();
 }
