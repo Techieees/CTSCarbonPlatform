@@ -34,10 +34,11 @@
               <th>Rows</th>
               <th>Message</th>
               <th>Created</th>
+              <th class="text-end">Review</th>
             </tr>
           </thead>
           <tbody id="jobsTableBody">
-            <tr><td colspan="8" class="text-muted p-3">Loading jobs...</td></tr>
+            <tr><td colspan="9" class="text-muted p-3">Loading jobs...</td></tr>
           </tbody>
         </table>
       </div>
@@ -75,13 +76,17 @@
   function renderJobs(jobs) {
     if (!tbody) return;
     if (!Array.isArray(jobs) || !jobs.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="text-muted p-3">No background jobs yet.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" class="text-muted p-3">No background jobs yet.</td></tr>';
       return;
     }
     tbody.innerHTML = jobs.map((job) => {
       const progress = Math.max(0, Math.min(100, Number(job.progress || 0)));
       const status = String(job.status || 'pending');
       const error = job.error ? '<div class="text-danger small">' + esc(job.error) + '</div>' : '';
+      const reviewUrl = job.mapping_review_url ? String(job.mapping_review_url) : '';
+      const reviewCell = (status === 'completed' && reviewUrl)
+        ? '<a class="btn btn-sm btn-outline-primary" href="' + esc(reviewUrl) + '">Open Review</a>'
+        : '<span class="text-muted">—</span>';
       return '<tr>' +
         '<td class="font-monospace small">' + esc(job.job_id || '') + '</td>' +
         '<td>' + esc(job.type || '') + '</td>' +
@@ -93,6 +98,7 @@
         '<td>' + (job.rows === undefined || job.rows === null ? '-' : esc(job.rows)) + '</td>' +
         '<td>' + esc(job.message || '') + error + '</td>' +
         '<td class="small text-muted text-nowrap">' + esc(fmtTime(job.created_at)) + '</td>' +
+        '<td class="text-end text-nowrap">' + reviewCell + '</td>' +
       '</tr>';
     }).join('');
   }
@@ -105,14 +111,21 @@
       renderJobs(data.jobs || []);
     } catch (e) {
       if (tbody) {
-        tbody.innerHTML = '<tr><td colspan="8" class="text-danger p-3">' + esc(e.message || 'Could not load jobs') + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="text-danger p-3">' + esc(e.message || 'Could not load jobs') + '</td></tr>';
       }
     }
   }
 
   refreshBtn?.addEventListener('click', loadJobs);
   loadJobs();
-  window.setInterval(loadJobs, 2500);
+  if (window.CtsPerf) {
+    window.CtsPerf.managePoll('admin-background-jobs', loadJobs, 15000, {
+      pauseWhenHidden: true,
+      runImmediate: false,
+    });
+  } else {
+    window.setInterval(loadJobs, 15000);
+  }
 })();
 </script>
 {% endblock %}

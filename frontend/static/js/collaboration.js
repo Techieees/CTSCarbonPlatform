@@ -199,11 +199,28 @@
     });
 
     loadNotifications().catch(function () {});
-    window.setInterval(function () {
-      fetchJson("/api/notifications/unread_count")
-        .then(function (data) { setBadge(badge, data.unread_count); })
-        .catch(function () {});
-    }, 10000);
+    if (window.CtsPerf) {
+      window.CtsPerf.managePoll(
+        "cts-notifications-unread",
+        function () {
+          fetchJson("/api/notifications/unread_count")
+            .then(function (data) {
+              setBadge(badge, data.unread_count);
+            })
+            .catch(function () {});
+        },
+        26000,
+        { pauseWhenHidden: true, runImmediate: false }
+      );
+    } else {
+      window.setInterval(function () {
+        fetchJson("/api/notifications/unread_count")
+          .then(function (data) {
+            setBadge(badge, data.unread_count);
+          })
+          .catch(function () {});
+      }, 10000);
+    }
   }
 
   if (chatRoot) {
@@ -257,13 +274,26 @@
     }
 
     function setPanelOpen(open) {
-      chatRoot.classList.toggle("is-panel-open", Boolean(open));
+      var shouldOpen = Boolean(open);
+      chatRoot.classList.toggle("is-panel-open", shouldOpen);
       if (panel) {
-        panel.setAttribute("aria-hidden", open ? "false" : "true");
+        panel.setAttribute("aria-hidden", shouldOpen ? "false" : "true");
       }
       launcherButtons.forEach(function (button) {
-        button.setAttribute("aria-expanded", open ? "true" : "false");
+        button.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
       });
+      if (!shouldOpen) {
+        stopTypingTimers();
+        stopTypingPolling();
+        stopThreadPolling();
+        sendTypingState(false);
+      } else if (activeUserId) {
+        startThreadPolling();
+        startTypingPolling();
+        pollTypingStatus();
+        pollThreadUpdates();
+      }
+      syncChatPollingForPanelState();
     }
 
     function setThreadOpen(open) {
@@ -275,6 +305,38 @@
 
     function isPanelOpen() {
       return chatRoot.classList.contains("is-panel-open");
+    }
+
+    function refreshChatUnreadOnly() {
+      fetchJson("/api/messages/unread_count")
+        .then(function (data) {
+          setBadge(unreadBadge, data.unread_count);
+        })
+        .catch(function () {});
+    }
+
+    function syncChatPollingForPanelState() {
+      if (!window.CtsPerf) {
+        refreshChatUnreadOnly();
+        return;
+      }
+      if (isPanelOpen()) {
+        window.CtsPerf.stopPoll("cts-chat-unread-closed");
+        window.CtsPerf.managePoll(
+          "cts-chat-inbox",
+          function () {
+            loadConversations().catch(function () {});
+          },
+          25000,
+          { pauseWhenHidden: true, runImmediate: false }
+        );
+      } else {
+        window.CtsPerf.stopPoll("cts-chat-inbox");
+        window.CtsPerf.managePoll("cts-chat-unread-closed", refreshChatUnreadOnly, 26000, {
+          pauseWhenHidden: true,
+          runImmediate: true,
+        });
+      }
     }
 
     function attachmentLabel(file) {
@@ -533,7 +595,7 @@
     }
 
     function pollTypingStatus() {
-      if (!activeUserId) {
+      if (!activeUserId || !isPanelOpen()) {
         renderTypingIndicator("", false);
         return;
       }
@@ -549,12 +611,12 @@
     }
 
     function startTypingPolling() {
-      if (typingPollTimer) return;
-      typingPollTimer = window.setInterval(pollTypingStatus, 2000);
+      if (typingPollTimer || !activeUserId) return;
+      typingPollTimer = window.setInterval(pollTypingStatus, 5000);
     }
 
     function pollThreadUpdates() {
-      if (!activeUserId) return;
+      if (!activeUserId || !isPanelOpen()) return;
       fetchJson("/api/messages/thread?user_id=" + encodeURIComponent(activeUserId))
         .then(function (data) {
           if (data && data.contact) {
@@ -575,8 +637,8 @@
     }
 
     function startThreadPolling() {
-      if (threadPollTimer) return;
-      threadPollTimer = window.setInterval(pollThreadUpdates, 2000);
+      if (threadPollTimer || !activeUserId) return;
+      threadPollTimer = window.setInterval(pollThreadUpdates, 5000);
     }
 
     function filterRows(rows, kind) {
@@ -904,19 +966,12 @@
       });
     });
 
-    loadConversations().catch(function () {});
-    loadContacts().catch(function () {});
+    refreshChatUnreadOnly();
+    syncChatPollingForPanelState();
     renderThreadTitle(null);
     renderTypingIndicator("", false);
     autoResizeComposer();
     updateComposerState();
-    window.setInterval(function () {
-      loadConversations().catch(function () {});
-      if (activeUserId) {
-        pollThreadUpdates();
-        pollTypingStatus();
-      }
-    }, 10000);
   }
 
   document.querySelectorAll("[data-collab-search]").forEach(function (searchRoot) {

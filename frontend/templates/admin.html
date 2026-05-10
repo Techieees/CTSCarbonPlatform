@@ -508,7 +508,14 @@ if (monthSelect && monthForm) {
     }
   }
   refreshLatestJob();
-  window.setInterval(refreshLatestJob, 3000);
+  if (window.CtsPerf) {
+    window.CtsPerf.managePoll("admin-overview-last-job", refreshLatestJob, 15000, {
+      pauseWhenHidden: true,
+      runImmediate: false,
+    });
+  } else {
+    window.setInterval(refreshLatestJob, 15000);
+  }
 })();
 </script>
 {% endblock %}

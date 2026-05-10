@@ -1,0 +1,463 @@
+{% extends "base.html" %}
+{% import 'macros/ui_illustrations.html' as illu %}
+
+{% block title %}Mapping Review{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4 px-3 px-md-4">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
+    <div>
+      <h2 class="mb-1">Mapping Review</h2>
+      <p class="text-muted mb-0 small">
+        Inspect persisted mapping outputs and record <strong>review metadata only</strong> (approve / reject / needs review / notes). Mapping results and emission calculations are never modified here.
+      </p>
+    </div>
+  </div>
+
+  <div class="card shadow-sm border-secondary-subtle mb-3">
+    <div class="card-body py-3">
+      <form id="mrFilterForm" class="row g-2 align-items-end">
+        <div class="col-6 col-md-2">
+          <label class="form-label small text-muted mb-0" for="mrPageSize">Page size</label>
+          <select class="form-select form-select-sm" id="mrPageSize" name="page_size">
+            <option value="25">25</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small text-muted mb-0" for="mrCompany">Company</label>
+          <input class="form-control form-control-sm" id="mrCompany" name="company" placeholder="Contains…">
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small text-muted mb-0" for="mrSheet">Sheet</label>
+          <input class="form-control form-control-sm" id="mrSheet" name="sheet" placeholder="Contains…">
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small text-muted mb-0" for="mrRun">Mapping run id</label>
+          <input class="form-control form-control-sm" id="mrRun" name="mapping_run_id" placeholder="Exact id">
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small text-muted mb-0" for="mrRevStatus">Review status</label>
+          <select class="form-select form-select-sm" id="mrRevStatus" name="review_status">
+            <option value="">Any</option>
+            <option value="Pending">Pending</option>
+            <option value="Approved">Approved</option>
+            <option value="Rejected">Rejected</option>
+            <option value="Needs Review">Needs Review</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small text-muted mb-0" for="mrReviewedBy">Reviewed by (user id)</label>
+          <input class="form-control form-control-sm" id="mrReviewedBy" name="reviewed_by" type="number" min="1" step="1" placeholder="—">
+        </div>
+        <div class="col-12 col-md-2">
+          <label class="form-label small text-muted mb-0" for="mrSearch">Search</label>
+          <input class="form-control form-control-sm" id="mrSearch" name="search" placeholder="Text search">
+        </div>
+        <div class="col-4 col-md-2">
+          <label class="form-label small text-muted mb-0" for="mrMinConf">Min confidence</label>
+          <input class="form-control form-control-sm" id="mrMinConf" name="min_confidence" type="number" step="any" placeholder="—">
+        </div>
+        <div class="col-4 col-md-2">
+          <label class="form-label small text-muted mb-0" for="mrMaxConf">Max confidence</label>
+          <input class="form-control form-control-sm" id="mrMaxConf" name="max_confidence" type="number" step="any" placeholder="—">
+        </div>
+        <div class="col-12 col-md-2 d-flex flex-wrap gap-3 align-items-center pb-1">
+          <div class="form-check mb-0">
+            <input class="form-check-input" type="checkbox" id="mrOnlyReviewed" name="only_reviewed" value="1">
+            <label class="form-check-label small" for="mrOnlyReviewed">Reviewed only</label>
+          </div>
+          <div class="form-check mb-0">
+            <input class="form-check-input" type="checkbox" id="mrOnlyPending" name="only_pending" value="1">
+            <label class="form-check-label small" for="mrOnlyPending">Pending only</label>
+          </div>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small text-muted mb-0" for="mrSortBy">Sort by</label>
+          <select class="form-select form-select-sm" id="mrSortBy" name="sort_by">
+            <option value="created_at">Created</option>
+            <option value="reviewed_at">Reviewed</option>
+            <option value="confidence_score">Confidence</option>
+            <option value="emissions_kg_co2e">Emissions (kg)</option>
+            <option value="company_name">Company</option>
+            <option value="sheet_name">Sheet</option>
+            <option value="description">Description</option>
+            <option value="mapping_run_id">Mapping run</option>
+            <option value="match_method">Match method</option>
+            <option value="review_status">Review status</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small text-muted mb-0" for="mrSortDir">Direction</label>
+          <select class="form-select form-select-sm" id="mrSortDir" name="sort_dir">
+            <option value="desc">Descending</option>
+            <option value="asc">Ascending</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-2 d-grid">
+          <button class="btn btn-primary btn-sm" type="submit">Apply</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="d-flex flex-wrap align-items-center gap-2 mb-2 small text-muted" id="mrMeta"></div>
+
+  <div class="table-responsive shadow-sm border rounded bg-body">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-light small text-secondary text-uppercase">
+        <tr>
+          <th scope="col">Review</th>
+          <th scope="col">Company</th>
+          <th scope="col">Sheet</th>
+          <th scope="col">Description</th>
+          <th scope="col" class="text-end">Amount</th>
+          <th scope="col">Mapped EF</th>
+          <th scope="col" class="text-end">EF value</th>
+          <th scope="col">Match</th>
+          <th scope="col" class="text-end">Conf.</th>
+          <th scope="col" class="text-end">Emissions kg</th>
+          <th scope="col">Run</th>
+          <th scope="col" class="text-end text-nowrap">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="mrBody" class="small"></tbody>
+    </table>
+  </div>
+
+  <nav class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3" aria-label="Pagination">
+    <button type="button" class="btn btn-outline-secondary btn-sm" id="mrPrev">Previous</button>
+    <span class="small text-muted" id="mrPageLabel"></span>
+    <button type="button" class="btn btn-outline-secondary btn-sm" id="mrNext">Next</button>
+  </nav>
+</div>
+
+<div class="modal fade" id="mrNotesModal" tabindex="-1" aria-labelledby="mrNotesModalTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="mrNotesModalTitle">Review notes</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="small text-muted mb-2" id="mrNotesMeta"></div>
+        <label class="form-label small" for="mrNotesTextarea">Notes (plain text, max {{ mapping_review_notes_max|default(4000) }} characters)</label>
+        <textarea class="form-control font-monospace small" id="mrNotesTextarea" rows="5" maxlength="{{ mapping_review_notes_max|default(4000) }}"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" id="mrNotesSaveBtn">Save notes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="offcanvas offcanvas-end" tabindex="-1" id="mrDetailPanel" aria-labelledby="mrDetailTitle">
+  <div class="offcanvas-header border-bottom">
+    <h5 class="offcanvas-title" id="mrDetailTitle">Row details</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+  </div>
+  <div class="offcanvas-body" id="mrDetailBody">
+    <p class="text-muted small mb-0">Select a row.</p>
+  </div>
+</div>
+
+<script>
+(function () {
+  const NOTES_MAX = {{ mapping_review_notes_max|default(4000)|int }};
+  const MR_DETAIL_PREFIX = "{{ url_for('api_mapping_review_detail', snapshot_id=0)[:-2] }}";
+  const MR_ACTION_BASE = "/api/mapping-review";
+  const metaEl = document.getElementById("mrMeta");
+  const bodyEl = document.getElementById("mrBody");
+  const formEl = document.getElementById("mrFilterForm");
+  const prevBtn = document.getElementById("mrPrev");
+  const nextBtn = document.getElementById("mrNext");
+  const pageLabel = document.getElementById("mrPageLabel");
+  const detailPanelEl = document.getElementById("mrDetailPanel");
+  const detailBodyEl = document.getElementById("mrDetailBody");
+  const notesModalEl = document.getElementById("mrNotesModal");
+  const notesTextarea = document.getElementById("mrNotesTextarea");
+  const notesMetaEl = document.getElementById("mrNotesMeta");
+  const notesSaveBtn = document.getElementById("mrNotesSaveBtn");
+
+  let page = 1;
+  let totalPages = 1;
+  let loading = false;
+  const actingIds = new Set();
+  let notesTargetId = null;
+
+  function esc(s) {
+    return String(s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function workflowBadge(row) {
+    const tone = row.review_status_tone || "secondary";
+    const allowed = { success: "success", danger: "danger", warning: "warning", secondary: "secondary" };
+    const bs = Object.prototype.hasOwnProperty.call(allowed, tone) ? allowed[tone] : "secondary";
+    const label = esc(row.review_status || "Pending");
+    return '<span class="badge text-bg-' + bs + '">' + label + "</span>";
+  }
+
+  function badgeConfidence(band) {
+    if (band === "high") return '<span class="badge bg-success-subtle text-success border border-success-subtle">High confidence</span>';
+    if (band === "medium") return '<span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">Medium confidence</span>';
+    if (band === "low") return '<span class="badge bg-danger-subtle text-danger border border-danger-subtle">Low confidence</span>';
+    return '<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">Confidence n/a</span>';
+  }
+
+  function badgeExtras(b) {
+    const parts = [];
+    if (b.missing_ef) parts.push('<span class="badge bg-dark-subtle text-dark border">Missing EF</span>');
+    if (b.high_emissions) parts.push('<span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">High emissions</span>');
+    return parts.join(" ");
+  }
+
+  function rowQualityBadges(badges) {
+    return '<div class="d-flex flex-column gap-1">' +
+      badgeConfidence(badges.confidence_band) +
+      '<div class="d-flex flex-wrap gap-1">' + badgeExtras(badges) + "</div></div>";
+  }
+
+  function reviewCell(row) {
+    const who = esc(row.reviewed_by_label || "");
+    const when = esc((row.reviewed_at || "").replace("T", " ").slice(0, 19));
+    const sub = (who || when) ? '<div class="small text-muted mt-1">' + (who || "—") + (when ? " · " + when + " UTC" : "") + "</div>" : "";
+    const noteHint = row.has_notes ? '<div class="small text-info mt-1">Has notes</div>' : "";
+    return '<div class="review-cell">' + workflowBadge(row) + rowQualityBadges(row.badges || {}) + sub + noteHint + "</div>";
+  }
+
+  function fmtNum(v) {
+    if (v === null || v === undefined || v === "") return "—";
+    var n = Number(v);
+    if (!isFinite(n)) return esc(v);
+    if (Math.abs(n) >= 1000) return n.toPrecision(4);
+    return n.toPrecision(3);
+  }
+
+  function actionButtons(row, disabledAll) {
+    const id = row.id;
+    const dis = disabledAll ? " disabled" : "";
+    return (
+      '<div class="btn-group-vertical btn-group-sm" role="group">' +
+      '<button type="button" class="btn btn-outline-success btn-sm"' + dis + ' data-mr-act="approve" data-id="' + id + '">Approve</button>' +
+      '<button type="button" class="btn btn-outline-danger btn-sm"' + dis + ' data-mr-act="reject" data-id="' + id + '">Reject</button>' +
+      '<button type="button" class="btn btn-outline-warning btn-sm"' + dis + ' data-mr-act="needs-review" data-id="' + id + '">Needs review</button>' +
+      '<button type="button" class="btn btn-outline-secondary btn-sm"' + dis + ' data-mr-act="notes" data-id="' + id + '">Notes</button>' +
+      "</div>"
+    );
+  }
+
+  function wireRow(tr, row) {
+    const actTd = tr.querySelector(".mr-actions");
+    if (actTd) {
+      actTd.addEventListener("click", function (ev) { ev.stopPropagation(); });
+    }
+    tr.addEventListener("click", function (ev) {
+      if (ev.target.closest(".mr-actions")) return;
+      var panel = bootstrap.Offcanvas.getOrCreateInstance(detailPanelEl);
+      panel.show();
+      loadDetail(row.id);
+    });
+    tr.querySelectorAll("[data-mr-act]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = parseInt(btn.getAttribute("data-id") || "0", 10);
+        var act = btn.getAttribute("data-mr-act") || "";
+        if (!id || actingIds.has(id)) return;
+        if (act === "notes") {
+          openNotesModal(id);
+          return;
+        }
+        var path = act === "needs-review" ? "needs-review" : act;
+        postReviewAction(id, path, {});
+      });
+    });
+  }
+
+  function applyRowData(tr, row) {
+    const disabled = actingIds.has(row.id);
+    tr.innerHTML =
+      "<td>" + reviewCell(row) + "</td>" +
+      "<td>" + esc(row.company_name) + "</td>" +
+      "<td class=\"text-break\">" + esc(row.sheet_name) + "</td>" +
+      "<td class=\"text-break\">" + esc(row.description).slice(0, 160) + (row.description && row.description.length > 160 ? "…" : "") + "</td>" +
+      '<td class="text-end text-nowrap">' + esc(row.amount_display) + "</td>" +
+      "<td class=\"text-break\">" + esc(row.mapped_ef) + "</td>" +
+      '<td class="text-end text-nowrap">' + esc(row.mapped_ef_value) + "</td>" +
+      "<td class=\"text-break\">" + esc(row.match_method).slice(0, 48) + "</td>" +
+      '<td class="text-end">' + fmtNum(row.confidence_score) + "</td>" +
+      '<td class="text-end">' + fmtNum(row.emissions_kg_co2e) + "</td>" +
+      '<td><code class="small">' + esc(row.mapping_run_id) + "</code></td>" +
+      '<td class="text-end align-top mr-actions">' + actionButtons(row, disabled) + "</td>";
+    wireRow(tr, row);
+  }
+
+  async function loadDetail(id) {
+    detailBodyEl.innerHTML = '<p class="text-muted small">Loading…</p>';
+    const r = await fetch(MR_DETAIL_PREFIX + "/" + encodeURIComponent(id), { credentials: "same-origin" });
+    if (!r.ok) {
+      detailBodyEl.innerHTML = '<p class="text-danger small">Could not load details.</p>';
+      return;
+    }
+    const data = await r.json();
+    const pairs = (data.detail_pairs || []).map(function (p) {
+      return "<dt class=\"col-sm-4 text-muted small\">" + esc(p.label) + "</dt><dd class=\"col-sm-8 small\">" + esc(p.value) + "</dd>";
+    }).join("");
+    const src = (data.source_fields || []).slice(0, 80).map(function (p) {
+      return "<dt class=\"col-sm-5 text-muted small text-break\">" + esc(p.name) + "</dt><dd class=\"col-sm-7 small text-break\">" + esc(p.value) + "</dd>";
+    }).join("");
+    detailBodyEl.innerHTML =
+      '<div class="mb-3">' + reviewCell(data.summary || {}) + "</div>" +
+      "<h6 class=\"text-uppercase text-muted small\">Summary</h6>" +
+      '<dl class="row mb-3">' + pairs + "</dl>" +
+      "<h6 class=\"text-uppercase text-muted small\">Source row (snapshot)</h6>" +
+      '<dl class="row">' + (src || '<p class="small text-muted">Not available</p>') + "</dl>";
+  }
+
+  async function openNotesModal(id) {
+    notesTargetId = id;
+    notesTextarea.value = "";
+    notesMetaEl.textContent = "Loading…";
+    notesSaveBtn.disabled = true;
+    var modal = bootstrap.Modal.getOrCreateInstance(notesModalEl);
+    modal.show();
+    try {
+      const r = await fetch(MR_DETAIL_PREFIX + "/" + encodeURIComponent(id), { credentials: "same-origin" });
+      const data = await r.json();
+      const summ = data.summary || {};
+      notesTextarea.value = String(summ.review_notes || "");
+      notesMetaEl.innerHTML =
+        "Reviewer: <strong>" + esc(summ.reviewed_by_label || "—") + "</strong><br>" +
+        "Last reviewed: " + esc((summ.reviewed_at || "Not available").replace("T", " ").slice(0, 25));
+    } catch (e) {
+      notesMetaEl.textContent = "Could not load existing notes.";
+    }
+    notesSaveBtn.disabled = false;
+  }
+
+  async function postReviewAction(id, pathSuffix, body) {
+    if (!id || actingIds.has(id)) return false;
+    actingIds.add(id);
+    var tr = bodyEl.querySelector('tr[data-row-id="' + id + '"]');
+    if (tr) tr.querySelectorAll("button").forEach(function (b) { b.disabled = true; });
+    try {
+      const r = await fetch(MR_ACTION_BASE + "/" + encodeURIComponent(id) + "/" + pathSuffix, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify(body || {}),
+      });
+      const data = await r.json().catch(function () { return {}; });
+      if (!r.ok) {
+        metaEl.textContent = data.error || "Update failed.";
+        return false;
+      }
+      if (tr && data.row) tr.setAttribute("data-row-json", JSON.stringify(data.row));
+      return true;
+    } catch (e) {
+      metaEl.textContent = "Network error.";
+      return false;
+    } finally {
+      actingIds.delete(id);
+      if (tr) {
+        var rowData = {};
+        try { rowData = JSON.parse(tr.getAttribute("data-row-json") || "{}"); } catch (e2) {}
+        rowData.id = id;
+        applyRowData(tr, rowData);
+      }
+    }
+  }
+
+  notesSaveBtn.addEventListener("click", async function () {
+    if (!notesTargetId) return;
+    var id = notesTargetId;
+    var txt = notesTextarea.value.slice(0, NOTES_MAX);
+    notesSaveBtn.disabled = true;
+    var ok = await postReviewAction(id, "notes", { notes: txt });
+    notesSaveBtn.disabled = false;
+    if (ok) bootstrap.Modal.getInstance(notesModalEl)?.hide();
+  });
+
+  function buildQueryParams() {
+    const fd = new FormData(formEl);
+    const params = new URLSearchParams();
+    params.set("page", String(page));
+    params.set("page_size", fd.get("page_size") || "50");
+    [
+      ["company", "company"],
+      ["sheet", "sheet"],
+      ["mapping_run_id", "mapping_run_id"],
+      ["review_status", "review_status"],
+      ["search", "search"],
+      ["min_confidence", "min_confidence"],
+      ["max_confidence", "max_confidence"],
+      ["sort_by", "sort_by"],
+      ["sort_dir", "sort_dir"],
+      ["reviewed_by", "reviewed_by"],
+    ].forEach(function (kv) {
+      var v = (fd.get(kv[1]) || "").toString().trim();
+      if (v) params.set(kv[0], v);
+    });
+    if (document.getElementById("mrOnlyReviewed").checked) params.set("only_reviewed", "1");
+    if (document.getElementById("mrOnlyPending").checked) params.set("only_pending", "1");
+    return params;
+  }
+
+  async function loadTable(goPage) {
+    if (loading) return;
+    loading = true;
+    page = goPage || page;
+    const params = buildQueryParams();
+    metaEl.textContent = "Loading…";
+    bodyEl.innerHTML = "";
+    try {
+      const res = await fetch("/api/mapping-review?" + params.toString(), { credentials: "same-origin" });
+      const data = await res.json();
+      if (!res.ok) {
+        metaEl.textContent = data.error || "Request failed.";
+        loading = false;
+        return;
+      }
+      totalPages = Math.max(1, data.total_pages | 0);
+      page = Math.min(Math.max(1, data.page | 0 || 1), totalPages);
+      metaEl.textContent = "Total rows: " + (data.total_count | 0) + " · Page " + page + " / " + totalPages;
+      pageLabel.textContent = "Page " + page + " of " + totalPages;
+      prevBtn.disabled = page <= 1;
+      nextBtn.disabled = page >= totalPages;
+      (data.rows || []).forEach(function (row) {
+        const tr = document.createElement("tr");
+        tr.setAttribute("data-row-id", row.id);
+        tr.setAttribute("data-row-json", JSON.stringify(row));
+        applyRowData(tr, row);
+        bodyEl.appendChild(tr);
+      });
+    } catch (e) {
+      metaEl.textContent = "Network error.";
+    }
+    loading = false;
+  }
+
+  formEl.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    page = 1;
+    loadTable(1);
+  });
+  prevBtn.addEventListener("click", function () { loadTable(Math.max(1, page - 1)); });
+  nextBtn.addEventListener("click", function () { loadTable(Math.min(totalPages, page + 1)); });
+
+  (function initFromUrl() {
+    const qs = new URLSearchParams(window.location.search);
+    var mr = qs.get("mapping_run_id");
+    if (mr) document.getElementById("mrRun").value = mr;
+    var st = qs.get("review_status");
+    if (st) document.getElementById("mrRevStatus").value = st;
+  })();
+
+  loadTable(1);
+})();
+</script>
+{% endblock %}

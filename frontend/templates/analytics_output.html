@@ -991,7 +991,14 @@
     recount();
   }
   refreshBlocked();
-  setInterval(refreshBlocked, 8000);
+  if (window.CtsPerf) {
+    window.CtsPerf.managePoll('analytics-output-ccc-blocked', refreshBlocked, 26000, {
+      pauseWhenHidden: true,
+      runImmediate: false,
+    });
+  } else {
+    setInterval(refreshBlocked, 8000);
+  }
 
   var confirmModalEl = qs('cccDeImportConfirmModal');
   var doneModalEl = qs('cccDeImportDoneModal');
@@ -1034,7 +1041,7 @@
       var jobId = started.job_id;
       if (!jobId) throw new Error('No job_id returned');
 
-      pollSidebarTimer = setInterval(function () { refreshBlocked(); }, 4000);
+      pollSidebarTimer = setInterval(function () { refreshBlocked(); }, 6500);
 
       while (true) {
         var job = await fetchJson('/job-status/' + encodeURIComponent(jobId));

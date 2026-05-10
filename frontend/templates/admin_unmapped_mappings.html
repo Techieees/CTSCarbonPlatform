@@ -12,18 +12,18 @@
         Rows with mapping result <span class="font-monospace">status = No match</span> are collected here for manual review and emission factor assignment. Successfully mapped rows continue through the standard processing pipeline automatically, while this queue is reserved for unresolved entries requiring additional validation or owner input.</p>
     </div>
     <div class="d-flex flex-wrap gap-2">
-      <a class="btn {% if dedupe_mode == 'description' %}btn-primary{% else %}btn-ghost{% endif %} d-inline-flex align-items-center" href="{{ url_for('admin_unmapped_mappings', status=status_filter, company=company_filter, sheet=sheet_filter, search=search, dedupe='description') }}">
+      <a class="btn {% if dedupe_mode == 'description' %}btn-primary{% else %}btn-ghost{% endif %} d-inline-flex align-items-center" href="{{ url_for('admin_unmapped_mappings', status=status_filter, company=company_filter, sheet=sheet_filter, search=search, dedupe='description', page=1, page_size=page_size|default(50)) }}">
         Remove duplications
       </a>
       <a class="btn btn-ghost d-inline-flex align-items-center" href="{{ url_for('admin_unmapped_mappings_export', status=status_filter, company=company_filter, sheet=sheet_filter, search=search, dedupe='description') }}">
         {{ illu.illu_btn_download('me-1') }}Export CSV (without duplications)
       </a>
       {% if dedupe_mode == 'description' %}
-      <a class="btn btn-ghost d-inline-flex align-items-center" href="{{ url_for('admin_unmapped_mappings', status=status_filter, company=company_filter, sheet=sheet_filter, search=search) }}">
+      <a class="btn btn-ghost d-inline-flex align-items-center" href="{{ url_for('admin_unmapped_mappings', status=status_filter, company=company_filter, sheet=sheet_filter, search=search, page=1, page_size=page_size|default(50)) }}">
         Show all
       </a>
       {% endif %}
-      <a class="btn btn-ghost d-inline-flex align-items-center" href="{{ url_for('admin_unmapped_mappings_fuzzy', status=status_filter, company=company_filter, sheet=sheet_filter, search=search, dedupe=dedupe_mode, threshold=fuzzy_threshold) }}" target="_blank" rel="noopener">
+      <a class="btn btn-ghost d-inline-flex align-items-center" href="{{ url_for('admin_unmapped_mappings_fuzzy', status=status_filter, company=company_filter, sheet=sheet_filter, search=search, dedupe=dedupe_mode or '', threshold=fuzzy_threshold, page=page|default(1), page_size=page_size|default(50)) }}" target="_blank" rel="noopener">
         Run fuzzy logic algorithm
       </a>
       <a class="btn btn-ghost d-inline-flex align-items-center" href="{{ url_for('admin_unmapped_mappings_export', status=status_filter, company=company_filter, sheet=sheet_filter, search=search) }}">
@@ -43,9 +43,15 @@
     <div class="col-12 col-md-4"><div class="card h-100"><div class="card-body py-3"><div class="text-muted small">All captured No match rows</div><div class="fs-4 fw-semibold">{{ counts.all }}</div></div></div></div>
   </div>
 
+  {% if dedupe_scan_capped|default(false) %}
+  <div class="alert alert-warning py-2 small mb-3">
+    Deduplicate-by-description scans only the newest {{ dedupe_scan_cap }} matching rows when listing. Refine filters for complete coverage beyond that window.
+  </div>
+  {% endif %}
+
   <div class="card shadow-sm border-secondary-subtle mb-3">
     <div class="card-body">
-      <form method="get" class="row g-2 align-items-end">
+      <form id="unmappedFilterForm" method="get" class="row g-2 align-items-end">
         {% if dedupe_mode %}<input type="hidden" name="dedupe" value="{{ dedupe_mode }}">{% endif %}
         <div class="col-md-2">
           <label class="form-label small text-muted" for="statusFilter">Status</label>
@@ -76,6 +82,11 @@
         <div class="col-md-1 d-grid">
           <button class="btn btn-primary" type="submit">Filter</button>
         </div>
+        <input type="hidden" name="page" value="1">
+        <input type="hidden" name="page_size" value="{{ page_size|default(50) }}">
+        {% if request.endpoint == 'admin_unmapped_mappings_fuzzy' %}
+        <input type="hidden" name="threshold" value="{{ '%.2f'|format(fuzzy_threshold) }}">
+        {% endif %}
       </form>
     </div>
   </div>
@@ -88,6 +99,8 @@
         <input type="hidden" name="company" value="{{ company_filter }}">
         <input type="hidden" name="sheet" value="{{ sheet_filter }}">
         <input type="hidden" name="search" value="{{ search }}">
+        <input type="hidden" name="page" value="{{ page|default(1) }}">
+        <input type="hidden" name="page_size" value="{{ page_size|default(50) }}">
         {% if dedupe_mode %}<input type="hidden" name="dedupe" value="{{ dedupe_mode }}">{% endif %}
         <div class="col-md-3">
           <label class="form-label small text-muted" for="fuzzyThreshold">Fuzzy threshold</label>
@@ -119,7 +132,7 @@
       </div>
     </div>
     <div class="card-body p-0">
-      <form method="post" action="{{ url_for('admin_unmapped_mappings_fuzzy_approve', status=status_filter, company=company_filter, sheet=sheet_filter, search=search, dedupe=dedupe_mode, threshold=fuzzy_threshold) }}">
+      <form method="post" action="{{ url_for('admin_unmapped_mappings_fuzzy_approve', status=status_filter, company=company_filter, sheet=sheet_filter, search=search, dedupe=dedupe_mode or '', threshold=fuzzy_threshold, page=page|default(1), page_size=page_size|default(50)) }}">
         <div class="table-responsive">
           <table class="table table-hover align-middle mb-0">
             <thead class="text-secondary small text-uppercase" style="background-color: var(--bs-secondary-bg);">
@@ -168,7 +181,7 @@
   {% elif request.endpoint == 'admin_unmapped_mappings_fuzzy' %}
   <div class="alert alert-info">
     No All together fuzzy suggestions found at or above {{ '%.2f'|format(fuzzy_threshold) }} for the current filters.
-    {% if fuzzy_scanned_count %}Scanned {{ fuzzy_scanned_count }} unmapped row(s).{% endif %}
+    {% if fuzzy_scanned_count %}Scanned {{ fuzzy_scanned_count }} unmapped row(s) on page {{ page|default(1) }} ({{ total_count|default(0) }} matching rows total).{% endif %}
   </div>
   {% endif %}
 
@@ -228,16 +241,20 @@
                 <a class="btn btn-sm btn-ghost mb-2" href="{{ url_for('manage_emission_factors', search=row.ef_search) }}" target="_blank" rel="noopener">
                   Search EF
                 </a>
-                <form method="post" action="{{ url_for('admin_unmapped_mapping_update', row_id=row.id, status=status_filter, company=company_filter, sheet=sheet_filter, search=search, dedupe=dedupe_mode) }}" class="d-flex flex-column gap-2">
+                {% if request.endpoint == 'admin_unmapped_mappings_fuzzy' %}
+                <form method="post" action="{{ url_for('admin_unmapped_mapping_update', row_id=row.id, status=status_filter, company=company_filter, sheet=sheet_filter, search=search, dedupe=dedupe_mode or '', page=page|default(1), page_size=page_size|default(50), source='fuzzy') }}" class="d-flex flex-column gap-2 unmapped-row-actions">
+                {% else %}
+                <form method="post" action="{{ url_for('admin_unmapped_mapping_update', row_id=row.id, status=status_filter, company=company_filter, sheet=sheet_filter, search=search, dedupe=dedupe_mode or '', page=page|default(1), page_size=page_size|default(50)) }}" class="d-flex flex-column gap-2 unmapped-row-actions">
+                {% endif %}
                   {% set options = ef_options_by_row.get(row.id, []) %}
-                  <select class="form-select form-select-sm" name="assigned_ef_key">
-                    <option value="">Assigned EF id</option>
+                  <select class="form-select form-select-sm unmapped-ef-select" name="assigned_ef_key" data-row-id="{{ row.id }}" data-current-ef-id="{{ row.assigned_ef_id }}">
+                    <option value="">Assigned EF (open to load)</option>
                     {% for option in options %}
                     <option value="{{ option.key }}" {% if row.assigned_ef_id and row.assigned_ef_id == option.ef_id %}selected{% endif %}>{{ option.label }}</option>
                     {% endfor %}
                   </select>
                   {% if not options %}
-                  <input class="form-control form-control-sm font-monospace" name="assigned_ef_id" value="{{ row.assigned_ef_id }}" placeholder="Assigned EF id">
+                  <input class="form-control form-control-sm font-monospace unmapped-ef-manual" name="assigned_ef_id" value="{{ row.assigned_ef_id }}" placeholder="Assigned EF id" autocomplete="off">
                   {% endif %}
                   <input class="form-control form-control-sm" name="owner_notes" value="{{ row.owner_notes }}" placeholder="Owner note">
                     <div class="d-flex justify-content-end gap-2 flex-wrap">
@@ -256,6 +273,47 @@
           </tbody>
         </table>
       </div>
+      {% set ep = 'admin_unmapped_mappings_fuzzy' if request.endpoint == 'admin_unmapped_mappings_fuzzy' else 'admin_unmapped_mappings' %}
+      <div class="p-3 border-top d-flex flex-wrap align-items-center justify-content-between gap-3">
+        <div class="small text-muted">
+          Page {{ page|default(1) }} / {{ total_pages|default(1) }} • {{ total_count|default(0) }} row(s)
+          {% if request.endpoint != 'admin_unmapped_mappings_fuzzy' %}
+          • <a class="link-secondary" href="{{ url_for('admin_unmapped_mappings', status=status_filter, company=company_filter, sheet=sheet_filter, search=search, dedupe=dedupe_mode or '', page=page|default(1), page_size=page_size|default(50), unmapped_live_refresh='1') }}">Full stale refresh (slow)</a>
+          {% endif %}
+        </div>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <span class="small text-muted">Rows per page</span>
+          <form method="get" class="d-inline">
+            <input type="hidden" name="status" value="{{ status_filter }}">
+            <input type="hidden" name="company" value="{{ company_filter }}">
+            <input type="hidden" name="sheet" value="{{ sheet_filter }}">
+            <input type="hidden" name="search" value="{{ search }}">
+            <input type="hidden" name="page" value="1">
+            {% if dedupe_mode %}<input type="hidden" name="dedupe" value="{{ dedupe_mode }}">{% endif %}
+            {% if ep == 'admin_unmapped_mappings_fuzzy' %}
+            <input type="hidden" name="threshold" value="{{ '%.2f'|format(fuzzy_threshold) }}">
+            {% endif %}
+            <select name="page_size" class="form-select form-select-sm" style="width: auto;" onchange="this.form.submit()" aria-label="Rows per page">
+              <option value="25" {% if (page_size|default(50)) == 25 %}selected{% endif %}>25</option>
+              <option value="50" {% if (page_size|default(50)) == 50 %}selected{% endif %}>50</option>
+              <option value="100" {% if (page_size|default(50)) == 100 %}selected{% endif %}>100</option>
+            </select>
+          </form>
+          {% set cur = page|default(1)|int %}
+          {% set tp = total_pages|default(1)|int %}
+          {% if tp > 1 %}
+          <div class="btn-group btn-group-sm" role="group" aria-label="Pagination">
+            {% if ep == 'admin_unmapped_mappings_fuzzy' %}
+            <a class="btn btn-outline-secondary {% if cur <= 1 %}disabled{% endif %}" {% if cur > 1 %}href="{{ url_for(ep, status=status_filter, company=company_filter, sheet=sheet_filter, search=search, dedupe=dedupe_mode or '', threshold=fuzzy_threshold, page=cur-1, page_size=page_size|default(50)) }}"{% else %}href="#" tabindex="-1" aria-disabled="true"{% endif %}>Prev</a>
+            <a class="btn btn-outline-secondary {% if cur >= tp %}disabled{% endif %}" {% if cur < tp %}href="{{ url_for(ep, status=status_filter, company=company_filter, sheet=sheet_filter, search=search, dedupe=dedupe_mode or '', threshold=fuzzy_threshold, page=cur+1, page_size=page_size|default(50)) }}"{% else %}href="#" tabindex="-1" aria-disabled="true"{% endif %}>Next</a>
+            {% else %}
+            <a class="btn btn-outline-secondary {% if cur <= 1 %}disabled{% endif %}" {% if cur > 1 %}href="{{ url_for(ep, status=status_filter, company=company_filter, sheet=sheet_filter, search=search, dedupe=dedupe_mode or '', page=cur-1, page_size=page_size|default(50)) }}"{% else %}href="#" tabindex="-1" aria-disabled="true"{% endif %}>Prev</a>
+            <a class="btn btn-outline-secondary {% if cur >= tp %}disabled{% endif %}" {% if cur < tp %}href="{{ url_for(ep, status=status_filter, company=company_filter, sheet=sheet_filter, search=search, dedupe=dedupe_mode or '', page=cur+1, page_size=page_size|default(50)) }}"{% else %}href="#" tabindex="-1" aria-disabled="true"{% endif %}>Next</a>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+      </div>
       {% else %}
       <div class="text-center py-5">
         {{ illu.illu_inbox_empty() }}
@@ -265,4 +323,139 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const LIST_EP = '{{ request.endpoint }}';
+  let searchTimer = null;
+  const filterForm = document.getElementById('unmappedFilterForm');
+  const searchInput = document.getElementById('searchFilter');
+  if (filterForm && searchInput && LIST_EP !== 'admin_unmapped_mappings_fuzzy') {
+    var lastCommittedSearch = searchInput.value;
+    searchInput.addEventListener('input', function () {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(function () {
+        var v = searchInput.value;
+        if (v === lastCommittedSearch) {
+          return;
+        }
+        lastCommittedSearch = v;
+        filterForm.requestSubmit();
+      }, 320);
+    });
+    filterForm.addEventListener('submit', function () {
+      lastCommittedSearch = searchInput.value;
+    });
+  }
+
+  /** @type {Record<string, AbortController>} */
+  const efControllers = {};
+
+  function hydrateEfSelect(sel) {
+    const rowId = sel.getAttribute('data-row-id');
+    if (!rowId || sel.dataset.efHydrated === '1' || sel.dataset.efLoading === '1') {
+      return;
+    }
+    if (efControllers[rowId]) {
+      try {
+        efControllers[rowId].abort();
+      } catch (e) { /* noop */ }
+    }
+    sel.dataset.efLoading = '1';
+    sel.classList.add('opacity-75');
+
+    const ac = new AbortController();
+    efControllers[rowId] = ac;
+
+    const currentEf = (sel.getAttribute('data-current-ef-id') || '').trim();
+
+    fetch('/api/admin/unmapped/' + encodeURIComponent(rowId) + '/ef-options', {
+      credentials: 'same-origin',
+      signal: ac.signal,
+      headers: { 'Accept': 'application/json' }
+    })
+      .then(function (r) {
+        if (!r.ok) {
+          throw new Error('HTTP ' + r.status);
+        }
+        return r.json();
+      })
+      .then(function (payload) {
+        if (ac.signal.aborted || !document.body.contains(sel)) {
+          return;
+        }
+        const container = sel.closest('.unmapped-row-actions');
+        const frag = document.createDocumentFragment();
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = currentEf ? 'Choose emission factor…' : 'Assigned EF id';
+        frag.appendChild(placeholder);
+
+        let matched = false;
+        (payload.options || []).forEach(function (opt) {
+          const o = document.createElement('option');
+          o.value = opt.key;
+          o.textContent = opt.label;
+          if (!matched && currentEf && opt.ef_id === currentEf) {
+            o.selected = true;
+            matched = true;
+          }
+          frag.appendChild(o);
+        });
+
+        while (sel.firstChild) {
+          sel.removeChild(sel.firstChild);
+        }
+        sel.appendChild(frag);
+        sel.dataset.efHydrated = '1';
+        if (container && (payload.options || []).length) {
+          var manual = container.querySelector('.unmapped-ef-manual');
+          if (manual) {
+            manual.style.display = 'none';
+          }
+        }
+      })
+      .catch(function (err) {
+        if (err && err.name === 'AbortError') {
+          return;
+        }
+        sel.dataset.efHydrated = '0';
+        sel.title = 'Could not load EF list. Retry or enter Assigned EF id below.';
+      })
+      .finally(function () {
+        if (efControllers[rowId] === ac) {
+          delete efControllers[rowId];
+        }
+        sel.dataset.efLoading = '0';
+        sel.classList.remove('opacity-75');
+      });
+  }
+
+  document.body.addEventListener('focusin', function (ev) {
+    var t = ev.target;
+    if (!t || !t.closest) {
+      return;
+    }
+    var sel = t.closest('select.unmapped-ef-select');
+    if (!sel || !document.body.contains(sel)) {
+      return;
+    }
+    hydrateEfSelect(sel);
+  });
+
+  document.body.addEventListener('pointerdown', function (ev) {
+    var t = ev.target;
+    if (!t || !t.closest) {
+      return;
+    }
+    var sel = t.closest('select.unmapped-ef-select');
+    if (!sel || !document.body.contains(sel)) {
+      return;
+    }
+    hydrateEfSelect(sel);
+  }, true);
+})();
+</script>
 {% endblock %}

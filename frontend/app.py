@@ -4,7 +4,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file, send_from_directory, Response, session, abort, g
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from sqlalchemy import and_, case, desc, exists, func, or_, tuple_, update
+from sqlalchemy import and_, asc, case, desc, exists, func, or_, tuple_, update
 from sqlalchemy.exc import IntegrityError
 from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -39,7 +39,7 @@ import ssl
 from functools import lru_cache
 from urllib import error as urllib_error
 from urllib import request as urllib_request
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 from email.message import EmailMessage
 from dotenv import load_dotenv
 from markupsafe import Markup, escape
@@ -1671,6 +1671,54 @@ class MappingUnmappedRow(db.Model):
     resolved_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
 
 
+class MappingReviewSnapshot(db.Model):
+    """
+    Read-only persisted rows derived from the final mapped dataframe after a MappingRun.
+    Used only for web inspection / audit — does not drive mapping or calculations.
+    """
+
+    __tablename__ = "mapping_review_snapshot"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "mapping_run_id",
+            "sheet_name",
+            "source_row_identifier",
+            name="uq_mapping_review_run_sheet_srcrow",
+        ),
+        db.Index("ix_mrs_run_id", "mapping_run_id"),
+        db.Index("ix_mrs_company", "company_name"),
+        db.Index("ix_mrs_sheet", "sheet_name"),
+        db.Index("ix_mrs_review_status", "review_status"),
+        db.Index("ix_mrs_confidence", "confidence_score"),
+        db.Index("ix_mrs_created_at", "created_at"),
+        db.Index("ix_mrs_reviewed_by", "reviewed_by_user_id"),
+        db.Index("ix_mrs_reviewed_at", "reviewed_at"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    mapping_run_id = db.Column(db.String(32), db.ForeignKey("mapping_run.id"), nullable=False, index=True)
+    company_name = db.Column(db.String(200), nullable=False)
+    sheet_name = db.Column(db.String(200), nullable=False)
+    source_row_identifier = db.Column(db.String(64), nullable=False)
+    description = db.Column(db.Text, nullable=False, default="")
+    supplier = db.Column(db.String(500), nullable=True)
+    source_amount = db.Column(db.String(200), nullable=True)
+    source_unit = db.Column(db.String(120), nullable=True)
+    mapped_ef_id = db.Column(db.String(200), nullable=True)
+    mapped_ef_name = db.Column(db.String(500), nullable=True)
+    mapped_ef_value = db.Column(db.String(120), nullable=True)
+    mapping_status = db.Column(db.String(200), nullable=True)
+    match_method = db.Column(db.String(500), nullable=True)
+    confidence_score = db.Column(db.Float, nullable=True)
+    emissions_kg_co2e = db.Column(db.Float, nullable=True)
+    review_status = db.Column(db.String(32), nullable=False, default="Pending", index=True)
+    reviewed_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    reviewed_at = db.Column(db.DateTime, nullable=True)
+    review_notes = db.Column(db.Text, nullable=True)
+    detail_payload = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
 class DataEntry(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     company_name = db.Column(db.String(200), nullable=False)
@@ -2512,6 +2560,9 @@ def _ensure_db_tables() -> None:
         _ensure_report_category_columns()
         _ensure_awards_form_columns()
         _ensure_mapping_unmapped_row_columns()
+        _ensure_mapping_unmapped_perf_indexes()
+        _ensure_mapping_review_snapshot_columns()
+        _ensure_mapping_review_snapshot_perf_indexes()
         _ensure_evidence_tables_columns()
         _ensure_governance_register_columns()
         _ensure_notification_meta_json_column()
@@ -3873,6 +3924,18 @@ def _run_mapping_for_virtual_sheet(user_id: int, company_name: str, sheet_name: 
     except Exception:
         db.session.rollback()
 
+    try:
+        _persist_mapping_review_snapshot(
+            run_id=run_id,
+            company_name=company_name,
+            sheet_name=sheet_name,
+            mapped_df=mapped_df,
+        )
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        print(f"[MAPPING_REVIEW] snapshot_error pipeline=virtual_sheet run={run_id} exc={exc!r}")
+
     return {
         "ok": True,
         "sheet": sheet_name,
@@ -4803,6 +4866,29 @@ def _ensure_awards_form_columns() -> None:
         pass
 
 
+def _ensure_mapping_unmapped_perf_indexes() -> None:
+    """SQLite best-effort list index for Unmapped Rows admin paging (review_status filter + newest-first ordering)."""
+    try:
+        from sqlalchemy import inspect, text
+
+        inspector = inspect(db.engine)
+        if not inspector.has_table("mapping_unmapped_row"):
+            return
+        names = {str(idx.get("name") or "") for idx in inspector.get_indexes("mapping_unmapped_row")}
+        idx_name = "ix_unmapped_review_status_created_id"
+        if idx_name not in names:
+            with db.engine.begin() as conn:
+                conn.execute(
+                    text(
+                        f"CREATE INDEX IF NOT EXISTS {idx_name} "
+                        "ON mapping_unmapped_row (review_status, created_at, id)"
+                    )
+                )
+            print(f"[UNMAPPED_PERF] created_index={idx_name}")
+    except Exception:
+        pass
+
+
 def _ensure_mapping_unmapped_row_columns() -> None:
     try:
         from sqlalchemy import inspect, text
@@ -4832,6 +4918,66 @@ def _ensure_mapping_unmapped_row_columns() -> None:
             return
         with db.engine.begin() as conn:
             for stmt in alters:
+                conn.execute(text(stmt))
+    except Exception:
+        pass
+
+
+def _ensure_mapping_review_snapshot_columns() -> None:
+    """Best-effort DDL when `mapping_review_snapshot` predates newer columns."""
+    try:
+        from sqlalchemy import inspect, text
+
+        inspector = inspect(db.engine)
+        if not inspector.has_table("mapping_review_snapshot"):
+            return
+        existing = {col["name"] for col in inspector.get_columns("mapping_review_snapshot")}
+        alters: list[str] = []
+        if "mapping_status" not in existing:
+            alters.append("ALTER TABLE mapping_review_snapshot ADD COLUMN mapping_status VARCHAR(200)")
+        if "detail_payload" not in existing:
+            alters.append("ALTER TABLE mapping_review_snapshot ADD COLUMN detail_payload TEXT")
+        if "reviewed_by_user_id" not in existing:
+            alters.append("ALTER TABLE mapping_review_snapshot ADD COLUMN reviewed_by_user_id INTEGER")
+        if "reviewed_at" not in existing:
+            alters.append("ALTER TABLE mapping_review_snapshot ADD COLUMN reviewed_at DATETIME")
+        if "review_notes" not in existing:
+            alters.append("ALTER TABLE mapping_review_snapshot ADD COLUMN review_notes TEXT")
+        if not alters:
+            return
+        with db.engine.begin() as conn:
+            for stmt in alters:
+                conn.execute(text(stmt))
+    except Exception:
+        pass
+
+
+def _ensure_mapping_review_snapshot_perf_indexes() -> None:
+    """SQLite: optional indexes for review workflow filters (CREATE IF NOT EXISTS)."""
+    try:
+        from sqlalchemy import inspect, text
+
+        inspector = inspect(db.engine)
+        if not inspector.has_table("mapping_review_snapshot"):
+            return
+        names = {str(idx.get("name") or "") for idx in inspector.get_indexes("mapping_review_snapshot")}
+        stmts: list[str] = []
+        if "ix_mrs_run_id" not in names:
+            stmts.append(
+                "CREATE INDEX IF NOT EXISTS ix_mrs_run_id ON mapping_review_snapshot (mapping_run_id)"
+            )
+        if "ix_mrs_reviewed_by" not in names:
+            stmts.append(
+                "CREATE INDEX IF NOT EXISTS ix_mrs_reviewed_by ON mapping_review_snapshot (reviewed_by_user_id)"
+            )
+        if "ix_mrs_reviewed_at" not in names:
+            stmts.append(
+                "CREATE INDEX IF NOT EXISTS ix_mrs_reviewed_at ON mapping_review_snapshot (reviewed_at)"
+            )
+        if not stmts:
+            return
+        with db.engine.begin() as conn:
+            for stmt in stmts:
                 conn.execute(text(stmt))
     except Exception:
         pass
@@ -7012,6 +7158,428 @@ def _sync_unmapped_rows_for_mapping_run(
     return inserted
 
 
+_MAPPING_REVIEW_DETAIL_MAX = 32000
+
+
+def _mapping_review_parse_float(val: object) -> float | None:
+    if val is None:
+        return None
+    try:
+        if pd.isna(val):
+            return None
+    except Exception:
+        pass
+    if isinstance(val, str):
+        s = val.strip().replace(",", "")
+        if not s or s.lower() in {"nan", "none"}:
+            return None
+        try:
+            return float(s)
+        except Exception:
+            return None
+    try:
+        return float(val)
+    except Exception:
+        return None
+
+
+def _mapping_review_emissions_high_threshold_kg() -> float:
+    raw = (os.environ.get("MAPPING_REVIEW_HIGH_EMISSIONS_KG") or "").strip()
+    if raw:
+        try:
+            return float(raw)
+        except Exception:
+            pass
+    return 5000.0
+
+
+def _mapping_review_description_for_row(rec: dict[str, object], desc_col: str | None) -> str:
+    if desc_col:
+        v = rec.get(desc_col)
+        s = str(_json_safe_value(v)).strip()
+        if s and s.lower() not in {"nan", "none"}:
+            return s[:8000]
+    try:
+        label = _unmapped_row_label(pd.Series(rec))
+    except Exception:
+        label = ""
+    return (label or "")[:8000]
+
+
+def _mapping_review_str_cell(rec: dict[str, object], col: str | None, *, max_len: int = 500) -> str | None:
+    if not col:
+        return None
+    v = rec.get(col)
+    s = str(_json_safe_value(v)).strip()
+    if not s or s.lower() in {"nan", "none"}:
+        return None
+    return s[:max_len]
+
+
+def _persist_mapping_review_snapshot(
+    *,
+    run_id: str,
+    company_name: str,
+    sheet_name: str,
+    mapped_df: "pd.DataFrame",
+) -> int:
+    """Replace any prior snapshot rows for this run; insert one DB row per mapped dataframe row."""
+    import time as _time
+
+    t0 = _time.perf_counter()
+    co_key = (company_name or "").strip()
+    sheet_key = (sheet_name or "").strip()
+    n_df = 0 if mapped_df is None else len(getattr(mapped_df, "index", []) or [])
+    print(f"[MAPPING_REVIEW] snapshot_start run_id={run_id} company={co_key!r} sheet={sheet_key!r} rows={n_df}")
+    try:
+        MappingReviewSnapshot.query.filter_by(mapping_run_id=run_id).delete(synchronize_session=False)
+        if mapped_df is None or getattr(mapped_df, "empty", False):
+            elapsed_ms = (_time.perf_counter() - t0) * 1000.0
+            print(f"[MAPPING_REVIEW] snapshot_done run_id={run_id} inserted=0 duration_ms={elapsed_ms:.1f} reason=empty_df")
+            return 0
+
+        df = mapped_df
+        desc_col = _df_find_column_casefold(
+            df,
+            (
+                "Description",
+                "description",
+                "Activity",
+                "Product Type",
+                "product type",
+                "Service Provided",
+                "service provided",
+                "Spend Category",
+                "Purchased Goods and Services",
+            ),
+        )
+        sup_col = _df_find_column_casefold(df, ("Supplier", "supplier", "Vendor", "vendor"))
+        amt_col = _df_find_column_casefold(
+            df,
+            (
+                "Spend_Euro",
+                "Spend Euro",
+                "Spend",
+                "spend",
+                "Amount",
+                "amount",
+                "Quantity",
+                "quantity",
+                "Activity data",
+                "Activity Data",
+            ),
+        )
+        unit_col = _df_find_column_casefold(df, ("Unit", "unit", "Currency", "currency", "UOM", "uom"))
+        ef_id_col = _df_find_column_casefold(df, ("ef_id", "EF ID", "Emission Factor ID", "assigned_ef_id"))
+        ef_name_col = _df_find_column_casefold(df, ("ef_name", "EF Name", "Emission Factor Name", "ef name"))
+        ef_val_col = _df_find_column_casefold(df, ("ef_value", "EF Value", "ef value"))
+        status_col = _df_find_column_casefold(df, ("status", "Status", "mapping_status", "Mapping Status"))
+        mm_col = _df_find_column_casefold(df, ("match_method", "Match Method", "match method"))
+        conf_col = _df_find_column_casefold(
+            df,
+            (
+                "confidence",
+                "Confidence",
+                "mapping_confidence",
+                "Mapping Confidence",
+                "confidence_score",
+                "Confidence score",
+            ),
+        )
+        em_t_col = _df_find_column_casefold(
+            df,
+            ("emissions_tco2e", "Emissions tCO2e", "emissions (tco2e)", "Emissions (tCO2e)", "EmissionsTCO2e"),
+        )
+        em_kg_col = _df_find_column_casefold(
+            df,
+            ("emissions_kg_co2e", "Emissions kg CO2e", "kg CO2e", "kg co2e", "Emissions kgCO2e"),
+        )
+
+        records = df.to_dict(orient="records")
+        batch_now = datetime.utcnow()
+        chunk: list[dict[str, object]] = []
+        inserted = 0
+        CHUNK = 400
+
+        def flush() -> None:
+            nonlocal inserted
+            if not chunk:
+                return
+            db.session.bulk_insert_mappings(MappingReviewSnapshot, chunk)
+            inserted += len(chunk)
+            chunk.clear()
+
+        for pos, rec in enumerate(records):
+            rid = f"r{pos}"
+            description = _mapping_review_description_for_row(rec, desc_col)
+            supplier = _mapping_review_str_cell(rec, sup_col, max_len=500)
+            source_amount = _mapping_review_str_cell(rec, amt_col, max_len=200)
+            source_unit = _mapping_review_str_cell(rec, unit_col, max_len=120)
+            ef_id = _mapping_review_str_cell(rec, ef_id_col, max_len=200)
+            ef_name = _mapping_review_str_cell(rec, ef_name_col, max_len=500)
+            ef_val = _mapping_review_str_cell(rec, ef_val_col, max_len=120)
+            map_status = _mapping_review_str_cell(rec, status_col, max_len=200)
+            mm_val = _mapping_review_str_cell(rec, mm_col, max_len=500)
+            conf_val = _mapping_review_parse_float(rec.get(conf_col)) if conf_col else None
+
+            kg_out: float | None = None
+            if em_kg_col:
+                kg_out = _mapping_review_parse_float(rec.get(em_kg_col))
+            if kg_out is None and em_t_col:
+                tco2 = _mapping_review_parse_float(rec.get(em_t_col))
+                if tco2 is not None:
+                    kg_out = tco2 * 1000.0
+
+            payload_obj = {str(c): _json_safe_value(rec.get(c)) for c in df.columns}
+            detail_raw = json.dumps(payload_obj, ensure_ascii=True, default=str)
+            if len(detail_raw) > _MAPPING_REVIEW_DETAIL_MAX:
+                detail_raw = detail_raw[: _MAPPING_REVIEW_DETAIL_MAX] + "…"
+
+            chunk.append(
+                {
+                    "mapping_run_id": run_id,
+                    "company_name": co_key,
+                    "sheet_name": sheet_key,
+                    "source_row_identifier": rid,
+                    "description": description or "",
+                    "supplier": supplier,
+                    "source_amount": source_amount,
+                    "source_unit": source_unit,
+                    "mapped_ef_id": ef_id,
+                    "mapped_ef_name": ef_name,
+                    "mapped_ef_value": ef_val,
+                    "mapping_status": map_status,
+                    "match_method": mm_val,
+                    "confidence_score": conf_val,
+                    "emissions_kg_co2e": kg_out,
+                    "review_status": "Pending",
+                    "detail_payload": detail_raw,
+                    "created_at": batch_now,
+                }
+            )
+            if len(chunk) >= CHUNK:
+                flush()
+
+        flush()
+        elapsed_ms = (_time.perf_counter() - t0) * 1000.0
+        print(f"[MAPPING_REVIEW] snapshot_done run_id={run_id} inserted={inserted} duration_ms={elapsed_ms:.1f}")
+        return inserted
+    except Exception as exc:
+        elapsed_ms = (_time.perf_counter() - t0) * 1000.0
+        print(f"[MAPPING_REVIEW] snapshot_error run_id={run_id} duration_ms={elapsed_ms:.1f} exc={exc!r}")
+        raise
+
+
+def _mapping_review_quality_badges(row: MappingReviewSnapshot) -> dict[str, object]:
+    conf = row.confidence_score
+    kg = row.emissions_kg_co2e
+    st = (row.mapping_status or "").strip().lower()
+    ef_id = (row.mapped_ef_id or "").strip()
+    missing_ef = (not ef_id) or ("no match" in st) or ("no boq" in st) or ("excluded" in st)
+    thr = _mapping_review_emissions_high_threshold_kg()
+    high_em = kg is not None and float(kg) >= thr
+    if conf is None:
+        conf_band = "unknown"
+    elif conf >= 0.75:
+        conf_band = "high"
+    elif conf >= 0.4:
+        conf_band = "medium"
+    else:
+        conf_band = "low"
+    return {
+        "confidence_band": conf_band,
+        "missing_ef": bool(missing_ef),
+        "high_emissions": bool(high_em),
+    }
+
+
+MAPPING_REVIEW_ALLOWED_STATUSES: frozenset[str] = frozenset({"Pending", "Approved", "Rejected", "Needs Review"})
+MAPPING_REVIEW_NOTES_MAX_LEN = 4000
+MAPPING_REVIEW_PAGE_SIZE_MAX = 100
+
+
+def _mapping_review_company_scope_values_for_user() -> list[str]:
+    """Company name spellings tied to the logged-in user (non-admin)."""
+    raw = (getattr(current_user, "company_name", "") or "").strip()
+    if not raw:
+        return []
+    out: set[str] = {raw}
+    try:
+        resolved = _resolve_template_company_name(raw)
+        if resolved:
+            out.add(str(resolved).strip())
+    except Exception:
+        pass
+    try:
+        canon, _country = _canonical_company_name_and_country(raw)
+        if canon:
+            out.add(str(canon).strip())
+    except Exception:
+        pass
+    return sorted({x for x in out if x})
+
+
+def _mapping_review_user_can_access_snapshot_company(snapshot_company: str) -> bool:
+    if bool(getattr(current_user, "is_admin", False)):
+        return True
+    snap = (snapshot_company or "").strip()
+    if not snap:
+        return False
+    return _user_can_access_company(snap)
+
+
+def _mapping_review_reviewer_label(user: User | None) -> str:
+    if user is None:
+        return ""
+    fn = (user.first_name or "").strip()
+    ln = (user.last_name or "").strip()
+    name = f"{fn} {ln}".strip()
+    return name or (user.email or "").strip()
+
+
+def _mapping_review_workflow_tone(status: str | None) -> str:
+    s = (status or "").strip()
+    if s == "Approved":
+        return "success"
+    if s == "Rejected":
+        return "danger"
+    if s == "Needs Review":
+        return "warning"
+    return "secondary"
+
+
+def _mapping_review_sanitize_notes(raw: object) -> str:
+    s = str(raw or "").strip().replace("\x00", "")
+    if len(s) > MAPPING_REVIEW_NOTES_MAX_LEN:
+        return s[:MAPPING_REVIEW_NOTES_MAX_LEN]
+    return s
+
+
+def _mapping_review_parse_optional_body_notes() -> str | None:
+    payload = request.get_json(silent=True) or {}
+    if "notes" not in payload:
+        return None
+    return _mapping_review_sanitize_notes(payload.get("notes"))
+
+
+def _mapping_review_assert_can_mutate_row(row: MappingReviewSnapshot) -> tuple[bool, str]:
+    if _is_readonly_user(current_user):
+        return False, "Read-only users cannot update reviews"
+    if not _mapping_review_user_can_access_snapshot_company(row.company_name):
+        return False, "Access denied"
+    return True, ""
+
+
+def _mapping_review_validate_allowed_status(status: str) -> str | None:
+    if status not in MAPPING_REVIEW_ALLOWED_STATUSES:
+        return "Invalid review status"
+    return None
+
+
+def _mapping_review_reviewer_cache_for_rows(rows: list[MappingReviewSnapshot]) -> dict[int, User]:
+    ids = {int(r.reviewed_by_user_id) for r in rows if r.reviewed_by_user_id is not None}
+    if not ids:
+        return {}
+    return {int(u.id): u for u in User.query.filter(User.id.in_(ids)).all()}
+
+
+def _mapping_review_run_ids_having_snapshots(run_ids: list[str]) -> set[str]:
+    uniq = sorted({str(r).strip() for r in run_ids if str(r).strip()})
+    if not uniq:
+        return set()
+    found: set[str] = set()
+    chunk_size = 80
+    for i in range(0, len(uniq), chunk_size):
+        part = uniq[i : i + chunk_size]
+        rows = (
+            db.session.query(MappingReviewSnapshot.mapping_run_id)
+            .filter(MappingReviewSnapshot.mapping_run_id.in_(part))
+            .distinct()
+            .all()
+        )
+        for (rid,) in rows:
+            if rid:
+                found.add(str(rid))
+    return found
+
+
+def _mapping_review_attach_job_review_link(ser: dict[str, object], raw_job: dict[str, object]) -> None:
+    if str(ser.get("type") or "") != "mapping" or str(ser.get("status") or "") != "completed":
+        return
+    res = raw_job.get("result") or {}
+    if not isinstance(res, dict):
+        return
+    rid = str(res.get("run_id") or "").strip()
+    if not rid:
+        return
+    hit = db.session.query(MappingReviewSnapshot.id).filter_by(mapping_run_id=rid).limit(1).first()
+    if not hit:
+        return
+    ser["mapping_review_run_id"] = rid
+    ser["mapping_review_url"] = url_for("mapping_review_page") + "?" + urlencode({"mapping_run_id": rid})
+
+
+def _mapping_review_row_json(
+    row: MappingReviewSnapshot,
+    *,
+    reviewer_cache: dict[int, User] | None = None,
+    include_notes: bool = False,
+) -> dict[str, object]:
+    badges = _mapping_review_quality_badges(row)
+    amt = (row.source_amount or "").strip()
+    unit = (row.source_unit or "").strip()
+    amount_display = f"{amt} {unit}".strip() if amt or unit else ""
+    rev_uid = int(row.reviewed_by_user_id) if row.reviewed_by_user_id is not None else None
+    reviewer_label = ""
+    if rev_uid is not None:
+        ru = reviewer_cache.get(rev_uid) if reviewer_cache is not None else None
+        reviewer_label = _mapping_review_reviewer_label(ru)
+    notes_raw = row.review_notes or ""
+    excerpt = ""
+    ns = str(notes_raw).strip()
+    if ns:
+        excerpt = ns[:180] + ("…" if len(ns) > 180 else "")
+    out: dict[str, object] = {
+        "id": row.id,
+        "review_status": row.review_status or "Pending",
+        "review_status_tone": _mapping_review_workflow_tone(row.review_status),
+        "reviewed_at": row.reviewed_at.isoformat() + "Z" if row.reviewed_at else None,
+        "reviewed_by_user_id": rev_uid,
+        "reviewed_by_label": reviewer_label,
+        "has_notes": bool(ns),
+        "review_notes_excerpt": excerpt,
+        "company_name": row.company_name,
+        "sheet_name": row.sheet_name,
+        "description": row.description or "",
+        "amount_display": amount_display,
+        "mapped_ef": (row.mapped_ef_name or row.mapped_ef_id or "").strip(),
+        "mapped_ef_value": (row.mapped_ef_value or "").strip(),
+        "match_method": row.match_method or "",
+        "confidence_score": row.confidence_score,
+        "emissions_kg_co2e": row.emissions_kg_co2e,
+        "mapping_run_id": row.mapping_run_id,
+        "badges": badges,
+        "created_at": row.created_at.isoformat() + "Z" if row.created_at else None,
+    }
+    if include_notes:
+        out["review_notes"] = row.review_notes or ""
+    return out
+
+
+def _mapping_review_base_query():
+    q = MappingReviewSnapshot.query
+    if bool(getattr(current_user, "is_admin", False)):
+        return q
+    vals = _mapping_review_company_scope_values_for_user()
+    if not vals:
+        return q.filter(MappingReviewSnapshot.id.in_([]))
+    lc = func.lower(func.trim(MappingReviewSnapshot.company_name))
+    lowered = {str(v).strip().lower() for v in vals if str(v).strip()}
+    conds: list = [MappingReviewSnapshot.company_name.in_(vals)]
+    conds.extend([lc == lv for lv in lowered])
+    return q.filter(or_(*conds))
+
+
 def _unmapped_row_preview(row: MappingUnmappedRow) -> dict[str, object]:
     try:
         payload = json.loads(row.row_payload or "{}")
@@ -7182,7 +7750,7 @@ def _load_unmapped_ef_options_for_sheet(sheet_name: str) -> list[dict[str, objec
             continue
         seen.add(key)
         unique.append(option)
-    return unique[:500]
+    return unique[:UNMAPPED_EF_OPTIONS_HARD_CAP]
 
 
 def _find_unmapped_ef_option(ef_key_or_id: str, preferred_sheet: str | None = None) -> dict[str, object] | None:
@@ -7234,9 +7802,9 @@ def _apply_unmapped_sheet_filters(query, company_filter: str, sheet_filter: str,
 
 def _unmapped_query_from_request():
     status_filter = (request.args.get("status") or "open").strip().lower()
-    company_filter = (request.args.get("company") or "").strip()
-    sheet_filter = (request.args.get("sheet") or "").strip()
-    search = (request.args.get("search") or "").strip()
+    company_filter = ((request.args.get("company") or "").strip())[:UNMAPPED_FILTER_TEXT_MAX_LEN]
+    sheet_filter = ((request.args.get("sheet") or "").strip())[:UNMAPPED_FILTER_TEXT_MAX_LEN]
+    search = ((request.args.get("search") or "").strip())[:UNMAPPED_SEARCH_TEXT_MAX_LEN]
 
     query = MappingUnmappedRow.query
     query = _apply_unmapped_sheet_filters(query, company_filter, sheet_filter, search)
@@ -7245,18 +7813,106 @@ def _unmapped_query_from_request():
     return query, status_filter, company_filter, sheet_filter, search
 
 
-def _refresh_open_unmapped_against_live_rows() -> int:
+UNMAPPED_DEFAULT_PAGE_SIZE = 50
+UNMAPPED_PAGE_SIZE_CHOICES = (25, 50, 100)
+UNMAPPED_DEDUPE_SCAN_CAP = 2000
+UNMAPPED_STALE_CLEANUP_DEFAULT_MAX_PAIRS = 16
+# Guardrails for filter query strings / ILIKE patterns (avoid pathological payloads).
+UNMAPPED_SEARCH_TEXT_MAX_LEN = 256
+UNMAPPED_FILTER_TEXT_MAX_LEN = 128
+UNMAPPED_EF_OPTIONS_HARD_CAP = 500
+
+
+def _parse_unmapped_pagination_params() -> tuple[int, int]:
+    try:
+        page = max(1, int(request.args.get("page") or 1))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        page_size = int(request.args.get("page_size") or UNMAPPED_DEFAULT_PAGE_SIZE)
+    except (TypeError, ValueError):
+        page_size = UNMAPPED_DEFAULT_PAGE_SIZE
+    if page_size not in UNMAPPED_PAGE_SIZE_CHOICES:
+        page_size = UNMAPPED_DEFAULT_PAGE_SIZE
+    return page, page_size
+
+
+def _admin_unmapped_list_redirect_kwargs() -> dict[str, object]:
+    """Preserve filters + pagination when redirecting after POST (query string carries page/size)."""
+    page, page_size = _parse_unmapped_pagination_params()
+    status = str(request.args.get("status") or "open").strip().lower()
+    return {
+        "status": status or "open",
+        "company": str(request.args.get("company") or "")[:UNMAPPED_FILTER_TEXT_MAX_LEN],
+        "sheet": str(request.args.get("sheet") or "")[:UNMAPPED_FILTER_TEXT_MAX_LEN],
+        "search": str(request.args.get("search") or "")[:UNMAPPED_SEARCH_TEXT_MAX_LEN],
+        "dedupe": str(request.args.get("dedupe") or "")[:UNMAPPED_FILTER_TEXT_MAX_LEN],
+        "page": page,
+        "page_size": page_size,
+    }
+
+
+def _admin_unmapped_fuzzy_redirect_kwargs() -> dict[str, object]:
+    out = _admin_unmapped_list_redirect_kwargs()
+    out["threshold"] = str(request.args.get("threshold") or "0.92").strip()[:16]
+    return out
+
+
+def _paginate_unmapped_rows(
+    base_query,
+    *,
+    dedupe_mode: str,
+    page: int,
+    page_size: int,
+) -> tuple[list[MappingUnmappedRow], dict[int, int], int, int, bool]:
+    """
+    Returns (page_rows, duplicate_counts, total_count, current_page, dedupe_scan_capped).
+    Dedupe mode builds the unique-description list from the newest UNMAPPED_DEDUPE_SCAN_CAP DB rows.
+    """
+    duplicate_counts: dict[int, int] = {}
+    dedupe_scan_capped = False
+    if (dedupe_mode or "").strip().lower() == "description":
+        batch = (
+            base_query.order_by(MappingUnmappedRow.created_at.desc(), MappingUnmappedRow.id.desc())
+            .limit(UNMAPPED_DEDUPE_SCAN_CAP)
+            .all()
+        )
+        dedupe_scan_capped = len(batch) >= UNMAPPED_DEDUPE_SCAN_CAP
+        rows_deduped, duplicate_counts = _dedupe_unmapped_rows_by_description(batch)
+        total = len(rows_deduped)
+        total_pages = max(1, (total + page_size - 1) // page_size) if total else 1
+        cur_page = min(page, total_pages)
+        start = (cur_page - 1) * page_size
+        return rows_deduped[start : start + page_size], duplicate_counts, total, cur_page, dedupe_scan_capped
+    total = int(base_query.count())
+    total_pages = max(1, (total + page_size - 1) // page_size) if total else 1
+    cur_page = min(page, total_pages)
+    rows = (
+        base_query.order_by(MappingUnmappedRow.created_at.desc(), MappingUnmappedRow.id.desc())
+        .offset((cur_page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    return rows, duplicate_counts, total, cur_page, dedupe_scan_capped
+
+
+def _refresh_open_unmapped_against_live_rows(*, max_pairs: int | None = UNMAPPED_STALE_CLEANUP_DEFAULT_MAX_PAIRS) -> int:
     """
     Reconcile open MappingUnmappedRow records with live Data Entry EF status.
-    Only touches (company, sheet) pairs that still have open rows — avoids scanning the
-    full unmapped table against all Data Entry on every admin page load ([UNMAPPED_REFRESH]).
+    When max_pairs is set, only the first N distinct (company, sheet) pairs are processed per call
+    to keep normal page loads responsive; use max_pairs=None for a full scan (query unmapped_live_refresh=1).
     """
-    pairs = (
+    t0 = time.perf_counter()
+    pairs_all = (
         db.session.query(MappingUnmappedRow.company_name, MappingUnmappedRow.sheet_name)
         .filter(MappingUnmappedRow.review_status == "open")
         .distinct()
         .all()
     )
+    pairs_total = len(pairs_all)
+    pairs = pairs_all
+    if max_pairs is not None and pairs_total > max_pairs:
+        pairs = pairs_all[:max_pairs]
     total = 0
     for c, s in pairs:
         co = str(c or "").strip()
@@ -7264,7 +7920,15 @@ def _refresh_open_unmapped_against_live_rows() -> int:
         if not co or not sh:
             continue
         total += _delete_stale_open_unmapped_rows_from_live_data_entry(co, sh)
-    if pairs:
+    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+    limited = bool(max_pairs is not None and pairs_total > int(max_pairs or 0))
+    live_refresh_full = "yes" if max_pairs is None else "no"
+    print(
+        f"[UNMAPPED_PERF] stale_cleanup pairs_total={pairs_total} pairs_processed={len(pairs)} "
+        f"candidates_removed={total} limited={'yes' if limited else 'no'} live_refresh_full={live_refresh_full} "
+        f"duration_ms={elapsed_ms:.1f}"
+    )
+    if pairs_all:
         print(f"[UNMAPPED_REFRESH] scoped_stale_cleanup pairs_checked={len(pairs)} rows_removed={total}")
     return total
 
@@ -12800,7 +13464,10 @@ def api_job_status(job_id: str):
                 "error": None,
             }
         )
-    return jsonify(_serialize_job(job))
+    ser = _serialize_job(job)
+    _ensure_db_tables()
+    _mapping_review_attach_job_review_link(ser, job)
+    return jsonify(ser)
 
 
 @app.route("/api/jobs", methods=["GET"])
@@ -12808,10 +13475,31 @@ def api_job_status(job_id: str):
 @login_required
 def api_job_history():
     _cleanup_old_jobs()
+    _ensure_db_tables()
     with _JOBS_LOCK:
         visible = [dict(job) for job in jobs.values() if _user_can_access_job(job, current_user)]
     visible.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
-    history = [_serialize_job(job) for job in visible[:100]]
+    slice_jobs = visible[:100]
+    mapping_run_candidates: list[str] = []
+    for job in slice_jobs:
+        if str(job.get("type")) != "mapping" or str(job.get("status")) != "completed":
+            continue
+        res = job.get("result") or {}
+        if isinstance(res, dict):
+            rid = str(res.get("run_id") or "").strip()
+            if rid:
+                mapping_run_candidates.append(rid)
+    snap_runs = _mapping_review_run_ids_having_snapshots(mapping_run_candidates)
+    history: list[dict[str, object]] = []
+    for job in slice_jobs:
+        ser = _serialize_job(job)
+        if str(ser.get("type")) == "mapping" and str(ser.get("status")) == "completed":
+            res = job.get("result") or {}
+            rid = str(res.get("run_id") or "").strip() if isinstance(res, dict) else ""
+            if rid and rid in snap_runs:
+                ser["mapping_review_run_id"] = rid
+                ser["mapping_review_url"] = url_for("mapping_review_page") + "?" + urlencode({"mapping_run_id": rid})
+        history.append(ser)
     return jsonify({"jobs": history})
 
 
@@ -13421,6 +14109,18 @@ def _run_mapping_job(
             f"[UNMAPPED_SKIP] pipeline=run_mapping_job reason=_sync_unmapped_rows_failed "
             f"run={run_id} company={resolved_company!r} sheet={resolved_sheet!r} exc={exc!r}"
         )
+
+    try:
+        _persist_mapping_review_snapshot(
+            run_id=run_id,
+            company_name=resolved_company,
+            sheet_name=resolved_sheet,
+            mapped_df=mapped_df,
+        )
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        print(f"[MAPPING_REVIEW] snapshot_error pipeline=run_mapping_job run={run_id} exc={exc!r}")
 
     if _is_job_cancel_requested(job_id):
         mr.status = "cancelled"
@@ -14772,6 +15472,30 @@ def admin_tower_defense():
     return render_template("admin_tower_defense.html", user=current_user)
 
 
+@app.route("/api/admin/unmapped/<int:row_id>/ef-options", methods=["GET"])
+@login_required
+def api_admin_unmapped_row_ef_options(row_id: int):
+    """Lazy EF dropdown payload for Admin Unmapped Rows (avoid loading workbook options for every row on page render)."""
+    _ensure_db_tables()
+    if not bool(getattr(current_user, "is_admin", False)):
+        return jsonify({"error": "Forbidden"}), 403
+    row = MappingUnmappedRow.query.filter_by(id=int(row_id)).first_or_404()
+    sheet_name = str(row.sheet_name or "").strip()
+    t0 = time.perf_counter()
+    opts = _load_unmapped_ef_options_for_sheet(sheet_name)
+    ser_t0 = time.perf_counter()
+    slim = [{"key": str(o.get("key") or ""), "label": str(o.get("label") or ""), "ef_id": str(o.get("ef_id") or "").strip()} for o in opts]
+    ser_ms = (time.perf_counter() - ser_t0) * 1000.0
+    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+    at_cap_hint = "yes" if len(slim) >= UNMAPPED_EF_OPTIONS_HARD_CAP else "no"
+    print(
+        f"[UNMAPPED_PERF] ef_options_load row_id={row_id} sheet={sheet_name[:48]!r} count={len(slim)} "
+        f"max_options={UNMAPPED_EF_OPTIONS_HARD_CAP} truncation_possible={at_cap_hint} duration_ms={elapsed_ms:.1f} "
+        f"serialize_ms={ser_ms:.1f}"
+    )
+    return jsonify({"row_id": int(row.id), "sheet_name": sheet_name, "options": slim})
+
+
 @app.route("/admin/mapping/unmapped", methods=["GET"])
 @login_required
 def admin_unmapped_mappings():
@@ -14781,32 +15505,45 @@ def admin_unmapped_mappings():
         return redirect(url_for("dashboard"))
 
     t0 = time.perf_counter()
-    t_db0 = time.perf_counter()
-    removed_stale = _refresh_open_unmapped_against_live_rows()
+    full_live = (request.args.get("unmapped_live_refresh") or "").strip() == "1"
+    stale_t0 = time.perf_counter()
+    removed_stale = _refresh_open_unmapped_against_live_rows(max_pairs=None if full_live else UNMAPPED_STALE_CLEANUP_DEFAULT_MAX_PAIRS)
     if removed_stale:
         db.session.commit()
-    t_db = (time.perf_counter() - t_db0) * 1000.0
+    stale_wall_ms = (time.perf_counter() - stale_t0) * 1000.0
 
     query, status_filter, company_filter, sheet_filter, search = _unmapped_query_from_request()
     dedupe_mode = (request.args.get("dedupe") or "").strip().lower()
-    rows = query.order_by(MappingUnmappedRow.created_at.desc(), MappingUnmappedRow.id.desc()).limit(500).all()
-    duplicate_counts: dict[int, int] = {}
-    if dedupe_mode == "description":
-        rows, duplicate_counts = _dedupe_unmapped_rows_by_description(rows)
+    page_req, page_size = _parse_unmapped_pagination_params()
+
+    list_t0 = time.perf_counter()
+    rows_orm, duplicate_counts, total_count, cur_page, dedupe_scan_capped = _paginate_unmapped_rows(
+        query,
+        dedupe_mode=dedupe_mode,
+        page=page_req,
+        page_size=page_size,
+    )
+
     previews = []
-    ef_options_by_row: dict[int, list[dict[str, object]]] = {}
-    ef_cache_by_sheet: dict[str, list[dict[str, object]]] = {}
-    t_unmapped0 = time.perf_counter()
-    for row in rows:
+    serialize_t0 = time.perf_counter()
+    for row in rows_orm:
         preview = _unmapped_row_preview(row)
         preview["description"] = _unmapped_description(row)
         preview["duplicate_count"] = duplicate_counts.get(int(row.id), 1)
         previews.append(preview)
-        sn = str(row.sheet_name or "").strip()
-        if sn not in ef_cache_by_sheet:
-            ef_cache_by_sheet[sn] = _load_unmapped_ef_options_for_sheet(sn)
-        ef_options_by_row[int(row.id)] = ef_cache_by_sheet[sn]
-    t_unmapped_ms = (time.perf_counter() - t_unmapped0) * 1000.0
+    serialize_ms = (time.perf_counter() - serialize_t0) * 1000.0
+    list_wall_ms = (time.perf_counter() - list_t0) * 1000.0
+
+    total_pages = max(1, (total_count + page_size - 1) // page_size) if total_count else 1
+
+    cf_short = (company_filter[:32] + "…") if len(company_filter) > 32 else company_filter
+    sf_short = (sheet_filter[:32] + "…") if len(sheet_filter) > 32 else sheet_filter
+    print(
+        f"[UNMAPPED_PERF] list_fetch scope=main status={status_filter} company_filter={cf_short!r} sheet_filter={sf_short!r} "
+        f"page={cur_page} page_size={page_size} row_count={len(rows_orm)} total_count={total_count} total_pages={total_pages} "
+        f"dedupe={dedupe_mode!r} dedupe_cap_hit={'yes' if dedupe_scan_capped else 'no'} live_refresh_full={'yes' if full_live else 'no'} "
+        f"stale_cleanup_ms={stale_wall_ms:.1f} serialize_ms={serialize_ms:.1f} list_total_ms={list_wall_ms:.1f}"
+    )
 
     counts = _admin_unmapped_page_counts(
         company_filter=company_filter,
@@ -14833,8 +15570,8 @@ def admin_unmapped_mappings():
     _perf_log(
         "admin_unmapped_mappings",
         render_ms=(time.perf_counter() - t0) * 1000.0,
-        db_ms=t_db,
-        unmapped_refresh_ms=t_unmapped_ms,
+        db_ms=stale_wall_ms,
+        unmapped_refresh_ms=list_wall_ms,
     )
     return render_template(
         "admin_unmapped_mappings.html",
@@ -14846,7 +15583,13 @@ def admin_unmapped_mappings():
         sheet_filter=sheet_filter,
         search=search,
         dedupe_mode=dedupe_mode,
-        ef_options_by_row=ef_options_by_row,
+        ef_options_by_row={},
+        page=cur_page,
+        page_size=page_size,
+        total_count=total_count,
+        total_pages=total_pages,
+        dedupe_scan_capped=dedupe_scan_capped,
+        dedupe_scan_cap=UNMAPPED_DEDUPE_SCAN_CAP,
         fuzzy_suggestions=[],
         fuzzy_scanned_count=0,
         fuzzy_unmatched_count=0,
@@ -14854,6 +15597,13 @@ def admin_unmapped_mappings():
         companies=companies,
         sheets=sheets,
     )
+
+
+def _redirect_after_unmapped_mapping_post():
+    """Return to fuzzy workspace when POST came from fuzzy view (?source=fuzzy preserves threshold)."""
+    if (request.args.get("source") or "").strip().lower() == "fuzzy":
+        return redirect(url_for("admin_unmapped_mappings_fuzzy", **_admin_unmapped_fuzzy_redirect_kwargs()))
+    return redirect(url_for("admin_unmapped_mappings", **_admin_unmapped_list_redirect_kwargs()))
 
 
 @app.route("/admin/mapping/unmapped/<int:row_id>/update", methods=["POST"])
@@ -14912,16 +15662,7 @@ def admin_unmapped_mapping_update(row_id: int):
     except Exception as e:
         db.session.rollback()
         flash(f"Unmapped mapping failed: {e}")
-    return redirect(
-        url_for(
-            "admin_unmapped_mappings",
-            status=request.args.get("status", "open"),
-            company=request.args.get("company", ""),
-            sheet=request.args.get("sheet", ""),
-            search=request.args.get("search", ""),
-            dedupe=request.args.get("dedupe", ""),
-        )
-    )
+    return redirect(url_for("admin_unmapped_mappings", **_admin_unmapped_list_redirect_kwargs()))
 
 
 @app.route("/admin/mapping/unmapped/fuzzy", methods=["GET"])
@@ -14932,33 +15673,54 @@ def admin_unmapped_mappings_fuzzy():
         flash("Access denied")
         return redirect(url_for("dashboard"))
 
-    removed_stale = _refresh_open_unmapped_against_live_rows()
+    full_live = (request.args.get("unmapped_live_refresh") or "").strip() == "1"
+    stale_t0 = time.perf_counter()
+    removed_stale = _refresh_open_unmapped_against_live_rows(max_pairs=None if full_live else UNMAPPED_STALE_CLEANUP_DEFAULT_MAX_PAIRS)
     if removed_stale:
         db.session.commit()
+    stale_wall_ms = (time.perf_counter() - stale_t0) * 1000.0
 
     query, status_filter, company_filter, sheet_filter, search = _unmapped_query_from_request()
-    rows = query.order_by(MappingUnmappedRow.created_at.desc(), MappingUnmappedRow.id.desc()).limit(500).all()
     dedupe_mode = (request.args.get("dedupe") or "").strip().lower()
     fuzzy_threshold = _parse_unmapped_fuzzy_threshold(request.args.get("threshold"), default=0.92)
-    duplicate_counts: dict[int, int] = {}
-    if dedupe_mode == "description":
-        rows, duplicate_counts = _dedupe_unmapped_rows_by_description(rows)
-    suggestions = _build_unmapped_fuzzy_suggestions(rows, threshold=fuzzy_threshold)
+    page_req, page_size = _parse_unmapped_pagination_params()
+
+    list_t0 = time.perf_counter()
+    rows_orm, duplicate_counts, total_count, cur_page, dedupe_scan_capped = _paginate_unmapped_rows(
+        query,
+        dedupe_mode=dedupe_mode,
+        page=page_req,
+        page_size=page_size,
+    )
+
+    sug_t0 = time.perf_counter()
+    suggestions = _build_unmapped_fuzzy_suggestions(rows_orm, threshold=fuzzy_threshold)
+    sug_ms = (time.perf_counter() - sug_t0) * 1000.0
     suggested_ids = {int(suggestion["row"]["id"]) for suggestion in suggestions}
-    fuzzy_scanned_count = len(rows)
+    fuzzy_scanned_count = len(rows_orm)
     fuzzy_unmatched_count = max(0, fuzzy_scanned_count - len(suggested_ids))
+
+    serialize_t0 = time.perf_counter()
     previews = []
-    ef_options_by_row: dict[int, list[dict[str, object]]] = {}
-    ef_cache_by_sheet: dict[str, list[dict[str, object]]] = {}
-    for row in rows:
+    for row in rows_orm:
         preview = _unmapped_row_preview(row)
         preview["description"] = _unmapped_description(row)
         preview["duplicate_count"] = duplicate_counts.get(int(row.id), 1)
         previews.append(preview)
-        sn = str(row.sheet_name or "").strip()
-        if sn not in ef_cache_by_sheet:
-            ef_cache_by_sheet[sn] = _load_unmapped_ef_options_for_sheet(sn)
-        ef_options_by_row[int(row.id)] = ef_cache_by_sheet[sn]
+    serialize_ms = (time.perf_counter() - serialize_t0) * 1000.0
+    list_wall_ms = (time.perf_counter() - list_t0) * 1000.0
+
+    total_pages = max(1, (total_count + page_size - 1) // page_size) if total_count else 1
+    cf_short = (company_filter[:32] + "…") if len(company_filter) > 32 else company_filter
+    sf_short = (sheet_filter[:32] + "…") if len(sheet_filter) > 32 else sheet_filter
+    print(
+        f"[UNMAPPED_PERF] list_fetch scope=fuzzy status={status_filter} company_filter={cf_short!r} sheet_filter={sf_short!r} "
+        f"page={cur_page} page_size={page_size} row_count={len(rows_orm)} total_count={total_count} total_pages={total_pages} "
+        f"threshold={fuzzy_threshold:.4f} dedupe={dedupe_mode!r} dedupe_cap_hit={'yes' if dedupe_scan_capped else 'no'} "
+        f"live_refresh_full={'yes' if full_live else 'no'} stale_cleanup_ms={stale_wall_ms:.1f} "
+        f"suggestions_count={len(suggestions)} suggestions_ms={sug_ms:.1f} serialize_ms={serialize_ms:.1f} list_total_ms={list_wall_ms:.1f}"
+    )
+
     counts = _admin_unmapped_page_counts(
         company_filter=company_filter,
         sheet_filter=sheet_filter,
@@ -14991,11 +15753,17 @@ def admin_unmapped_mappings_fuzzy():
         sheet_filter=sheet_filter,
         search=search,
         dedupe_mode=dedupe_mode,
-        ef_options_by_row=ef_options_by_row,
+        ef_options_by_row={},
+        page=cur_page,
+        page_size=page_size,
+        total_count=total_count,
+        total_pages=total_pages,
+        dedupe_scan_capped=dedupe_scan_capped,
         fuzzy_suggestions=suggestions,
         fuzzy_scanned_count=fuzzy_scanned_count,
         fuzzy_unmatched_count=fuzzy_unmatched_count,
         fuzzy_threshold=fuzzy_threshold,
+        dedupe_scan_cap=UNMAPPED_DEDUPE_SCAN_CAP,
         companies=companies,
         sheets=sheets,
     )
@@ -15012,7 +15780,7 @@ def admin_unmapped_mappings_fuzzy_approve():
     selections = request.form.getlist("suggestion")
     if not selections:
         flash("Choose at least one fuzzy suggestion to approve.")
-        return redirect(url_for("admin_unmapped_mappings_fuzzy", status=request.args.get("status", "open"), company=request.args.get("company", ""), sheet=request.args.get("sheet", ""), search=request.args.get("search", ""), dedupe=request.args.get("dedupe", ""), threshold=request.args.get("threshold", "0.92")))
+        return redirect(url_for("admin_unmapped_mappings_fuzzy", **_admin_unmapped_fuzzy_redirect_kwargs()))
 
     approved = 0
     try:
@@ -15040,7 +15808,7 @@ def admin_unmapped_mappings_fuzzy_approve():
     except Exception as e:
         db.session.rollback()
         flash(f"Fuzzy approval failed: {e}")
-    return redirect(url_for("admin_unmapped_mappings", status=request.args.get("status", "open"), company=request.args.get("company", ""), sheet=request.args.get("sheet", ""), search=request.args.get("search", ""), dedupe=request.args.get("dedupe", "")))
+    return redirect(url_for("admin_unmapped_mappings_fuzzy", **_admin_unmapped_fuzzy_redirect_kwargs()))
 
 
 @app.route("/admin/mapping/unmapped/export", methods=["GET"])
@@ -15128,6 +15896,292 @@ def admin_mapping_panel():
         batches=batches,
         batches_json=batches_json,
     )
+
+
+@app.route("/mapping-review", methods=["GET"])
+@login_required
+def mapping_review_page():
+    _ensure_db_tables()
+    return render_template(
+        "mapping_review.html",
+        user=current_user,
+        mapping_review_notes_max=MAPPING_REVIEW_NOTES_MAX_LEN,
+    )
+
+
+@app.route("/api/mapping-review", methods=["GET"])
+@login_required
+def api_mapping_review_list():
+    _ensure_db_tables()
+    sortable = {
+        "created_at": MappingReviewSnapshot.created_at,
+        "confidence_score": MappingReviewSnapshot.confidence_score,
+        "emissions_kg_co2e": MappingReviewSnapshot.emissions_kg_co2e,
+        "company_name": MappingReviewSnapshot.company_name,
+        "sheet_name": MappingReviewSnapshot.sheet_name,
+        "description": MappingReviewSnapshot.description,
+        "mapping_run_id": MappingReviewSnapshot.mapping_run_id,
+        "review_status": MappingReviewSnapshot.review_status,
+        "match_method": MappingReviewSnapshot.match_method,
+        "reviewed_at": MappingReviewSnapshot.reviewed_at,
+    }
+
+    try:
+        page = max(1, int(request.args.get("page") or 1))
+    except Exception:
+        page = 1
+    try:
+        page_size = int(request.args.get("page_size") or 50)
+    except Exception:
+        page_size = 50
+    page_size = min(MAPPING_REVIEW_PAGE_SIZE_MAX, max(1, page_size))
+
+    company = (request.args.get("company") or "").strip()
+    sheet = (request.args.get("sheet") or "").strip()
+    search = (request.args.get("search") or "").strip()
+    review_status = (request.args.get("review_status") or "").strip()
+    run_id = (request.args.get("mapping_run_id") or "").strip()
+    sort_by = (request.args.get("sort_by") or "created_at").strip()
+    sort_dir = (request.args.get("sort_dir") or "desc").strip().lower()
+    if sort_dir not in {"asc", "desc"}:
+        sort_dir = "desc"
+
+    reviewed_by_raw = (request.args.get("reviewed_by") or "").strip()
+    only_reviewed = (request.args.get("only_reviewed") or "").strip().lower() in {"1", "true", "yes", "on"}
+    only_pending = (request.args.get("only_pending") or "").strip().lower() in {"1", "true", "yes", "on"}
+
+    min_c_raw = request.args.get("min_confidence")
+    max_c_raw = request.args.get("max_confidence")
+    try:
+        min_conf = float(min_c_raw) if min_c_raw not in (None, "") else None
+    except Exception:
+        return jsonify({"error": "Invalid min_confidence"}), 400
+    try:
+        max_conf = float(max_c_raw) if max_c_raw not in (None, "") else None
+    except Exception:
+        return jsonify({"error": "Invalid max_confidence"}), 400
+
+    q = _mapping_review_base_query()
+    if company:
+        q = q.filter(MappingReviewSnapshot.company_name.ilike(f"%{company}%"))
+    if sheet:
+        q = q.filter(MappingReviewSnapshot.sheet_name.ilike(f"%{sheet}%"))
+    if review_status:
+        err = _mapping_review_validate_allowed_status(review_status)
+        if err:
+            return jsonify({"error": err}), 400
+        q = q.filter(MappingReviewSnapshot.review_status == review_status)
+    if run_id:
+        q = q.filter(MappingReviewSnapshot.mapping_run_id == run_id)
+    if reviewed_by_raw:
+        try:
+            rb_uid = int(reviewed_by_raw)
+        except Exception:
+            return jsonify({"error": "Invalid reviewed_by"}), 400
+        q = q.filter(MappingReviewSnapshot.reviewed_by_user_id == rb_uid)
+    if only_reviewed:
+        q = q.filter(MappingReviewSnapshot.reviewed_at.isnot(None))
+    if only_pending:
+        q = q.filter(MappingReviewSnapshot.review_status == "Pending")
+    if search:
+        pat = f"%{search}%"
+        q = q.filter(
+            or_(
+                MappingReviewSnapshot.description.ilike(pat),
+                MappingReviewSnapshot.supplier.ilike(pat),
+                MappingReviewSnapshot.mapped_ef_name.ilike(pat),
+                MappingReviewSnapshot.mapped_ef_id.ilike(pat),
+                MappingReviewSnapshot.match_method.ilike(pat),
+                MappingReviewSnapshot.mapping_run_id.ilike(pat),
+                MappingReviewSnapshot.review_notes.ilike(pat),
+            )
+        )
+    if min_conf is not None:
+        q = q.filter(MappingReviewSnapshot.confidence_score >= min_conf)
+    if max_conf is not None:
+        q = q.filter(MappingReviewSnapshot.confidence_score <= max_conf)
+
+    sort_col = sortable.get(sort_by, MappingReviewSnapshot.created_at)
+    order_clause = asc(sort_col) if sort_dir == "asc" else desc(sort_col)
+
+    total_count = int(q.count())
+    total_pages = max(1, (total_count + page_size - 1) // page_size) if total_count else 1
+    if page > total_pages:
+        page = total_pages
+    offset = (page - 1) * page_size
+    rows = (
+        q.order_by(order_clause, desc(MappingReviewSnapshot.id))
+        .offset(offset)
+        .limit(min(page_size, MAPPING_REVIEW_PAGE_SIZE_MAX))
+        .all()
+    )
+    rev_cache = _mapping_review_reviewer_cache_for_rows(rows)
+
+    return jsonify(
+        {
+            "rows": [_mapping_review_row_json(r, reviewer_cache=rev_cache) for r in rows],
+            "total_count": total_count,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+        }
+    )
+
+
+@app.route("/api/mapping-review/row/<int:snapshot_id>", methods=["GET"])
+@login_required
+def api_mapping_review_detail(snapshot_id: int):
+    _ensure_db_tables()
+    row = db.session.get(MappingReviewSnapshot, snapshot_id)
+    if row is None:
+        return jsonify({"error": "Not found"}), 404
+    if not _mapping_review_user_can_access_snapshot_company(row.company_name):
+        return jsonify({"error": "Access denied"}), 403
+
+    mr = db.session.get(MappingRun, row.mapping_run_id)
+    rev_cache = _mapping_review_reviewer_cache_for_rows([row])
+    src: dict[str, object] = {}
+    try:
+        payload = json.loads(row.detail_payload or "{}")
+        if isinstance(payload, dict):
+            src = payload
+    except Exception:
+        src = {}
+
+    badges = _mapping_review_quality_badges(row)
+    high_thr = _mapping_review_emissions_high_threshold_kg()
+
+    def _nz(label: str, val: object) -> tuple[str, str]:
+        s = str(val).strip() if val is not None else ""
+        return label, s if s else "Not available"
+
+    rev_u = rev_cache.get(int(row.reviewed_by_user_id)) if row.reviewed_by_user_id else None
+    pairs = [
+        _nz("Company", row.company_name),
+        _nz("Sheet", row.sheet_name),
+        _nz("Source row id", row.source_row_identifier),
+        _nz("Description", row.description),
+        _nz("Supplier", row.supplier),
+        _nz("Amount", row.source_amount),
+        _nz("Unit", row.source_unit),
+        _nz("Mapping status", row.mapping_status),
+        _nz("Mapped EF ID", row.mapped_ef_id),
+        _nz("Mapped EF name", row.mapped_ef_name),
+        _nz("EF value", row.mapped_ef_value),
+        _nz("Match method", row.match_method),
+        _nz(
+            "Confidence",
+            "" if row.confidence_score is None else f"{float(row.confidence_score):g}",
+        ),
+        _nz(
+            "Emissions (kg CO2e)",
+            "" if row.emissions_kg_co2e is None else f"{float(row.emissions_kg_co2e):.6g}",
+        ),
+        _nz("Review status", row.review_status),
+        _nz("Review notes", row.review_notes),
+        _nz("Reviewed by", _mapping_review_reviewer_label(rev_u)),
+        _nz(
+            "Reviewed at",
+            row.reviewed_at.isoformat() + "Z" if row.reviewed_at else "",
+        ),
+        _nz(
+            "Snapshot created",
+            row.created_at.isoformat() + "Z" if row.created_at else "",
+        ),
+        _nz("Mapping run id", row.mapping_run_id),
+        _nz(
+            "Run created",
+            mr.created_at.isoformat() + "Z" if mr and mr.created_at else "",
+        ),
+        _nz("High emissions threshold (kg)", f"{high_thr:g}"),
+    ]
+
+    return jsonify(
+        {
+            "summary": _mapping_review_row_json(row, reviewer_cache=rev_cache, include_notes=True),
+            "quality": badges,
+            "detail_pairs": [{"label": a, "value": b} for a, b in pairs],
+            "source_fields": [{"name": str(k), "value": str(v)} for k, v in sorted(src.items())],
+        }
+    )
+
+
+def _mapping_review_apply_status_update(
+    snapshot_id: int,
+    *,
+    new_status: str,
+    notes: str | None,
+) -> tuple[dict[str, object], int]:
+    bad = _mapping_review_validate_allowed_status(new_status)
+    if bad:
+        return {"error": bad}, 400
+    row = db.session.get(MappingReviewSnapshot, snapshot_id)
+    if row is None:
+        return {"error": "Not found"}, 404
+    ok, msg = _mapping_review_assert_can_mutate_row(row)
+    if not ok:
+        return {"error": msg}, 403
+    row.review_status = new_status
+    row.reviewed_at = datetime.utcnow()
+    row.reviewed_by_user_id = int(current_user.id)
+    if notes is not None:
+        row.review_notes = notes if notes else None
+    db.session.commit()
+    print(f"[MAPPING_REVIEW] review_update snapshot_id={snapshot_id} status={new_status} reviewer={current_user.id}")
+    fresh = db.session.get(MappingReviewSnapshot, snapshot_id)
+    cache = _mapping_review_reviewer_cache_for_rows([fresh]) if fresh else {}
+    return {"ok": True, "row": _mapping_review_row_json(fresh, reviewer_cache=cache, include_notes=True)}, 200
+
+
+@app.route("/api/mapping-review/<int:snapshot_id>/approve", methods=["POST"])
+@login_required
+def api_mapping_review_approve(snapshot_id: int):
+    _ensure_db_tables()
+    notes = _mapping_review_parse_optional_body_notes()
+    payload, status = _mapping_review_apply_status_update(snapshot_id, new_status="Approved", notes=notes)
+    return jsonify(payload), status
+
+
+@app.route("/api/mapping-review/<int:snapshot_id>/reject", methods=["POST"])
+@login_required
+def api_mapping_review_reject(snapshot_id: int):
+    _ensure_db_tables()
+    notes = _mapping_review_parse_optional_body_notes()
+    payload, status = _mapping_review_apply_status_update(snapshot_id, new_status="Rejected", notes=notes)
+    return jsonify(payload), status
+
+
+@app.route("/api/mapping-review/<int:snapshot_id>/needs-review", methods=["POST"])
+@login_required
+def api_mapping_review_needs_review(snapshot_id: int):
+    _ensure_db_tables()
+    notes = _mapping_review_parse_optional_body_notes()
+    payload, status = _mapping_review_apply_status_update(snapshot_id, new_status="Needs Review", notes=notes)
+    return jsonify(payload), status
+
+
+@app.route("/api/mapping-review/<int:snapshot_id>/notes", methods=["POST"])
+@login_required
+def api_mapping_review_notes(snapshot_id: int):
+    _ensure_db_tables()
+    payload_in = request.get_json(silent=True) or {}
+    if "notes" not in payload_in:
+        return jsonify({"error": "notes field required"}), 400
+    notes = _mapping_review_sanitize_notes(payload_in.get("notes"))
+    row = db.session.get(MappingReviewSnapshot, snapshot_id)
+    if row is None:
+        return jsonify({"error": "Not found"}), 404
+    ok, msg = _mapping_review_assert_can_mutate_row(row)
+    if not ok:
+        return jsonify({"error": msg}), 403
+    row.review_notes = notes if notes else None
+    row.reviewed_at = datetime.utcnow()
+    row.reviewed_by_user_id = int(current_user.id)
+    db.session.commit()
+    print(f"[MAPPING_REVIEW] review_notes snapshot_id={snapshot_id} reviewer={current_user.id}")
+    fresh = db.session.get(MappingReviewSnapshot, snapshot_id)
+    cache = _mapping_review_reviewer_cache_for_rows([fresh]) if fresh else {}
+    return jsonify({"ok": True, "row": _mapping_review_row_json(fresh, reviewer_cache=cache, include_notes=True)})
 
 
 @app.route("/admin/background-jobs", methods=["GET"])

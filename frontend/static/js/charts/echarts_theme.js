@@ -247,13 +247,36 @@ function ensureResizeBinding() {
   }
 
   resizeBindingReady = true;
-  window.addEventListener(
-    "resize",
-    () => {
-      chartRegistry.forEach((chart) => chart.resize());
-    },
-    { passive: true }
-  );
+  let resizeRaf = false;
+  const scheduleResizeAll = () => {
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+      return;
+    }
+    if (resizeRaf) return;
+    resizeRaf = true;
+    window.requestAnimationFrame(() => {
+      resizeRaf = false;
+      chartRegistry.forEach((chart) => {
+        try {
+          const el = typeof chart.getDom === "function" ? chart.getDom() : null;
+          if (!el || el.isConnected !== true) return;
+          const r = el.getBoundingClientRect();
+          if (!r.width || !r.height) return;
+          chart.resize();
+        } catch {
+          /* ignore */
+        }
+      });
+    });
+  };
+
+  window.addEventListener("resize", scheduleResizeAll, { passive: true });
+
+  document.addEventListener("visibilitychange", () => {
+    if (typeof document !== "undefined" && document.visibilityState === "visible") {
+      scheduleResizeAll();
+    }
+  });
 }
 
 function bindResizeObserver(element, chart) {
@@ -266,8 +289,21 @@ function bindResizeObserver(element, chart) {
     existing.disconnect();
   }
 
+  let frame = false;
   const observer = new ResizeObserver(() => {
-    chart.resize();
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+      return;
+    }
+    if (frame) return;
+    frame = true;
+    window.requestAnimationFrame(() => {
+      frame = false;
+      try {
+        chart.resize();
+      } catch {
+        /* ignore */
+      }
+    });
   });
 
   observer.observe(element);

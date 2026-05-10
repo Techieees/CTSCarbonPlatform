@@ -1992,6 +1992,10 @@ function renderJobHistory(jobs) {
             const progress = Math.max(0, Math.min(100, Number(job.progress || 0)));
             const status = escapeHtml(job.status || '');
             const cancellable = ['pending', 'running'].includes(String(job.status || ''));
+            const reviewUrl = job.mapping_review_url ? String(job.mapping_review_url) : '';
+            const reviewBtn = (String(job.status || '') === 'completed' && reviewUrl)
+              ? `<a class="btn btn-sm btn-outline-primary me-1" href="${escapeHtml(reviewUrl)}">Open Review</a>`
+              : '';
             return `<tr>
               <td>${escapeHtml(jobTypeLabel(job.type))}</td>
               <td>${escapeHtml(job.company || '')}</td>
@@ -2003,7 +2007,7 @@ function renderJobHistory(jobs) {
                 <span class="text-muted">${progress}%</span>
               </td>
               <td>${escapeHtml(formatJobTime(job.created_at))}</td>
-              <td class="text-end">${cancellable ? `<button class="btn btn-sm btn-outline-danger" type="button" data-cancel-job="${escapeHtml(job.job_id || '')}">Cancel</button>` : ''}</td>
+              <td class="text-end">${reviewBtn}${cancellable ? `<button class="btn btn-sm btn-outline-danger" type="button" data-cancel-job="${escapeHtml(job.job_id || '')}">Cancel</button>` : ''}</td>
             </tr>`;
           }).join('')}
         </tbody>
@@ -2035,6 +2039,7 @@ async function pollJob(jobId, onCompleted) {
   if (activeJobPollTimer) window.clearInterval(activeJobPollTimer);
   const tick = async () => {
     if (!activeJobId) return;
+    if (document.visibilityState === 'hidden') return;
     try {
       const job = await fetchJson(`/job-status/${encodeURIComponent(activeJobId)}`);
       renderActiveJob(job);
@@ -2061,7 +2066,7 @@ async function pollJob(jobId, onCompleted) {
     }
   };
   await tick();
-  activeJobPollTimer = window.setInterval(tick, 2000);
+  activeJobPollTimer = window.setInterval(tick, 15000);
 }
 
 function renderSheets(filterText = '') {
@@ -2421,9 +2426,10 @@ function openEvidenceModal(rowIndex) {
   loadEvidencePopular();
   if (evidenceModalPollTimer) window.clearInterval(evidenceModalPollTimer);
   evidenceModalPollTimer = window.setInterval(() => {
+    if (document.visibilityState === 'hidden') return;
     if (!evidenceModalEl?.classList.contains('show') || evidenceModalBusy) return;
     refreshEvidenceModalContent();
-  }, 4000);
+  }, 5500);
 }
 
 evidenceModalEl?.addEventListener('hidden.bs.modal', () => {
