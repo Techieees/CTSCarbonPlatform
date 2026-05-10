@@ -534,31 +534,51 @@
           return LOTTIE_DIR + encodeURIComponent(file);
         }
 
-        function statusPillLabel(statusRaw) {
+        function statusPillLabel(statusRaw, mappingState) {
+          const state = String(mappingState || '').trim().toLowerCase();
+          if (state === 'fully_mapped') return 'Fully mapped (EF)';
+          if (state === 'partially_mapped') return 'Partially mapped';
+          if (state === 'unmapped') return 'Unmapped / no EF';
+          if (state === 'pending') return 'Not mapped yet';
+          if (state === 'failed') return 'Mapping failed';
+          if (state === 'pipeline_ready') return 'Pipeline refreshed';
           const raw = String(statusRaw || '').trim();
           const t = raw.toLowerCase();
-          if (t.indexOf('not mapped') !== -1) return 'Not mapped';
+          if (t.indexOf('not mapped yet') !== -1) return 'Not mapped yet';
+          if (t.indexOf('no ef match') !== -1 || t.indexOf('unmapped') !== -1) return 'Unmapped / no EF';
+          if (t.indexOf('partially mapped') !== -1 || t.indexOf('partial') !== -1) return 'Partially mapped';
+          if (t.indexOf('fully mapped') !== -1) return 'Fully mapped (EF)';
+          if (t.indexOf('not mapped') !== -1) return 'Not mapped yet';
           if (t.indexOf('failed') !== -1) return 'Failed';
           if (t.indexOf('processing') !== -1) return 'Processing';
           if (t.indexOf('progress') !== -1) return 'Processing';
-          if (t.indexOf('partial') !== -1) return 'Partially mapped';
           if (t.indexOf('waiting') !== -1) return 'Waiting review';
           if (t.indexOf('pending review') !== -1) return 'Waiting review';
           if (t.indexOf('review') !== -1) return 'Waiting review';
-          if (t.indexOf('completed') !== -1) return 'Mapped';
-          if (t.indexOf('mapped') !== -1 && t.indexOf('not mapped') === -1) return 'Mapped';
+          if (t.indexOf('pipeline') !== -1) return 'Pipeline refreshed';
+          if (t.indexOf('completed') !== -1) return 'Completed';
+          if (t.indexOf('mapped') !== -1 && t.indexOf('not mapped') === -1 && t.indexOf('unmapped') === -1) return 'Mapped';
           return raw || 'Unknown';
         }
 
-        function statusPillKind(statusRaw) {
+        function statusPillKind(statusRaw, mappingState) {
+          const state = String(mappingState || '').trim().toLowerCase();
+          if (state === 'fully_mapped') return 'done';
+          if (state === 'partially_mapped') return 'partial';
+          if (state === 'unmapped') return 'pending';
+          if (state === 'pending') return 'pending';
+          if (state === 'failed') return 'failed';
+          if (state === 'pipeline_ready') return 'done';
           const t = String(statusRaw || '').toLowerCase();
+          if (t.indexOf('no ef match') !== -1 || (t.indexOf('unmapped') !== -1 && t.indexOf('fully') === -1)) return 'pending';
+          if (t.indexOf('partially mapped') !== -1 || t.indexOf('partial') !== -1) return 'partial';
+          if (t.indexOf('fully mapped') !== -1) return 'done';
           if (t.indexOf('not mapped') !== -1) return 'pending';
           if (t.indexOf('failed') !== -1) return 'failed';
           if (t.indexOf('processing') !== -1) return 'processing';
           if (t.indexOf('progress') !== -1) return 'processing';
-          if (t.indexOf('partial') !== -1) return 'partial';
           if (t.indexOf('completed') !== -1) return 'done';
-          if (t.indexOf('mapped') !== -1 && t.indexOf('not mapped') === -1) return 'done';
+          if (t.indexOf('mapped') !== -1 && t.indexOf('not mapped') === -1 && t.indexOf('unmapped') === -1) return 'done';
           if (t.indexOf('waiting') !== -1) return 'review';
           if (t.indexOf('pending review') !== -1) return 'review';
           if (t.indexOf('review') !== -1) return 'review';
@@ -572,6 +592,7 @@
               item.category || '',
               item.upload_timestamp || '',
               String(item.row_count || 0),
+              String(item.mapping_state || ''),
             ].join('|');
           }).join('||');
         }
@@ -611,11 +632,12 @@
             ? '<div class="admin-upload-notification-card__role text-truncate" title="' + escAttr(role) + '">' + esc(role) + '</div>'
             : '';
           const lottieSrc = lottieUrlForCategory(item.category);
-          const pillKind = statusPillKind(item.mapping_status);
-          const pillText = statusPillLabel(item.mapping_status);
-          const mappedLine = item.mapped && item.mapped_by_admin && item.mapping_timestamp
+          const pillKind = statusPillKind(item.mapping_status, item.mapping_state);
+          const pillText = statusPillLabel(item.mapping_status, item.mapping_state);
+          const footState = String(item.mapping_state || '').toLowerCase();
+          const mappedLine = item.mapped_by_admin && item.mapping_timestamp && footState && footState !== 'pending'
             ? '<div class="admin-upload-notification-card__mapped-foot text-truncate">' +
-              'Mapped by ' + esc(item.mapped_by_admin) + ' at ' + esc(item.mapping_timestamp) +
+              'Last mapping run by ' + esc(item.mapped_by_admin) + ' at ' + esc(item.mapping_timestamp) +
               '</div>'
             : '';
 

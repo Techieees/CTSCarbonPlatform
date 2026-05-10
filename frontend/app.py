@@ -4,7 +4,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file, send_from_directory, Response, session, abort, g
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from sqlalchemy import and_, desc, exists, func, or_, update
+from sqlalchemy import and_, case, desc, exists, func, or_, tuple_, update
 from sqlalchemy.exc import IntegrityError
 from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -5569,6 +5569,171 @@ _DATA_ENTRY_MAPPING_METADATA_COLUMNS = frozenset(
 )
 
 
+def _perf_log(page: str, **parts: float | int) -> None:
+    """Lightweight timing for production diagnosis (structured single line)."""
+    try:
+        extra = " ".join(f"{k}={v}" for k, v in sorted(parts.items()) if v is not None)
+        print(f"[PERF] page={page} {extra}".strip())
+    except Exception:
+        pass
+
+
+def _norm_mapping_status(value: object) -> str:
+    return str(value or "").strip().lower()
+
+
+def _row_is_fully_ef_mapped(ef_id: object, status_value: object) -> bool:
+    """
+    A grid row counts as EF-mapped only when a non-empty ef_id is paired with a status
+    that is not a definitive non-match. Otherwise stale ef_id cells could incorrectly
+    close unmapped snapshots (see [UNMAPPED_SYNC] logs).
+    """
+    ef = str(ef_id or "").strip()
+    if not ef:
+        return False
+    st = _norm_mapping_status(status_value)
+    if not st:
+        return True
+    if st == "no match" or st.startswith("no match") or st == "unmapped":
+        return False
+    if "no match" in st and "partial" not in st:
+        return False
+    if "partial" in st:
+        return False
+    if "fail" in st or st == "error":
+        return False
+    return True
+
+
+def _data_entry_non_metadata_cell_columns(cells: dict[str, str]) -> bool:
+    """True if the grid point has at least one populated non-metadata column."""
+    for col, raw in cells.items():
+        ck = str(col or "").strip().lower()
+        if ck in _DATA_ENTRY_MAPPING_METADATA_COLUMNS:
+            continue
+        if ck == "ccc_import_dedup":
+            continue
+        if str(raw or "").strip():
+            return True
+    return False
+
+
+def _rollup_ef_state_from_grid(grid: dict[tuple[str, int], dict[str, str]]) -> dict[str, int]:
+    """Shared rollup used by single-sheet loads and bulk batch aggregation."""
+    out = {
+        "data_rows": 0,
+        "fully_mapped": 0,
+        "partial": 0,
+        "unmapped": 0,
+        "failed": 0,
+        "pending": 0,
+    }
+    for _key, cells in grid.items():
+        if not _data_entry_non_metadata_cell_columns(cells):
+            continue
+        out["data_rows"] += 1
+        meta = {k.lower(): v for k, v in cells.items()}
+        ef_id = meta.get("ef_id") or ""
+        st_raw = meta.get("status") or meta.get("mapping_status") or ""
+        st = _norm_mapping_status(st_raw)
+
+        if _row_is_fully_ef_mapped(ef_id, st_raw):
+            out["fully_mapped"] += 1
+            continue
+        if "partial" in st:
+            out["partial"] += 1
+            continue
+        if "fail" in st or st == "error":
+            out["failed"] += 1
+            continue
+        if st == "no match" or st == "unmapped" or ("no match" in st and "partial" not in st):
+            out["unmapped"] += 1
+            continue
+        if not str(ef_id or "").strip() and not st:
+            out["pending"] += 1
+            continue
+        out["unmapped"] += 1
+    return out
+
+
+def _rollup_ef_state_for_data_entry_sheet(company_name: str, sheet_name: str) -> dict[str, int]:
+    """
+    Aggregate live Data Entry mapping metadata per logical grid row.
+    Used so admin batches / notifications do not treat 'MappingRun succeeded' as EF-mapped.
+    """
+    rows = (
+        DataEntry.query.filter(
+            DataEntry.company_name == company_name,
+            DataEntry.sheet_name == sheet_name,
+        )
+        .order_by(DataEntry.row_index.asc(), DataEntry.id.asc())
+        .all()
+    )
+    grid: dict[tuple[str, int], dict[str, str]] = {}
+    for row in rows:
+        key = (str(row.entry_group or "").strip(), int(row.row_index or 0))
+        grid.setdefault(key, {})[str(row.column_name or "").strip()] = _string_cell_value(row.value).strip()
+    return _rollup_ef_state_from_grid(grid)
+
+
+def _data_entry_grid_from_entries(entries: list[DataEntry]) -> dict[tuple[str, int], dict[str, str]]:
+    grid: dict[tuple[str, int], dict[str, str]] = {}
+    for row in sorted(entries, key=lambda e: (int(e.row_index or 0), int(getattr(e, "id", 0) or 0))):
+        key = (str(row.entry_group or "").strip(), int(row.row_index or 0))
+        grid.setdefault(key, {})[str(row.column_name or "").strip()] = _string_cell_value(row.value).strip()
+    return grid
+
+
+def _mapping_state_for_map_batch(
+    *,
+    action_type: str,
+    rollup: dict[str, int],
+    uploaded_at: datetime | None,
+    mapped_at: datetime | None,
+    pipeline_ready: bool,
+) -> tuple[str, str]:
+    """
+    Returns (mapping_state, mapping_status_label) for admin notifications.
+    mapping_state is a stable machine token for the popup (see dashboard base.html).
+    """
+    if action_type != "map":
+        if pipeline_ready:
+            return "pipeline_ready", "Pipeline output refreshed"
+        return "pending", "Awaiting pipeline / append run"
+
+    try:
+        up_ok = bool(uploaded_at and mapped_at and mapped_at >= uploaded_at)
+    except Exception:
+        up_ok = bool(mapped_at and uploaded_at)
+
+    if not up_ok:
+        return "pending", "Not mapped yet (no mapping run after this upload)"
+
+    dr = int(rollup.get("data_rows") or 0)
+    full = int(rollup.get("fully_mapped") or 0)
+    partial = int(rollup.get("partial") or 0)
+    unmapped = int(rollup.get("unmapped") or 0)
+    failed = int(rollup.get("failed") or 0)
+    pend = int(rollup.get("pending") or 0)
+
+    if dr <= 0:
+        return "pending", "No data rows detected for mapping summary"
+
+    if full >= dr:
+        return "fully_mapped", f"Fully mapped (EF) — {full}/{dr} rows"
+
+    if full > 0 or partial > 0:
+        return "partially_mapped", f"Partially mapped — {full} full, {partial} partial, {unmapped + pend} without EF ({dr} rows)"
+
+    if failed > 0 and unmapped == 0 and pend == 0:
+        return "failed", f"Mapping failed for rows — {failed}/{dr} rows"
+
+    if unmapped > 0 or pend > 0:
+        return "unmapped", f"Unmapped / no EF match — {unmapped + pend} rows need review ({dr} rows)"
+
+    return "unmapped", f"Unmapped — review {dr} row(s)"
+
+
 def _upsert_data_entry_cell(
     *,
     company_name: str,
@@ -5621,6 +5786,46 @@ def _clear_data_entry_mapping_metadata(
     return deleted
 
 
+def _clear_data_entry_mapping_metadata_for_grid_keys(
+    company_name: str,
+    sheet_name: str,
+    keys: set[tuple[str, int]],
+) -> int:
+    """
+    Clears mapping metadata only for specific (entry_group, row_index) keys.
+    Used after translation so unrelated rows keep snapshots until re-evaluated.
+    """
+    if not keys:
+        return 0
+    meta_cols = tuple(_DATA_ENTRY_MAPPING_METADATA_COLUMNS)
+    deleted_total = 0
+    keys_list = list(keys)
+    chunk_size = 48
+    for i in range(0, len(keys_list), chunk_size):
+        chunk = keys_list[i : i + chunk_size]
+        ors = []
+        for eg, rix in chunk:
+            ors.append(
+                and_(
+                    DataEntry.entry_group == str(eg or "").strip(),
+                    DataEntry.row_index == int(rix),
+                )
+            )
+        q = DataEntry.query.filter(
+            DataEntry.company_name == company_name,
+            DataEntry.sheet_name == sheet_name,
+            DataEntry.column_name.in_(meta_cols),
+            or_(*ors),
+        )
+        deleted_total += int(q.delete(synchronize_session=False) or 0)
+    if deleted_total:
+        print(
+            f"[TRANSLATION_INVALIDATION] Cleared {deleted_total} mapping metadata cell(s) "
+            f"for {len(keys)} grid key(s) on {company_name} / {sheet_name}"
+        )
+    return deleted_total
+
+
 def _data_entry_row_metadata_lookup(company_name: str, sheet_name: str) -> dict[tuple[str, int], dict[str, str]]:
     rows = (
         DataEntry.query.filter(
@@ -5661,6 +5866,8 @@ def _persist_mapping_metadata_to_data_entry(
     status_col = _df_find_column_casefold(mapped_df, ("status", "Status", "mapping_status", "Mapping Status"))
     mapped_by_col = _df_find_column_casefold(mapped_df, ("mapped_by", "Mapped By"))
 
+    ef_mapped_rows = 0
+    no_match_rows = 0
     for pos, row_meta in enumerate(grid_rows):
         if pos >= len(mapped_df.index):
             break
@@ -5670,6 +5877,11 @@ def _persist_mapping_metadata_to_data_entry(
         ef_value = _string_cell_value(mapped_row.get(ef_col) if ef_col else "").strip()
         status_value = _string_cell_value(mapped_row.get(status_col) if status_col else "").strip()
         mapped_by_value = _string_cell_value(mapped_row.get(mapped_by_col) if mapped_by_col else "").strip()
+
+        if _row_is_fully_ef_mapped(ef_value, status_value):
+            ef_mapped_rows += 1
+        if _norm_mapping_status(status_value) == "no match":
+            no_match_rows += 1
 
         _upsert_data_entry_cell(
             company_name=company_name,
@@ -5709,6 +5921,11 @@ def _persist_mapping_metadata_to_data_entry(
                 uploaded_by_user_id=user_id,
             )
 
+    print(
+        f"[MAPPING_STATE] run_id={run_id} company={company_name!r} sheet={sheet_name!r} "
+        f"grid_targets={min(len(grid_rows), len(mapped_df.index))} ef_mapped_rows={ef_mapped_rows} "
+        f"no_match_rows={no_match_rows}"
+    )
     print(f"[UNMAPPED] Persisted live mapping metadata for {company_name} / {sheet_name} run {run_id}")
 
 
@@ -5722,38 +5939,17 @@ def _delete_stale_open_unmapped_rows_from_live_data_entry(
     if sheet_name:
         query = query.filter(MappingUnmappedRow.sheet_name == sheet_name)
 
-    ef_exists_for_same_live_row = exists().where(
-        and_(
-            DataEntry.company_name == MappingUnmappedRow.company_name,
-            DataEntry.sheet_name == MappingUnmappedRow.sheet_name,
-            DataEntry.column_name == "ef_id",
-            DataEntry.value.isnot(None),
-            func.trim(DataEntry.value) != "",
-            DataEntry.row_index == (MappingUnmappedRow.row_number - 1),
-            or_(
-                DataEntry.entry_group == MappingUnmappedRow.source_entry_group,
-                and_(
-                    or_(
-                        MappingUnmappedRow.source_entry_group.is_(None),
-                        MappingUnmappedRow.source_entry_group == "",
-                    ),
-                    or_(DataEntry.entry_group.is_(None), DataEntry.entry_group == ""),
-                ),
-            ),
-        )
-    )
-    direct_rows = query.filter(ef_exists_for_same_live_row).all()
-    for row in direct_rows:
-        db.session.delete(row)
-    if direct_rows:
-        print(
-            "[UNMAPPED] Deleted "
-            f"{len(direct_rows)} open unmapped row(s) with live data_entry ef_id metadata"
-        )
-
+    # Single consistent path: only remove open unmapped when live metadata shows a real EF mapping.
+    # Previously: any non-empty ef_id deleted snapshots even when status was still "No Match", which
+    # broke trust in the unmapped inbox ([UNMAPPED_SYNC]).
     rows = query.all()
     if not rows:
-        return len(direct_rows)
+        return 0
+
+    print(
+        f"[UNMAPPED_REFRESH] stale_cleanup scope company={company_name or '*'} sheet={sheet_name or '*'} "
+        f"candidates={len(rows)}"
+    )
 
     metadata_cache: dict[tuple[str, str], dict[tuple[str, int], dict[str, str]]] = {}
     to_delete: list[MappingUnmappedRow] = []
@@ -5766,15 +5962,19 @@ def _delete_stale_open_unmapped_rows_from_live_data_entry(
         row_index = max(1, int(row.row_number or 2) - 1)
         meta = lookup.get((entry_group, row_index)) or lookup.get(("", row_index)) or {}
         ef_id = str(meta.get("ef_id") or "").strip()
-        status = str(meta.get("status") or meta.get("mapping_status") or "").strip().lower()
-        if ef_id or (status and status != "no match"):
+        status_raw = str(meta.get("status") or meta.get("mapping_status") or "").strip()
+        if _row_is_fully_ef_mapped(ef_id, status_raw):
             to_delete.append(row)
+            print(
+                f"[UNMAPPED_SYNC] close_open id={row.id} company={row.company_name!r} sheet={row.sheet_name!r} "
+                f"row_num={row.row_number} reason=live_ef_mapped ef_id={ef_id!r} status={status_raw!r}"
+            )
 
     for row in to_delete:
         db.session.delete(row)
     if to_delete:
-        print(f"[UNMAPPED] Deleted {len(to_delete)} stale open unmapped row(s) from live data_entry metadata")
-    return len(direct_rows) + len(to_delete)
+        print(f"[UNMAPPED] Deleted {len(to_delete)} stale open unmapped row(s) (live EF mapped)")
+    return len(to_delete)
 
 
 def _supersede_open_unmapped_rows(
@@ -5783,6 +5983,7 @@ def _supersede_open_unmapped_rows(
     source_entry_group: str | None = None,
     *,
     reason: str = "data_changed",
+    row_numbers: set[int] | None = None,
 ) -> int:
     query = MappingUnmappedRow.query.filter(
         MappingUnmappedRow.company_name == company_name,
@@ -5792,13 +5993,25 @@ def _supersede_open_unmapped_rows(
     entry_group = str(source_entry_group or "").strip()
     if entry_group:
         query = query.filter(MappingUnmappedRow.source_entry_group == entry_group)
+    if row_numbers is not None:
+        nums = sorted({int(x) for x in row_numbers if x is not None})
+        if not nums:
+            return 0
+        query = query.filter(MappingUnmappedRow.row_number.in_(nums))
     rows = query.all()
     for row in rows:
         row.review_status = "superseded"
         row.resolved_at = datetime.utcnow()
         row.owner_notes = (str(row.owner_notes or "").strip() + f" | Superseded: {reason}").strip(" |")
+        print(
+            f"[UNMAPPED_SYNC] supersede_open id={row.id} row_number={row.row_number} "
+            f"entry_group={row.source_entry_group!r} reason={reason!r}"
+        )
     if rows:
-        print(f"[UNMAPPED] Superseded {len(rows)} open row(s) for {company_name} / {sheet_name}: {reason}")
+        print(
+            f"[UNMAPPED] Superseded {len(rows)} open row(s) for {company_name} / {sheet_name}"
+            f"{(' / ' + entry_group) if entry_group else ''}: {reason}"
+        )
     return len(rows)
 
 
@@ -5811,10 +6024,11 @@ def _persist_translated_data_entry_columns(
     translated_df: pd.DataFrame,
     columns: tuple[str, ...],
     uploaded_by_user_id: int | None = None,
-) -> tuple[int, int]:
+) -> tuple[int, int, set[tuple[str, int]]]:
     grid_rows = _load_data_entry_grid_rows_no_request(company_name, sheet_name, headers)
     changed_rows: set[int] = set()
     changed_cells = 0
+    affected_keys: set[tuple[str, int]] = set()
 
     for row_pos, row in enumerate(grid_rows):
         if row_pos >= len(translated_df.index):
@@ -5854,8 +6068,10 @@ def _persist_translated_data_entry_columns(
             entry.value = new_value
             changed_rows.add(row_pos)
             changed_cells += 1
+            storage_group = "" if is_legacy_group else entry_group
+            affected_keys.add((storage_group, row_index))
 
-    return len(changed_rows), changed_cells
+    return len(changed_rows), changed_cells, affected_keys
 
 
 def _batch_action_type_for_sheet(sheet_name: str) -> str:
@@ -5915,7 +6131,7 @@ def _list_admin_data_entry_batches() -> list[dict[str, object]]:
         latest_merged_mtime = None
 
     seen_keys: set[tuple[str, str]] = set()
-    out: list[dict[str, object]] = []
+    work_items: list[tuple[object, str, str, str]] = []
     for r in rows:
         company = str(r.company_name or "").strip()
         sheet = str(r.sheet_name or "").strip()
@@ -5928,45 +6144,81 @@ def _list_admin_data_entry_batches() -> list[dict[str, object]]:
             continue
 
         action_type = _batch_action_type_for_sheet(sheet)
-        mapped_run = (
-            MappingRun.query.filter_by(
-                company_name=company,
-                sheet_name=sheet,
-                status="succeeded",
-            )
-            .order_by(MappingRun.created_at.desc())
-            .first()
-        )
+        work_items.append((r, company, sheet, action_type))
+
+    batch_keys = list({(c, s) for _, c, s, _ in work_items})
+    latest_mr: dict[tuple[str, str], MappingRun] = {}
+    for mr in MappingRun.query.filter_by(status="succeeded").order_by(MappingRun.created_at.desc()).all():
+        k = ((getattr(mr, "company_name", None) or "").strip(), (getattr(mr, "sheet_name", None) or "").strip())
+        if k[0] and k[1] and k not in latest_mr:
+            latest_mr[k] = mr
+
+    entries_by_pair: dict[tuple[str, str], list[DataEntry]] = defaultdict(list)
+    if batch_keys:
+        bulk_entries = DataEntry.query.filter(
+            tuple_(DataEntry.company_name, DataEntry.sheet_name).in_(batch_keys)
+        ).all()
+        for ent in bulk_entries:
+            entries_by_pair[
+                ((getattr(ent, "company_name", None) or "").strip(), (getattr(ent, "sheet_name", None) or "").strip())
+            ].append(ent)
+
+    rollups: dict[tuple[str, str], dict[str, int]] = {}
+    for key in batch_keys:
+        rollups[key] = _rollup_ef_state_from_grid(_data_entry_grid_from_entries(entries_by_pair.get(key, [])))
+
+    mapper_user_ids = {int(mr.user_id) for mr in latest_mr.values() if getattr(mr, "user_id", None) is not None}
+    users_by_id: dict[int, User] = {}
+    if mapper_user_ids:
+        for u in User.query.filter(User.id.in_(tuple(mapper_user_ids))).all():
+            users_by_id[int(u.id)] = u
+
+    def _latest_entry_for_pair(pair: tuple[str, str]) -> DataEntry | None:
+        ents = entries_by_pair.get(pair) or []
+        if not ents:
+            return None
+        return max(ents, key=lambda e: (getattr(e, "created_at", None) or datetime.min, int(getattr(e, "id", 0) or 0)))
+
+    out: list[dict[str, object]] = []
+    for r, company, sheet, action_type in work_items:
+        pair = (company, sheet)
+        mapped_run = latest_mr.get(pair)
         mapper_email = ""
         mapped_at_dt = getattr(mapped_run, "created_at", None) if mapped_run else None
-        is_mapped = False
-
-        if action_type == "map":
-            if mapped_run is not None and mapped_at_dt is not None:
-                try:
-                    is_mapped = bool(r.uploaded_at) and mapped_at_dt >= r.uploaded_at
-                except Exception:
-                    is_mapped = True
-        else:
-            mapped_run = (
-                mapped_run
-            )
-            if latest_merged_mtime is not None and getattr(r, "uploaded_at", None) is not None:
-                try:
-                    is_mapped = latest_merged_mtime >= r.uploaded_at.timestamp()
-                except Exception:
-                    is_mapped = False
-
         if mapped_run is not None:
-            u = db.session.get(User, mapped_run.user_id)
+            u = users_by_id.get(int(getattr(mapped_run, "user_id", 0) or 0))
             if u is not None:
                 mapper_email = str(getattr(u, "email", "") or "")
-        latest_entry = (
-            DataEntry.query.filter_by(company_name=company, sheet_name=sheet)
-            .order_by(DataEntry.created_at.desc(), DataEntry.id.desc())
-            .first()
-        )
-        uploaded_by_user_id = int(getattr(latest_entry, "uploaded_by_user_id", 0) or 0)
+
+        pipeline_ready = False
+        if action_type != "map":
+            if latest_merged_mtime is not None and getattr(r, "uploaded_at", None) is not None:
+                try:
+                    pipeline_ready = latest_merged_mtime >= r.uploaded_at.timestamp()
+                except Exception:
+                    pipeline_ready = False
+            uploaded_at = r.uploaded_at if isinstance(r.uploaded_at, datetime) else None
+            mapping_state, mapping_status_label = _mapping_state_for_map_batch(
+                action_type="append_run",
+                rollup=rollups.get(pair, {}),
+                uploaded_at=uploaded_at,
+                mapped_at=mapped_at_dt,
+                pipeline_ready=pipeline_ready,
+            )
+            is_mapped = mapping_state == "pipeline_ready"
+        else:
+            uploaded_at = r.uploaded_at if isinstance(r.uploaded_at, datetime) else None
+            mapping_state, mapping_status_label = _mapping_state_for_map_batch(
+                action_type="map",
+                rollup=rollups.get(pair, {}),
+                uploaded_at=uploaded_at,
+                mapped_at=mapped_at_dt if isinstance(mapped_at_dt, datetime) else None,
+                pipeline_ready=False,
+            )
+            is_mapped = mapping_state == "fully_mapped"
+
+        latest_entry = _latest_entry_for_pair(pair)
+        uploaded_by_user_id = int(getattr(latest_entry, "uploaded_by_user_id", 0) or 0) if latest_entry else 0
         uploaded_by_name = ""
         uploaded_user = None
         if uploaded_by_user_id:
@@ -5985,6 +6237,9 @@ def _list_admin_data_entry_batches() -> list[dict[str, object]]:
                 "action_type": action_type,
                 "action_label": _batch_action_label_for_sheet(sheet),
                 "mapped": is_mapped,
+                "mapping_state": mapping_state,
+                "mapping_status_label": mapping_status_label,
+                "mapping_counts": dict(rollups.get(pair, {})),
                 "mapped_at": mapped_at_dt,
                 "mapped_by": mapper_email,
                 "uploaded_by_user": uploaded_by_name,
@@ -6019,6 +6274,13 @@ def _list_admin_data_entry_batches() -> list[dict[str, object]]:
                     is_mapped = latest_merged_mtime >= uploaded_at.timestamp()
                 except Exception:
                     is_mapped = False
+            mapping_state, mapping_status_label = _mapping_state_for_map_batch(
+                action_type="append_run",
+                rollup={},
+                uploaded_at=uploaded_at,
+                mapped_at=None,
+                pipeline_ready=is_mapped,
+            )
             out.append(
                 {
                     "batch_uid": uid,
@@ -6031,6 +6293,9 @@ def _list_admin_data_entry_batches() -> list[dict[str, object]]:
                     "action_type": "append_run",
                     "action_label": _batch_action_label_for_sheet(TRAVEL_SHEET_NAME),
                     "mapped": is_mapped,
+                    "mapping_state": mapping_state,
+                    "mapping_status_label": mapping_status_label,
+                    "mapping_counts": {},
                     "mapped_at": None,
                     "mapped_by": "",
                     "uploaded_by_user": "System",
@@ -6060,6 +6325,9 @@ def _batches_for_admin_mapping_json(batches: list[dict[str, object]]) -> list[di
                 "action_type": str(b.get("action_type") or ""),
                 "action_label": str(b.get("action_label") or ""),
                 "mapped": bool(b.get("mapped")),
+                "mapping_state": str(b.get("mapping_state") or ""),
+                "mapping_status_label": str(b.get("mapping_status_label") or ""),
+                "mapping_counts": b.get("mapping_counts") if isinstance(b.get("mapping_counts"), dict) else {},
                 "uploaded_at": ua.isoformat() + "Z" if isinstance(ua, datetime) else "",
                 "mapped_at": ma.isoformat() + "Z" if isinstance(ma, datetime) else "",
                 "mapped_by": str(b.get("mapped_by") or ""),
@@ -6623,21 +6891,21 @@ def _sync_unmapped_rows_for_mapping_run(
         superseded_count += 1
 
     print(
-        f"[UNMAPPED] Superseded {superseded_count} open row(s) for "
+        f"[UNMAPPED_SYNC] Superseded {superseded_count} open row(s) for "
         f"{company_name} / {sheet_name}{' / ' + entry_group if entry_group else ''}"
     )
 
     status_col = _df_find_column_casefold(mapped_df, ("status", "Status", "mapping_status", "Mapping Status"))
     if not status_col:
         MappingUnmappedRow.query.filter_by(run_id=run_id).delete()
-        print(f"[UNMAPPED] Mapping output has no status column for run {run_id}; no open rows inserted")
+        print(f"[UNMAPPED_SYNC] Mapping output has no status column for run {run_id}; no open rows inserted")
         return 0
 
     status_series = mapped_df[status_col].fillna("").astype(str).str.strip().str.lower()
     no_match_mask = status_series == "no match"
     if not bool(getattr(no_match_mask, "any", lambda: False)()):
         MappingUnmappedRow.query.filter_by(run_id=run_id).delete()
-        print(f"[UNMAPPED] No open No match rows remain for run {run_id}")
+        print(f"[UNMAPPED_SYNC] No open No match rows remain for run {run_id}")
         return 0
 
     MappingUnmappedRow.query.filter_by(run_id=run_id).delete()
@@ -6660,7 +6928,7 @@ def _sync_unmapped_rows_for_mapping_run(
             )
         )
         inserted += 1
-    print(f"[UNMAPPED] Inserted {inserted} open No match row(s) for run {run_id}")
+    print(f"[UNMAPPED_SYNC] Inserted {inserted} open No match row(s) for run {run_id}")
     return inserted
 
 
@@ -6886,6 +7154,53 @@ def _unmapped_query_from_request():
             )
         )
     return query, status_filter, company_filter, sheet_filter, search
+
+
+def _refresh_open_unmapped_against_live_rows() -> int:
+    """
+    Reconcile open MappingUnmappedRow records with live Data Entry EF status.
+    Only touches (company, sheet) pairs that still have open rows — avoids scanning the
+    full unmapped table against all Data Entry on every admin page load ([UNMAPPED_REFRESH]).
+    """
+    pairs = (
+        db.session.query(MappingUnmappedRow.company_name, MappingUnmappedRow.sheet_name)
+        .filter(MappingUnmappedRow.review_status == "open")
+        .distinct()
+        .all()
+    )
+    total = 0
+    for c, s in pairs:
+        co = str(c or "").strip()
+        sh = str(s or "").strip()
+        if not co or not sh:
+            continue
+        total += _delete_stale_open_unmapped_rows_from_live_data_entry(co, sh)
+    if pairs:
+        print(f"[UNMAPPED_REFRESH] scoped_stale_cleanup pairs_checked={len(pairs)} rows_removed={total}")
+    return total
+
+
+def _unmapped_review_status_counts() -> dict[str, int]:
+    """Single round-trip for admin unmapped status tiles (avoids five COUNT queries)."""
+    rows = (
+        db.session.query(MappingUnmappedRow.review_status, func.count(MappingUnmappedRow.id))
+        .group_by(MappingUnmappedRow.review_status)
+        .all()
+    )
+    by_status: dict[str, int] = defaultdict(int)
+    total = 0
+    for st, n in rows:
+        key = str(st or "").strip().lower() or "open"
+        c = int(n or 0)
+        total += c
+        by_status[key] += c
+    return {
+        "open": int(by_status.get("open", 0)),
+        "resolved": int(by_status.get("resolved", 0)),
+        "ignored": int(by_status.get("ignored", 0)),
+        "superseded": int(by_status.get("superseded", 0)),
+        "all": total,
+    }
 
 
 def _backup_stage2_ef_workbook(action: str) -> None:
@@ -7548,7 +7863,7 @@ def _sum_tco2e_from_xlsx(xlsx_path: str | Path, sheet_name: str | None) -> tuple
 def _detect_data_year_from_xlsx(xlsx_path: str | Path, sheet_name: str | None, scan_rows: int = 500) -> int | None:
     """
     Best-effort: infer reporting year from a period column like
-    'Reporting period (month, year)' with values like \"Jan'-2025\".
+    'Reporting period (month, year)' with values like \"Jan-2026\" (legacy \"Jan'-2025\" tolerated).
     Returns the most common year found (or max if tie), else None.
     """
     try:
@@ -8172,7 +8487,7 @@ def _latest_sheet_totals_for_company(company_keys: list[str]) -> list[MappingRun
 
 
 def _backfill_mapping_summaries(max_runs: int = 200) -> None:
-    return    """
+    """
     Best-effort backfill for existing MappingRun rows created before summaries existed.
     Safe to call frequently; only fills missing summaries.
     """
@@ -8989,11 +9304,14 @@ def platform():
 
 @app.route('/locations')
 def locations():
-    return render_template(
+    t0 = time.perf_counter()
+    rv = render_template(
         "locations.html",
         mapbox_token=(os.getenv("MAPBOX_TOKEN") or "").strip(),
         OPENWEATHER_API_KEY=OPENWEATHER_API_KEY,
     )
+    _perf_log("locations", page_render_ms=(time.perf_counter() - t0) * 1000.0)
+    return rv
 
 def _render_methodology_scope3_category(category_num, category_title, category_slug):
     chart_payload = _scope3_category_charts_payload(int(category_num))
@@ -11133,6 +11451,7 @@ def api_unfollow_user(user_id: int):
 
 
 def _render_dashboard_admin_analytics():
+    t_agg0 = time.perf_counter()
     company_filter = request.args.get('company', '').strip().lower()
     template_filter = request.args.get('template', '').strip().lower()
     include_categories = (request.args.get('include_categories', '1').strip() != '0')
@@ -11254,6 +11573,8 @@ def _render_dashboard_admin_analytics():
         },
     }
 
+    _perf_log("analytics_aggregation", analytics_aggregation_ms=(time.perf_counter() - t_agg0) * 1000.0)
+
     return render_template(
         "dashboard_admin.html",
         user=current_user,
@@ -11286,30 +11607,41 @@ def _render_dashboard_admin_analytics():
 def dashboard_analytics():
     if not current_user.is_admin:
         return redirect(url_for("dashboard"))
+    t0 = time.perf_counter()
     _ensure_db_tables()
     _backfill_mapping_summaries()
-    return _render_dashboard_admin_analytics()
+    rv = _render_dashboard_admin_analytics()
+    _perf_log("dashboard_analytics", page_render_ms=(time.perf_counter() - t0) * 1000.0)
+    return rv
 
 
 @app.route('/dashboard')
 @login_required
 def dashboard():
+    t0 = time.perf_counter()
+    t_db0 = time.perf_counter()
     _ensure_db_tables()
     if current_user.is_admin:
         _backfill_mapping_summaries()
 
+    thirty_days_ago = datetime.now() - timedelta(days=30)
+    agg = (
+        db.session.query(
+            func.count(MappingRun.id),
+            func.sum(case((MappingRun.created_at >= thirty_days_ago, 1), else_=0)),
+        )
+        .filter(MappingRun.user_id == current_user.id)
+        .one()
+    )
+    total_mapping_runs = int(agg[0] or 0)
+    recent_mapping_runs_count = int(agg[1] or 0)
     mapping_runs = (
         MappingRun.query.filter_by(user_id=current_user.id)
         .order_by(MappingRun.created_at.desc())
         .limit(10)
         .all()
     )
-    total_mapping_runs = MappingRun.query.filter_by(user_id=current_user.id).count()
-    thirty_days_ago = datetime.now() - timedelta(days=30)
-    recent_mapping_runs_count = MappingRun.query.filter(
-        MappingRun.user_id == current_user.id,
-        MappingRun.created_at >= thirty_days_ago
-    ).count()
+    t_db_ms = (time.perf_counter() - t_db0) * 1000.0
 
     companies = _list_template_companies_for_user()
     default_company = companies[0]["key"] if companies else None
@@ -11321,7 +11653,7 @@ def dashboard():
     company_logo_rel = _company_logo_static_rel(rk) if rk else None
     klarakarbon_supported = klarakarbon_company_supported(rk or "")
 
-    return render_template(
+    rv = render_template(
         "dashboard.html",
         user=current_user,
         companies=companies,
@@ -11334,6 +11666,8 @@ def dashboard():
         klarakarbon_supported=klarakarbon_supported,
         can_run_translation=_user_can_run_translation(current_user),
     )
+    _perf_log("dashboard", page_render_ms=(time.perf_counter() - t0) * 1000.0, db_ms=t_db_ms)
+    return rv
 
 
 @app.route("/preprocess/klarakarbon/upload", methods=["POST"])
@@ -11600,9 +11934,11 @@ def api_data_entry_site_tags():
 @app.route("/api/data-entry/reporting-periods", methods=["GET"])
 @login_required
 def api_data_entry_reporting_periods():
-    from frontend.services.reporting_period_service import get_reporting_period_options_2026
+    from frontend.services.reporting_period_service import get_reporting_period_options_2026, reporting_period_sort_key
 
-    return jsonify({"ok": True, "periods": get_reporting_period_options_2026()})
+    periods = list(get_reporting_period_options_2026())
+    periods = sorted(set(periods), key=reporting_period_sort_key)
+    return jsonify({"ok": True, "periods": periods})
 
 
 @app.route("/api/ccc/import-to-data-entry", methods=["POST"])
@@ -12376,7 +12712,7 @@ def _run_translation_job(
         _raise_if_job_cancelled(job_id)
         rows_affected = int(getattr(translated_df, "attrs", {}).get("translation_rows_affected", 0) or 0)
         _update_job_progress(job_id, min(90, base_progress + 20), f"Saving translated {resolved_sheet}...")
-        changed_rows, changed_cells = _persist_translated_data_entry_columns(
+        changed_rows, changed_cells, affected_keys = _persist_translated_data_entry_columns(
             company_name=resolved_company,
             sheet_name=resolved_sheet,
             headers=headers,
@@ -12386,12 +12722,19 @@ def _run_translation_job(
             uploaded_by_user_id=user_id,
         )
         if changed_cells:
-            _clear_data_entry_mapping_metadata(resolved_company, resolved_sheet)
-            _supersede_open_unmapped_rows(
-                resolved_company,
-                resolved_sheet,
-                reason="translation_updated_source_values",
-            )
+            _clear_data_entry_mapping_metadata_for_grid_keys(resolved_company, resolved_sheet, affected_keys)
+            by_group: dict[str | None, set[int]] = defaultdict(set)
+            for eg, rix in affected_keys:
+                gkey = str(eg or "").strip() or None
+                by_group[gkey].add(int(rix) + 1)
+            for gkey, row_nums in by_group.items():
+                _supersede_open_unmapped_rows(
+                    resolved_company,
+                    resolved_sheet,
+                    source_entry_group=gkey,
+                    reason="translation_updated_source_values",
+                    row_numbers=row_nums,
+                )
         total_rows_affected += rows_affected
         total_cells_updated += changed_cells
         translated_sheets.append(
@@ -12731,6 +13074,21 @@ def _run_ccc_import_job(
     out["ok"] = True
     out["errors_count"] = len(errs_final)
     out["phase"] = "completed"
+    print(
+        "[MAPPING_STATE] ccc_import_completed "
+        f"inserted={out.get('rows_inserted')} note=no_EF_until_map_job"
+    )
+    if uid:
+        _create_user_notification(
+            int(uid),
+            title="CCC import completed",
+            message=(
+                f"Inserted {int(stats.get('rows_inserted') or 0)} row(s) into Data Entry. "
+                "This step does not assign emission factors — use Map to set EF / status."
+            ),
+            notification_type="info",
+            link="/",
+        )
     return out
 
 
@@ -12843,10 +13201,14 @@ def _run_mapping_job(
         db.session.commit()
         raise JobCancelled()
     _update_job_progress(job_id, 95, "Finalizing mapping...")
+    um_n = int(unmapped_count or 0)
+    notif_msg = f"{resolved_company} / {resolved_sheet} mapping finished."
+    if um_n > 0:
+        notif_msg += f" {um_n} row(s) still have no EF match — review Admin ▸ Unmapped rows."
     _create_user_notification(
         int(user_id),
         title="Mapping run completed",
-        message=f"{resolved_company} / {resolved_sheet} mapping finished successfully.",
+        message=notif_msg,
         notification_type="success",
         link="/",
         feed_event="mapping_completed",
@@ -14065,12 +14427,6 @@ def api_admin_upload_notifications():
         mapped = bool(b.get("mapped"))
         mapped_at = b.get("mapped_at")
         mapped_by = str(b.get("mapped_by") or "").strip()
-        if mapped and mapped_at:
-            mapping_status = f"Mapped by {mapped_by or 'admin'} at {mapped_at.strftime('%Y-%m-%d %H:%M')}"
-        elif mapped:
-            mapping_status = "Mapped"
-        else:
-            mapping_status = "Not mapped yet"
 
         notifications.append(
             {
@@ -14082,7 +14438,9 @@ def api_admin_upload_notifications():
                 "upload_timestamp": uploaded_at.strftime("%Y-%m-%d %H:%M"),
                 "category": str(b.get("sheet_name") or ""),
                 "row_count": int(b.get("row_count") or 0),
-                "mapping_status": mapping_status,
+                "mapping_status": str(b.get("mapping_status_label") or ""),
+                "mapping_state": str(b.get("mapping_state") or ""),
+                "mapping_counts": b.get("mapping_counts") if isinstance(b.get("mapping_counts"), dict) else {},
                 "mapped_by_admin": mapped_by,
                 "mapping_timestamp": mapped_at.strftime("%Y-%m-%d %H:%M") if isinstance(mapped_at, datetime) else "",
                 "mapped": mapped,
@@ -14174,9 +14532,12 @@ def admin_unmapped_mappings():
         flash("Access denied")
         return redirect(url_for("dashboard"))
 
-    removed_stale = _delete_stale_open_unmapped_rows_from_live_data_entry()
+    t0 = time.perf_counter()
+    t_db0 = time.perf_counter()
+    removed_stale = _refresh_open_unmapped_against_live_rows()
     if removed_stale:
         db.session.commit()
+    t_db = (time.perf_counter() - t_db0) * 1000.0
 
     query, status_filter, company_filter, sheet_filter, search = _unmapped_query_from_request()
     dedupe_mode = (request.args.get("dedupe") or "").strip().lower()
@@ -14186,19 +14547,20 @@ def admin_unmapped_mappings():
         rows, duplicate_counts = _dedupe_unmapped_rows_by_description(rows)
     previews = []
     ef_options_by_row: dict[int, list[dict[str, object]]] = {}
+    ef_cache_by_sheet: dict[str, list[dict[str, object]]] = {}
+    t_unmapped0 = time.perf_counter()
     for row in rows:
         preview = _unmapped_row_preview(row)
         preview["description"] = _unmapped_description(row)
         preview["duplicate_count"] = duplicate_counts.get(int(row.id), 1)
         previews.append(preview)
-        ef_options_by_row[int(row.id)] = _load_unmapped_ef_options_for_sheet(row.sheet_name or "")
-    counts = {
-        "open": int(MappingUnmappedRow.query.filter_by(review_status="open").count()),
-        "resolved": int(MappingUnmappedRow.query.filter_by(review_status="resolved").count()),
-        "ignored": int(MappingUnmappedRow.query.filter_by(review_status="ignored").count()),
-        "superseded": int(MappingUnmappedRow.query.filter_by(review_status="superseded").count()),
-        "all": int(MappingUnmappedRow.query.count()),
-    }
+        sn = str(row.sheet_name or "").strip()
+        if sn not in ef_cache_by_sheet:
+            ef_cache_by_sheet[sn] = _load_unmapped_ef_options_for_sheet(sn)
+        ef_options_by_row[int(row.id)] = ef_cache_by_sheet[sn]
+    t_unmapped_ms = (time.perf_counter() - t_unmapped0) * 1000.0
+
+    counts = _unmapped_review_status_counts()
     companies = [
         item[0]
         for item in db.session.query(MappingUnmappedRow.company_name)
@@ -14215,6 +14577,12 @@ def admin_unmapped_mappings():
         .all()
         if item[0]
     ]
+    _perf_log(
+        "admin_unmapped_mappings",
+        render_ms=(time.perf_counter() - t0) * 1000.0,
+        db_ms=t_db,
+        unmapped_refresh_ms=t_unmapped_ms,
+    )
     return render_template(
         "admin_unmapped_mappings.html",
         user=current_user,
@@ -14311,7 +14679,7 @@ def admin_unmapped_mappings_fuzzy():
         flash("Access denied")
         return redirect(url_for("dashboard"))
 
-    removed_stale = _delete_stale_open_unmapped_rows_from_live_data_entry()
+    removed_stale = _refresh_open_unmapped_against_live_rows()
     if removed_stale:
         db.session.commit()
 
@@ -14328,19 +14696,17 @@ def admin_unmapped_mappings_fuzzy():
     fuzzy_unmatched_count = max(0, fuzzy_scanned_count - len(suggested_ids))
     previews = []
     ef_options_by_row: dict[int, list[dict[str, object]]] = {}
+    ef_cache_by_sheet: dict[str, list[dict[str, object]]] = {}
     for row in rows:
         preview = _unmapped_row_preview(row)
         preview["description"] = _unmapped_description(row)
         preview["duplicate_count"] = duplicate_counts.get(int(row.id), 1)
         previews.append(preview)
-        ef_options_by_row[int(row.id)] = _load_unmapped_ef_options_for_sheet(row.sheet_name or "")
-    counts = {
-        "open": int(MappingUnmappedRow.query.filter_by(review_status="open").count()),
-        "resolved": int(MappingUnmappedRow.query.filter_by(review_status="resolved").count()),
-        "ignored": int(MappingUnmappedRow.query.filter_by(review_status="ignored").count()),
-        "superseded": int(MappingUnmappedRow.query.filter_by(review_status="superseded").count()),
-        "all": int(MappingUnmappedRow.query.count()),
-    }
+        sn = str(row.sheet_name or "").strip()
+        if sn not in ef_cache_by_sheet:
+            ef_cache_by_sheet[sn] = _load_unmapped_ef_options_for_sheet(sn)
+        ef_options_by_row[int(row.id)] = ef_cache_by_sheet[sn]
+    counts = _unmapped_review_status_counts()
     companies = [
         item[0]
         for item in db.session.query(MappingUnmappedRow.company_name)

@@ -1023,6 +1023,10 @@ const REPORTING_PERIOD_HEADER = 'Reporting period (month, year)';
 const SITE_TAG_HEADER = 'Site Tag';
 
 const REPORTING_CANONICAL_2026 = [
+  "Jan-2026", "Feb-2026", "Mar-2026", "Apr-2026", "May-2026", "Jun-2026",
+  "Jul-2026", "Aug-2026", "Sep-2026", "Oct-2026", "Nov-2026", "Dec-2026",
+];
+const REPORTING_LEGACY_APOSTROPHE_2026 = [
   "Jan'-2026", "Feb'-2026", "Mar'-2026", "Apr'-2026", "May'-2026", "Jun'-2026",
   "Jul'-2026", "Aug'-2026", "Sep'-2026", "Oct'-2026", "Nov'-2026", "Dec'-2026",
 ];
@@ -1059,8 +1063,10 @@ function normalizeReportingPeriodClient(value) {
   if (value == null || value === '') return '';
   const s0 = collapseWs(value);
   if (!s0) return '';
-  for (const p of REPORTING_CANONICAL_2026) {
-    if (s0.toLowerCase() === p.toLowerCase()) return p;
+  for (let i = 0; i < REPORTING_CANONICAL_2026.length; i++) {
+    const p = REPORTING_CANONICAL_2026[i];
+    const leg = REPORTING_LEGACY_APOSTROPHE_2026[i];
+    if (s0.toLowerCase() === p.toLowerCase() || s0.toLowerCase() === leg.toLowerCase()) return p;
   }
   const tok = /^(?<mon>[A-Za-z]+)[\s'\-]*(?<year>\d{4})\s*$/.exec(s0);
   if (tok?.groups) {

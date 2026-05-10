@@ -23,7 +23,10 @@ _MONTH_ABBREV = (
     "Dec",
 )
 
-_CANONICAL_PERIODS = [f"{abbr}'-2026" for abbr in _MONTH_ABBREV]
+# Canonical *storage* labels for 2026: machine-parsable, no typographic apostrophe (Jan-2026).
+# Filtering/sorting should use parsed keys (YYYY-MM), not string collation on labels.
+_CANONICAL_PERIODS = [f"{abbr}-2026" for abbr in _MONTH_ABBREV]
+_LEGACY_APOSTROPHE_PERIODS = [f"{abbr}'-2026" for abbr in _MONTH_ABBREV]
 
 _MONTH_NAME_TO_NUM = {
     **{calendar.month_name[i].lower(): i for i in range(1, 13)},
@@ -40,7 +43,7 @@ _SLASH_YMD_RE = re.compile(r"^(?P<year>\d{4})\s*/\s*(?P<month>\d{1,2})\s*/\s*(?P
 
 
 def get_reporting_period_options_2026() -> list[str]:
-    """Exactly twelve canonical labels for calendar months in 2026."""
+    """Exactly twelve canonical labels for calendar months in 2026 (chronological order)."""
     return list(_CANONICAL_PERIODS)
 
 
@@ -50,10 +53,50 @@ def _canonical_for_month(month: int, year: int) -> str | None:
     return _CANONICAL_PERIODS[month - 1]
 
 
+def display_reporting_period_label(value: object) -> str:
+    """
+    User-facing label: Jan-2026 (no apostrophe). Accepts legacy Jan'-2026 stored in older rows.
+    Internal values remain unchanged when already canonical.
+    """
+    if value is None:
+        return ""
+    s = _WS_RE.sub(" ", str(value).strip())
+    if not s:
+        return ""
+    # Normalize legacy apostrophe forms to hyphen form for display only.
+    for legacy, modern in zip(_LEGACY_APOSTROPHE_PERIODS, _CANONICAL_PERIODS):
+        if s.casefold() == legacy.casefold():
+            return modern
+    return s.replace("'-", "-").replace("'-'-", "-").replace("'", "")
+
+
+def reporting_period_sort_key(label: object) -> tuple[int, int]:
+    """
+    Chronological sort key for dropdowns: (year, month). Non-resolved values sort last.
+    """
+    z = normalize_reporting_period(label)
+    m = _MONTH_TOKEN_RE.match(str(z).strip())
+    if m:
+        mon_raw = m.group("mon").lower()
+        year = int(m.group("year"))
+        month_num = _MONTH_NAME_TO_NUM.get(mon_raw)
+        if month_num is None and len(mon_raw) >= 3:
+            month_num = _MONTH_NAME_TO_NUM.get(mon_raw[:3])
+        if month_num:
+            return year, month_num
+    m2 = _ISO_MONTH_RE.match(str(z).strip())
+    if m2:
+        return int(m2.group("year")), int(m2.group("month"))
+    return 9999, 99
+
+
 def normalize_reporting_period(value: object) -> str:
     """
-    Normalize common inputs to Jan'-2026 … Dec'-2026 when year/month resolves to 2026.
+    Normalize common inputs to Jan-2026 … Dec-2026 when year/month resolves to 2026.
     Otherwise returns stripped / whitespace-collapsed original string (never raises).
+
+    Legacy apostrophe forms (Jan'-2026) are normalized to Jan-2026 so duplicate malformed
+    variants collapse for display and deduping, while month/year semantics stay sortable.
     """
     if value is None:
         return ""
@@ -72,6 +115,9 @@ def normalize_reporting_period(value: object) -> str:
     for p in _CANONICAL_PERIODS:
         if s.casefold() == p.casefold():
             return p
+    for legacy, modern in zip(_LEGACY_APOSTROPHE_PERIODS, _CANONICAL_PERIODS):
+        if s.casefold() == legacy.casefold():
+            return modern
 
     m = _MONTH_TOKEN_RE.match(s)
     if m:
@@ -84,7 +130,7 @@ def normalize_reporting_period(value: object) -> str:
             c = _canonical_for_month(month_num, year)
             if c:
                 return c
-        return s
+        return display_reporting_period_label(s)
 
     m = _ISO_MONTH_RE.match(s)
     if m:
@@ -131,4 +177,4 @@ def normalize_reporting_period(value: object) -> str:
         except ValueError:
             continue
 
-    return s
+    return display_reporting_period_label(s)
