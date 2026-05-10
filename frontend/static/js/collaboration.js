@@ -55,27 +55,108 @@
     const markAllBtn = notificationRoot.querySelector("[data-mark-all-notifications]");
 
     async function loadNotifications() {
+      const assets = window.__CTS_MAPPING_CARD_ASSETS__ || {};
+      const adminKeys = new Set();
+      let adminMappingHtml = "";
+
+      if (assets.isAdmin && window.CtsMappingCards && assets.adminUploadNotificationsUrl) {
+        try {
+          const adminData = await fetchJson(assets.adminUploadNotificationsUrl);
+          const batches = Array.isArray(adminData.notifications) ? adminData.notifications : [];
+          const slice = batches.slice(0, 6);
+          adminMappingHtml = slice
+            .map(function (batch) {
+              var co = String(batch.company_name || "").trim();
+              var cat = String(batch.category || batch.sheet_name || "").trim();
+              if (co && cat) adminKeys.add(co + "|" + cat);
+              var inner = window.CtsMappingCards.renderCardHtml(batch, { compact: true });
+              var dashUrl = assets.dashboardUrl || "/dashboard";
+              return (
+                '<div class="collab-notification-admin-mapping">' +
+                '<a class="collab-notification-admin-mapping__link" href="' +
+                escapeHtml(dashUrl) +
+                '">' +
+                inner +
+                "</a>" +
+                "</div>"
+              );
+            })
+            .join("");
+        } catch (e) {
+          adminMappingHtml = "";
+        }
+      }
+
       const data = await fetchJson("/api/notifications/recent");
       setBadge(badge, data.unread_count);
-      const rows = Array.isArray(data.notifications) ? data.notifications : [];
-      if (!rows.length) {
+      let rows = Array.isArray(data.notifications) ? data.notifications : [];
+
+      if (assets.isAdmin && adminKeys.size) {
+        rows = rows.filter(function (item) {
+          var card = item.mapping_card;
+          if (!card || typeof card !== "object") return true;
+          var co = String(card.company_name || "").trim();
+          var cat = String(card.category || "").trim();
+          if (!co || !cat) return true;
+          return !adminKeys.has(co + "|" + cat);
+        });
+      }
+
+      const legacyBlocks = rows
+        .map(function (item) {
+          if (item.mapping_card && window.CtsMappingCards) {
+            var card = item.mapping_card;
+            var inner = window.CtsMappingCards.renderCardHtml(card, { compact: true });
+            var href = item.link ? escapeHtml(item.link) : escapeHtml(assets.dashboardUrl || "/");
+            return (
+              '<article class="collab-notification-item collab-notification-item--mapping-card" data-notification-id="' +
+              Number(item.id) +
+              '">' +
+              '<a class="collab-notification-item__card-hit" href="' +
+              href +
+              '">' +
+              inner +
+              "</a>" +
+              (item.is_read ? "" : '<span class="search-result-item__kind">New</span>') +
+              "</article>"
+            );
+          }
+          var titleHtml = item.link
+            ? '<a href="' + escapeHtml(item.link) + '">' + escapeHtml(item.title) + "</a>"
+            : escapeHtml(item.title);
+          return (
+            '<article class="collab-notification-item" data-notification-id="' +
+            Number(item.id) +
+            '">' +
+            "<div>" +
+            '<div class="collab-notification-item__title">' +
+            titleHtml +
+            "</div>" +
+            "<div>" +
+            escapeHtml(item.message) +
+            "</div>" +
+            '<div class="collab-notification-item__meta">' +
+            escapeHtml(item.created_at) +
+            "</div>" +
+            "</div>" +
+            (item.is_read ? "" : '<span class="search-result-item__kind">New</span>') +
+            "</article>"
+          );
+        })
+        .join("");
+
+      const composed = (adminMappingHtml || "") + legacyBlocks;
+
+      if (!composed.trim()) {
         list.innerHTML = '<div class="collab-empty-state">No notifications yet.</div>';
         return;
       }
-      list.innerHTML = rows.map(function (item) {
-        const titleHtml = item.link
-          ? '<a href="' + escapeHtml(item.link) + '">' + escapeHtml(item.title) + "</a>"
-          : escapeHtml(item.title);
-        return '' +
-          '<article class="collab-notification-item" data-notification-id="' + Number(item.id) + '">' +
-            '<div>' +
-              '<div class="collab-notification-item__title">' + titleHtml + '</div>' +
-              '<div>' + escapeHtml(item.message) + '</div>' +
-              '<div class="collab-notification-item__meta">' + escapeHtml(item.created_at) + '</div>' +
-            '</div>' +
-            (item.is_read ? '' : '<span class="search-result-item__kind">New</span>') +
-          '</article>';
-      }).join("");
+
+      list.innerHTML = composed;
+
+      if (window.CtsMappingCards && typeof window.CtsMappingCards.wireLogoAvatarFallbacks === "function") {
+        window.CtsMappingCards.wireLogoAvatarFallbacks(list);
+      }
     }
 
     notificationRoot.addEventListener("show.bs.dropdown", function () {

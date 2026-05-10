@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+import json
+
 
 def create_notification(
     session: Any,
@@ -13,7 +15,14 @@ def create_notification(
     message: str,
     notification_type: str,
     link: str | None = None,
+    meta: dict[str, Any] | None = None,
 ) -> Any:
+    meta_json: str | None = None
+    if meta is not None:
+        try:
+            meta_json = json.dumps(meta, ensure_ascii=False)
+        except Exception:
+            meta_json = None
     row = NotificationModel(
         user_id=int(user_id),
         title=str(title or "").strip(),
@@ -22,6 +31,7 @@ def create_notification(
         link=str(link or "").strip() or None,
         is_read=False,
         created_at=datetime.utcnow(),
+        meta_json=meta_json,
     )
     session.add(row)
     return row
@@ -36,6 +46,7 @@ def notify_users(
     message: str,
     notification_type: str,
     link: str | None = None,
+    meta: dict[str, Any] | None = None,
 ) -> None:
     seen: set[int] = set()
     for user_id in user_ids:
@@ -51,6 +62,7 @@ def notify_users(
             message=message,
             notification_type=notification_type,
             link=link,
+            meta=meta,
         )
 
 

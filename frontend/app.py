@@ -1213,9 +1213,46 @@ def _profile_photo_url_for_user(u: User | None) -> str | None:
         return None
 
 
+def _mapping_card_payload_for_pair(company_name: str, sheet_name: str) -> dict[str, object] | None:
+    """Live mapping summary for one Data Entry pair (same shape as api_admin_upload_notifications rows)."""
+    company_key = str(company_name or "").strip()
+    sheet_key = str(sheet_name or "").strip()
+    if not company_key or not sheet_key:
+        return None
+    try:
+        batches = _list_admin_data_entry_batches()
+    except Exception:
+        return None
+    for b in batches:
+        if str(b.get("company_name") or "").strip() != company_key:
+            continue
+        if str(b.get("sheet_name") or "").strip() != sheet_key:
+            continue
+        uploaded_at = b.get("uploaded_at")
+        ts = uploaded_at.strftime("%Y-%m-%d %H:%M") if isinstance(uploaded_at, datetime) else ""
+        mapped_at = b.get("mapped_at")
+        mapped_ts = mapped_at.strftime("%Y-%m-%d %H:%M") if isinstance(mapped_at, datetime) else ""
+        return {
+            "company_name": company_key,
+            "uploaded_by_user": str(b.get("uploaded_by_user") or "Unknown"),
+            "uploaded_by_user_id": int(b.get("uploaded_by_user_id") or 0),
+            "uploaded_by_job_title": str(b.get("uploaded_by_job_title") or ""),
+            "uploaded_by_has_profile_photo": bool(b.get("uploaded_by_has_profile_photo")),
+            "upload_timestamp": ts,
+            "category": sheet_key,
+            "row_count": int(b.get("row_count") or 0),
+            "mapping_status": str(b.get("mapping_status_label") or ""),
+            "mapping_state": str(b.get("mapping_state") or ""),
+            "mapped_by_admin": str(b.get("mapped_by") or ""),
+            "mapping_timestamp": mapped_ts,
+            "mapped": bool(b.get("mapped")),
+        }
+    return None
+
+
 def _notification_payload(row: "Notification") -> dict[str, object]:
     created_at = row.created_at.strftime("%Y-%m-%d %H:%M") if getattr(row, "created_at", None) else ""
-    return {
+    payload: dict[str, object] = {
         "id": int(row.id),
         "title": row.title,
         "message": row.message,
@@ -1224,6 +1261,15 @@ def _notification_payload(row: "Notification") -> dict[str, object]:
         "is_read": bool(row.is_read),
         "created_at": created_at,
     }
+    raw_meta = getattr(row, "meta_json", None)
+    if raw_meta:
+        try:
+            parsed = json.loads(str(raw_meta))
+            if isinstance(parsed, dict):
+                payload["mapping_card"] = parsed
+        except Exception:
+            pass
+    return payload
 
 
 def _message_payload(row: "Message", *, viewer_id: int) -> dict[str, object]:
@@ -1757,6 +1803,7 @@ class Notification(db.Model):
     link = db.Column(db.String(500), nullable=True)
     is_read = db.Column(db.Boolean, nullable=False, default=False, index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    meta_json = db.Column(db.Text, nullable=True)
 
 
 class Message(db.Model):
@@ -2467,6 +2514,7 @@ def _ensure_db_tables() -> None:
         _ensure_mapping_unmapped_row_columns()
         _ensure_evidence_tables_columns()
         _ensure_governance_register_columns()
+        _ensure_notification_meta_json_column()
         _migrate_profile_photos_to_storage_once()
     except Exception:
         pass
@@ -2968,6 +3016,7 @@ def _create_user_notification(
     message: str,
     notification_type: str = "info",
     link: str | None = None,
+    mapping_card: dict[str, object] | None = None,
     feed_event: str | None = None,
     feed_company: str | None = None,
     feed_api_name: str | None = None,
@@ -2982,6 +3031,7 @@ def _create_user_notification(
             message=message,
             notification_type=notification_type,
             link=link,
+            meta=mapping_card,
         )
         db.session.commit()
         if str(notification_type or "").strip().lower() == "success":
@@ -4701,6 +4751,22 @@ def _ensure_feed_post_reference_columns() -> None:
         with db.engine.begin() as conn:
             for stmt in alters:
                 conn.execute(text(stmt))
+    except Exception:
+        pass
+
+
+def _ensure_notification_meta_json_column() -> None:
+    try:
+        from sqlalchemy import inspect, text
+
+        inspector = inspect(db.engine)
+        if not inspector.has_table("notifications"):
+            return
+        existing = {col["name"] for col in inspector.get_columns("notifications")}
+        if "meta_json" in existing:
+            return
+        with db.engine.begin() as conn:
+            conn.execute(text("ALTER TABLE notifications ADD COLUMN meta_json TEXT"))
     except Exception:
         pass
 
@@ -12587,12 +12653,31 @@ def api_excel_schema_save():
     duplicate_rows_count = int(result.get("duplicate_rows_count") or 0)
     saved_entry_groups = list(result.get("saved_entry_groups") or [])
     if saved_rows_count > 0:
+        card_meta = _mapping_card_payload_for_pair(resolved_company, resolved_sheet)
+        if not card_meta:
+            u = current_user
+            card_meta = {
+                "company_name": resolved_company,
+                "uploaded_by_user": _display_name_for_user(u),
+                "uploaded_by_user_id": int(getattr(u, "id", 0) or 0),
+                "uploaded_by_job_title": _user_professional_title(u),
+                "uploaded_by_has_profile_photo": bool((getattr(u, "profile_photo_path", None) or "").strip()),
+                "upload_timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
+                "category": resolved_sheet,
+                "row_count": saved_rows_count,
+                "mapping_status": "",
+                "mapping_state": "",
+                "mapped_by_admin": "",
+                "mapping_timestamp": "",
+                "mapped": False,
+            }
         _create_user_notification(
             current_user.id,
             title="Data upload completed",
             message=f"{resolved_company} uploaded new data successfully.",
             notification_type="success",
             link=url_for("home"),
+            mapping_card=card_meta,
             feed_event="data_upload",
             feed_company=resolved_company,
             feed_timestamp=datetime.utcnow(),
@@ -13205,12 +13290,34 @@ def _run_mapping_job(
     notif_msg = f"{resolved_company} / {resolved_sheet} mapping finished."
     if um_n > 0:
         notif_msg += f" {um_n} row(s) still have no EF match — review Admin ▸ Unmapped rows."
+    map_card = _mapping_card_payload_for_pair(resolved_company, resolved_sheet)
+    if map_card is None:
+        map_card = {
+            "company_name": resolved_company,
+            "uploaded_by_user": "",
+            "uploaded_by_user_id": 0,
+            "uploaded_by_job_title": "",
+            "uploaded_by_has_profile_photo": False,
+            "upload_timestamp": "",
+            "category": resolved_sheet,
+            "row_count": 0,
+            "mapping_status": "",
+            "mapping_state": "",
+            "mapped_by_admin": "",
+            "mapping_timestamp": "",
+            "mapped": True,
+        }
+    else:
+        map_card = dict(map_card)
+    map_card["mapped_by_admin"] = str(user_email or "").strip()
+    map_card["mapping_timestamp"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
     _create_user_notification(
         int(user_id),
         title="Mapping run completed",
         message=notif_msg,
         notification_type="success",
         link="/",
+        mapping_card=map_card,
         feed_event="mapping_completed",
         feed_company=resolved_company,
         feed_timestamp=datetime.utcnow(),

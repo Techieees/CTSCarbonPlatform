@@ -584,6 +584,74 @@ body.dark-mode .admin-upload-notification-status-pill--neutral {
   color: #e2e8f0;
 }
 
+.admin-upload-notification-card--compact {
+  gap: 0.22rem;
+  padding: 0.38rem 0.48rem;
+  border-radius: 10px;
+}
+
+.admin-upload-notification-card--compact .admin-upload-notification-card__co-logo {
+  max-height: 24px;
+  max-width: 92px;
+}
+
+.admin-upload-notification-card--compact .admin-upload-notification-card__avatar {
+  width: 26px;
+  height: 26px;
+}
+
+.admin-upload-notification-card--compact .admin-upload-notification-card__co-name {
+  font-size: 0.84rem;
+}
+
+.admin-upload-notification-card--compact .admin-upload-notification-card__uploader-name {
+  font-size: 0.82rem;
+}
+
+.admin-upload-notification-card--compact .admin-upload-notification-card__role {
+  font-size: 0.72rem;
+}
+
+.admin-upload-notification-card--compact .admin-upload-notification-card__category-text {
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: -0.012em;
+}
+
+.admin-upload-notification-card--compact .admin-upload-notification-card__stats {
+  font-size: 0.72rem;
+  gap: 0.35rem 0.65rem;
+}
+
+.admin-upload-notification-card--compact .admin-upload-notification-status-pill {
+  font-size: 0.68rem;
+  padding: 0.16rem 0.48rem 0.18rem;
+}
+
+.collab-dropdown-panel .admin-upload-notification-category-lottie.lottie-icon,
+.collab-dropdown-panel .admin-upload-notification-category-lottie--compact.lottie-icon {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  transform: none;
+  opacity: 0.96;
+  filter: contrast(1.05) saturate(1.02);
+}
+
+.collab-dropdown-panel .admin-upload-notification-category-lottie.lottie-icon svg,
+.collab-dropdown-panel .admin-upload-notification-category-lottie--compact.lottie-icon svg {
+  width: 22px !important;
+  height: 22px !important;
+}
+
+body.dark-mode .collab-dropdown-panel .admin-upload-notification-category-lottie.lottie-icon {
+  filter: contrast(1.08) saturate(1.05) brightness(1.06);
+}
+
+.collab-notification-admin-mapping ~ .collab-notification-item {
+  border-top: 1px solid var(--border-subtle, rgba(15, 23, 42, 0.08));
+}
+
 @media (max-width: 576px) {
   .admin-upload-notification-modal__header {
     padding-right: 2.85rem;
