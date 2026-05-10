@@ -6941,6 +6941,7 @@ def _sync_unmapped_rows_for_mapping_run(
     mapped_df: "pd.DataFrame",
 ) -> int:
     if mapped_df is None or mapped_df.empty:
+        print(f"[UNMAPPED_SKIP] reason=empty_mapped_df run={run_id} company={company_name!r} sheet={sheet_name!r}")
         return 0
     entry_group = str(source_entry_group or "").strip() or None
     previous_query = MappingUnmappedRow.query.filter(
@@ -6964,6 +6965,10 @@ def _sync_unmapped_rows_for_mapping_run(
     status_col = _df_find_column_casefold(mapped_df, ("status", "Status", "mapping_status", "Mapping Status"))
     if not status_col:
         MappingUnmappedRow.query.filter_by(run_id=run_id).delete()
+        print(
+            f"[UNMAPPED_SKIP] reason=no_status_column run={run_id} company={company_name!r} sheet={sheet_name!r} "
+            "; no MappingUnmappedRow inserts"
+        )
         print(f"[UNMAPPED_SYNC] Mapping output has no status column for run {run_id}; no open rows inserted")
         return 0
 
@@ -6971,6 +6976,11 @@ def _sync_unmapped_rows_for_mapping_run(
     no_match_mask = status_series == "no match"
     if not bool(getattr(no_match_mask, "any", lambda: False)()):
         MappingUnmappedRow.query.filter_by(run_id=run_id).delete()
+        print(
+            f"[UNMAPPED_SKIP] reason=no_no_match_rows run={run_id} company={company_name!r} sheet={sheet_name!r} "
+            "group="
+            + repr(entry_group)
+        )
         print(f"[UNMAPPED_SYNC] No open No match rows remain for run {run_id}")
         return 0
 
@@ -6995,6 +7005,10 @@ def _sync_unmapped_rows_for_mapping_run(
         )
         inserted += 1
     print(f"[UNMAPPED_SYNC] Inserted {inserted} open No match row(s) for run {run_id}")
+    print(
+        f"[UNMAPPED_INSERT] run={run_id} n={inserted} company={company_name!r} sheet={sheet_name!r} "
+        f"group={entry_group!r}"
+    )
     return inserted
 
 
@@ -12145,6 +12159,7 @@ def api_ccc_import_to_data_entry():
         template_mode=tm,
         job_user_id=int(getattr(current_user, "id", 0) or 0) or None,
         job_user_email=str(getattr(current_user, "email", "") or ""),
+        mapper_email=str(getattr(current_user, "email", "") or ""),
     )
     return jsonify({"ok": True, "job_id": job_id})
 
@@ -12971,6 +12986,7 @@ def _run_ccc_import_job(
     project_labels: list[str],
     user_id: int | None = None,
     template_mode: str = TEMPLATE_MODE_LEGACY,
+    mapper_email: str = "",
 ) -> dict[str, object]:
     from frontend.services.ccc_data_entry_import_service import (
         CCC_IMPORT_DEDUP_COLUMN,
@@ -12994,6 +13010,7 @@ def _run_ccc_import_job(
         "status_skipped": 0,
         "errors": [],
     }
+    ccc_batches_needing_mapping: set[tuple[str, str, str]] = set()
 
     uid = int(user_id or 0) or None
     ccc_po = _load_stage1_api_source_module("ccc_purchase_orders")
@@ -13179,6 +13196,7 @@ def _run_ccc_import_job(
                 db.session.commit()
                 existing_keys.add(pk.lower())
                 stats["rows_inserted"] = int(stats["rows_inserted"]) + 1
+                ccc_batches_needing_mapping.add((resolved_company, resolved_sheet, str(eg or "").strip()))
                 _update_job(job_id, rows=int(stats["rows_inserted"]))
                 log_inserted(f"{resolved_company} row_index={row_index_used} group={eg}")
             else:
@@ -13232,15 +13250,63 @@ def _run_ccc_import_job(
     out["phase"] = "completed"
     print(
         "[MAPPING_STATE] ccc_import_completed "
-        f"inserted={out.get('rows_inserted')} note=no_EF_until_map_job"
+        f"inserted={out.get('rows_inserted')} note=auto_mapping_jobs_queued_for_unmapped_snapshots"
     )
+    queued_after_ccc = 0
+    if uid and int(stats.get("rows_inserted") or 0) > 0 and ccc_batches_needing_mapping:
+        me = str(mapper_email or "").strip()
+        print(
+            f"[CCC_TO_UNMAPPED] inserted_rows={int(stats.get('rows_inserted') or 0)} "
+            f"batches={(len(ccc_batches_needing_mapping))} mapper_user={int(uid)}"
+        )
+        for co, sh, eg in sorted(ccc_batches_needing_mapping):
+            headers_m = _get_template_sheet_headers_with_mode(co, sh, template_mode=template_mode)
+            if not headers_m:
+                print(f"[UNMAPPED_SKIP] ccc_followup_mapping reason=no_headers company={co!r} sheet={sh!r}")
+                continue
+            eg_arg = eg or ""
+            print(
+                f"[UNMAPPED_PIPELINE] ccc_followup_enqueue company={co!r} sheet={sh!r} "
+                f"entry_group={eg_arg!r} headers={len(headers_m)}"
+            )
+            try:
+                run_in_background(
+                    "mapping",
+                    co,
+                    _run_mapping_job,
+                    user_id=int(uid),
+                    user_email=me,
+                    resolved_company=co,
+                    resolved_sheet=sh,
+                    headers=headers_m,
+                    template_mode=template_mode,
+                    entry_group_filter=eg_arg,
+                    job_user_id=int(uid),
+                    job_user_email=me,
+                )
+                queued_after_ccc += 1
+            except Exception as exc:
+                print(f"[UNMAPPED_SKIP] ccc_followup_mapping reason=queue_failed company={co!r} sheet={sh!r} exc={exc!r}")
+        print(f"[CCC_TO_UNMAPPED] mapping_jobs_queued={queued_after_ccc}")
+    elif int(stats.get("rows_inserted") or 0) > 0 and not uid:
+        print(
+            f"[UNMAPPED_SKIP] ccc_followup_mapping reason=no_user_id rows_inserted={int(stats.get('rows_inserted') or 0)}"
+        )
+
+    out["mapping_jobs_queued_after_ccc"] = int(queued_after_ccc)
+
     if uid:
         _create_user_notification(
             int(uid),
             title="CCC import completed",
             message=(
                 f"Inserted {int(stats.get('rows_inserted') or 0)} row(s) into Data Entry. "
-                "This step does not assign emission factors — use Map to set EF / status."
+                + (
+                    "Background mapping jobs were queued; when they finish, any rows still without an EF "
+                    "appear under Admin ▸ Unmapped rows."
+                    if int(out.get("mapping_jobs_queued_after_ccc") or 0) > 0
+                    else "Use Map from Batch Mapping when you want emission factors/status written for these rows."
+                )
             ),
             notification_type="info",
             link="/",
@@ -13348,9 +13414,13 @@ def _run_mapping_job(
             mapped_df=mapped_df,
         )
         db.session.commit()
-    except Exception:
+    except Exception as exc:
         unmapped_count = 0
         db.session.rollback()
+        print(
+            f"[UNMAPPED_SKIP] pipeline=run_mapping_job reason=_sync_unmapped_rows_failed "
+            f"run={run_id} company={resolved_company!r} sheet={resolved_sheet!r} exc={exc!r}"
+        )
 
     if _is_job_cancel_requested(job_id):
         mr.status = "cancelled"
