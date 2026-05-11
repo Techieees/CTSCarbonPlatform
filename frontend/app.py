@@ -2286,7 +2286,147 @@ def _employee_commuting_data_dir() -> Path:
 
 
 def _clean_employee_commuting_company(value: object) -> str:
-    return " ".join(str(value or "").replace("\u00A0", " ").strip().split())
+    if value is None:
+        return ""
+    try:
+        if isinstance(value, float) and pd.isna(value):
+            return ""
+    except Exception:
+        pass
+    raw = str(value).replace("\u00A0", " ")
+    s = raw.strip()
+    if not s or s.lower() == "nan":
+        return ""
+    return " ".join(s.split())
+
+
+def _employee_commuting_skip_log(reason: str, row: object) -> None:
+    try:
+        print(f"[EMPLOYEE_COMMUTING_SKIP] reason={reason} row={row!r}")
+    except Exception:
+        pass
+
+
+def _safe_optional_str(value: object) -> str | None:
+    if value is None:
+        return None
+    try:
+        if isinstance(value, float) and pd.isna(value):
+            return None
+    except Exception:
+        pass
+    if isinstance(value, str):
+        t = value.replace("\u00A0", " ").strip()
+        if not t or t.lower() == "nan":
+            return None
+        return t
+    s = str(value).replace("\u00A0", " ").strip()
+    if not s or s.lower() == "nan":
+        return None
+    return s
+
+
+def _safe_optional_float(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        if isinstance(value, float) and pd.isna(value):
+            return None
+        if isinstance(value, int) and not isinstance(value, bool):
+            return float(value)
+    except Exception:
+        pass
+    if isinstance(value, str):
+        t = value.replace("\u00A0", " ").strip()
+        if not t or t.lower() in {"nan", "-nan", "none", "null"}:
+            return None
+    num = pd.to_numeric(value, errors="coerce")
+    if pd.isna(num):
+        return None
+    out = float(num)
+    if isinstance(out, float) and (math.isnan(out) or math.isinf(out)):
+        return None
+    return out
+
+
+def _try_build_employee_commuting_national_average_row(
+    *,
+    company_name_raw: object,
+    country_raw: object,
+    average_one_day_raw: object,
+    car_pct_raw: object,
+    bus_pct_raw: object,
+    walking_and_cycling_pct_raw: object,
+    mixed_pct_raw: object,
+    row_tag: str,
+) -> dict[str, object] | None:
+    """Return a normalized row dict or None if the row must be skipped (logs reason)."""
+    company_name = _clean_employee_commuting_company(company_name_raw)
+    if not company_name:
+        _employee_commuting_skip_log("missing_company_name", row_tag)
+        return None
+
+    country = _safe_optional_str(country_raw)
+    if not country:
+        _employee_commuting_skip_log("missing_country", row_tag)
+        return None
+
+    average_one_day = _safe_optional_float(average_one_day_raw)
+    if average_one_day is None:
+        _employee_commuting_skip_log("missing_average_one_day", row_tag)
+        return None
+    if average_one_day < 0:
+        _employee_commuting_skip_log("negative_average_one_day", row_tag)
+        return None
+
+    car_pct = _safe_optional_float(car_pct_raw)
+    bus_pct = _safe_optional_float(bus_pct_raw)
+    walking_and_cycling_pct = _safe_optional_float(walking_and_cycling_pct_raw)
+    mixed_pct = _safe_optional_float(mixed_pct_raw)
+
+    if car_pct is None and bus_pct is None and walking_and_cycling_pct is None and mixed_pct is None:
+        _employee_commuting_skip_log("all_percentages_missing", row_tag)
+        return None
+
+    if car_pct is None or bus_pct is None or walking_and_cycling_pct is None or mixed_pct is None:
+        _employee_commuting_skip_log("missing_percentage_columns", row_tag)
+        return None
+
+    if min(car_pct, bus_pct, walking_and_cycling_pct, mixed_pct) < 0:
+        _employee_commuting_skip_log("negative_percentage", row_tag)
+        return None
+
+    total_pct = car_pct + bus_pct + walking_and_cycling_pct + mixed_pct
+    if abs(total_pct - 100.0) > 1.0:
+        _employee_commuting_skip_log("pct_sum_not_100", row_tag)
+        return None
+
+    return {
+        "company_name": company_name,
+        "country": country,
+        "average_one_day": average_one_day,
+        "car_pct": car_pct,
+        "bus_pct": bus_pct,
+        "walking_and_cycling_pct": walking_and_cycling_pct,
+        "mixed_pct": mixed_pct,
+    }
+
+
+def _is_wholly_empty_national_average_payload_row(raw: dict[str, object]) -> bool:
+    """True when the JSON row has no meaningful content (blank template row)."""
+    if _clean_employee_commuting_company(raw.get("company_name")):
+        return False
+    if _safe_optional_str(raw.get("country")):
+        return False
+    for key in ("average_one_day", "car_pct", "bus_pct", "walking_and_cycling_pct", "mixed_pct"):
+        if _safe_optional_float(raw.get(key)) is not None:
+            return False
+    return True
+
+
+def _finite_float_for_commuting_display(value: object, *, default: float = 0.0) -> float:
+    x = _safe_optional_float(value)
+    return float(x) if x is not None else default
 
 
 def _serialize_employee_commuting_headcount_rows() -> list[dict[str, object]]:
@@ -2301,23 +2441,27 @@ def _serialize_employee_commuting_headcount_rows() -> list[dict[str, object]]:
 
 
 def _serialize_employee_commuting_national_average_rows() -> list[dict[str, object]]:
-    rows = (
-        EmployeeCommutingNationalAverage.query
-        .order_by(EmployeeCommutingNationalAverage.company_name.asc())
-        .all()
-    )
-    return [
-        {
-            "company_name": _clean_employee_commuting_company(row.company_name),
-            "country": str(row.country or "").strip(),
-            "average_one_day": float(row.average_one_day or 0),
-            "car_pct": float(row.car_pct or 0),
-            "bus_pct": float(row.bus_pct or 0),
-            "walking_and_cycling_pct": float(row.walking_and_cycling_pct or 0),
-            "mixed_pct": float(row.mixed_pct or 0),
-        }
-        for row in rows
-    ]
+    with db.session.no_autoflush:
+        rows = (
+            EmployeeCommutingNationalAverage.query.order_by(
+                EmployeeCommutingNationalAverage.company_name.asc()
+            ).all()
+        )
+    out: list[dict[str, object]] = []
+    for row in rows:
+        country_disp = _safe_optional_str(row.country) or ""
+        out.append(
+            {
+                "company_name": _clean_employee_commuting_company(row.company_name),
+                "country": country_disp,
+                "average_one_day": _finite_float_for_commuting_display(row.average_one_day),
+                "car_pct": _finite_float_for_commuting_display(row.car_pct),
+                "bus_pct": _finite_float_for_commuting_display(row.bus_pct),
+                "walking_and_cycling_pct": _finite_float_for_commuting_display(row.walking_and_cycling_pct),
+                "mixed_pct": _finite_float_for_commuting_display(row.mixed_pct),
+            }
+        )
+    return out
 
 
 def _publish_employee_commuting_files() -> None:
@@ -2411,25 +2555,50 @@ def _seed_employee_commuting_defaults() -> None:
     if source_df is None or source_df.empty:
         return
 
-    if EmployeeCommutingNationalAverage.query.count() == 0:
-        for _, row in source_df.iterrows():
+    with db.session.no_autoflush:
+        national_count = EmployeeCommutingNationalAverage.query.count()
+        headcount_count = EmployeeCommutingHeadcount.query.count()
+
+    if national_count == 0:
+        seen_seed: set[str] = set()
+        for idx, row in source_df.iterrows():
             company_name = _clean_employee_commuting_company(row.get("Company_Name"))
             if not company_name:
                 continue
+            built = _try_build_employee_commuting_national_average_row(
+                company_name_raw=row.get("Company_Name"),
+                country_raw=row.get("Country"),
+                average_one_day_raw=row.get("Average one day"),
+                car_pct_raw=row.get("Car %"),
+                bus_pct_raw=row.get("Bus %"),
+                walking_and_cycling_pct_raw=row.get("Walking and Cycling %"),
+                mixed_pct_raw=row.get("Mixed %"),
+                row_tag={"source": "excel_seed", "sheet_row": idx},
+            )
+            if not built:
+                continue
+            dedup = str(built["company_name"]).lower()
+            if dedup in seen_seed:
+                _employee_commuting_skip_log(
+                    "duplicate_company",
+                    {"source": "excel_seed", "sheet_row": idx, "company": built["company_name"]},
+                )
+                continue
+            seen_seed.add(dedup)
             db.session.add(
                 EmployeeCommutingNationalAverage(
-                    company_name=company_name,
-                    country=str(row.get("Country") or "").strip(),
-                    average_one_day=float(pd.to_numeric(row.get("Average one day"), errors="coerce") or 0),
-                    car_pct=float(pd.to_numeric(row.get("Car %"), errors="coerce") or 0),
-                    bus_pct=float(pd.to_numeric(row.get("Bus %"), errors="coerce") or 0),
-                    walking_and_cycling_pct=float(pd.to_numeric(row.get("Walking and Cycling %"), errors="coerce") or 0),
-                    mixed_pct=float(pd.to_numeric(row.get("Mixed %"), errors="coerce") or 0),
+                    company_name=str(built["company_name"]),
+                    country=str(built["country"]),
+                    average_one_day=float(built["average_one_day"]),
+                    car_pct=float(built["car_pct"]),
+                    bus_pct=float(built["bus_pct"]),
+                    walking_and_cycling_pct=float(built["walking_and_cycling_pct"]),
+                    mixed_pct=float(built["mixed_pct"]),
                 )
             )
         seeded = True
 
-    if EmployeeCommutingHeadcount.query.count() == 0:
+    if headcount_count == 0:
         for _, row in source_df.iterrows():
             company_name = _clean_employee_commuting_company(row.get("Company_Name"))
             headcount_value = pd.to_numeric(row.get("Headcount"), errors="coerce")
@@ -2482,62 +2651,42 @@ def _normalize_employee_commuting_headcount_payload(rows: object) -> list[dict[s
     return normalized
 
 
-def _normalize_employee_commuting_national_average_payload(rows: object) -> list[dict[str, object]]:
+def _normalize_employee_commuting_national_average_payload(
+    rows: object,
+) -> tuple[list[dict[str, object]], int]:
     if not isinstance(rows, list):
         raise ValueError("Rows payload must be a list.")
 
     normalized: list[dict[str, object]] = []
     seen: set[str] = set()
+    skipped = 0
     for idx, raw in enumerate(rows, start=1):
         if not isinstance(raw, dict):
             continue
-        company_name = _clean_employee_commuting_company(raw.get("company_name"))
-        country = str(raw.get("country") or "").strip()
-        raw_values = [
-            str(raw.get("average_one_day") or "").strip(),
-            str(raw.get("car_pct") or "").strip(),
-            str(raw.get("bus_pct") or "").strip(),
-            str(raw.get("walking_and_cycling_pct") or "").strip(),
-            str(raw.get("mixed_pct") or "").strip(),
-        ]
-        if not company_name and not country and not any(raw_values):
+        if _is_wholly_empty_national_average_payload_row(raw):
             continue
-        if not company_name:
-            raise ValueError(f"Row {idx}: `Company_Name` is required.")
-        if not country:
-            raise ValueError(f"Row {idx}: `Country` is required.")
-
-        average_one_day = _parse_employee_commuting_non_negative_float(raw.get("average_one_day"), "Average one day", idx)
-        car_pct = _parse_employee_commuting_non_negative_float(raw.get("car_pct"), "Car %", idx)
-        bus_pct = _parse_employee_commuting_non_negative_float(raw.get("bus_pct"), "Bus %", idx)
-        walking_and_cycling_pct = _parse_employee_commuting_non_negative_float(
-            raw.get("walking_and_cycling_pct"),
-            "Walking and Cycling %",
-            idx,
+        tag = {"source": "payload", "row_index": idx, "payload": raw}
+        built = _try_build_employee_commuting_national_average_row(
+            company_name_raw=raw.get("company_name"),
+            country_raw=raw.get("country"),
+            average_one_day_raw=raw.get("average_one_day"),
+            car_pct_raw=raw.get("car_pct"),
+            bus_pct_raw=raw.get("bus_pct"),
+            walking_and_cycling_pct_raw=raw.get("walking_and_cycling_pct"),
+            mixed_pct_raw=raw.get("mixed_pct"),
+            row_tag=tag,
         )
-        mixed_pct = _parse_employee_commuting_non_negative_float(raw.get("mixed_pct"), "Mixed %", idx)
-        total_pct = car_pct + bus_pct + walking_and_cycling_pct + mixed_pct
-        if abs(total_pct - 100.0) > 1.0:
-            raise ValueError(
-                f"Row {idx}: transport shares must add up to 100. Current total: {total_pct:.2f}"
-            )
-
-        dedup_key = company_name.lower()
+        if not built:
+            skipped += 1
+            continue
+        dedup_key = str(built["company_name"]).lower()
         if dedup_key in seen:
-            raise ValueError(f"Row {idx}: `{company_name}` appears more than once.")
+            _employee_commuting_skip_log("duplicate_company", tag)
+            skipped += 1
+            continue
         seen.add(dedup_key)
-        normalized.append(
-            {
-                "company_name": company_name,
-                "country": country,
-                "average_one_day": average_one_day,
-                "car_pct": car_pct,
-                "bus_pct": bus_pct,
-                "walking_and_cycling_pct": walking_and_cycling_pct,
-                "mixed_pct": mixed_pct,
-            }
-        )
-    return normalized
+        normalized.append(built)
+    return normalized, skipped
 
 
 def _replace_employee_commuting_headcount_rows(rows: list[dict[str, object]]) -> None:
@@ -2554,17 +2703,31 @@ def _replace_employee_commuting_headcount_rows(rows: list[dict[str, object]]) ->
 
 
 def _replace_employee_commuting_national_average_rows(rows: list[dict[str, object]]) -> None:
-    EmployeeCommutingNationalAverage.query.delete()
+    with db.session.no_autoflush:
+        EmployeeCommutingNationalAverage.query.delete()
     for row in rows:
+        company_name = _clean_employee_commuting_company(row.get("company_name"))
+        country = _safe_optional_str(row.get("country"))
+        avg = _safe_optional_float(row.get("average_one_day"))
+        car = _safe_optional_float(row.get("car_pct"))
+        bus = _safe_optional_float(row.get("bus_pct"))
+        walk = _safe_optional_float(row.get("walking_and_cycling_pct"))
+        mix = _safe_optional_float(row.get("mixed_pct"))
+        if not company_name or not country or avg is None:
+            _employee_commuting_skip_log("replace_row_rejected", row)
+            continue
+        if car is None or bus is None or walk is None or mix is None:
+            _employee_commuting_skip_log("replace_row_rejected", row)
+            continue
         db.session.add(
             EmployeeCommutingNationalAverage(
-                company_name=str(row["company_name"]),
-                country=str(row["country"]),
-                average_one_day=float(row["average_one_day"]),
-                car_pct=float(row["car_pct"]),
-                bus_pct=float(row["bus_pct"]),
-                walking_and_cycling_pct=float(row["walking_and_cycling_pct"]),
-                mixed_pct=float(row["mixed_pct"]),
+                company_name=str(company_name),
+                country=str(country),
+                average_one_day=float(avg),
+                car_pct=float(car),
+                bus_pct=float(bus),
+                walking_and_cycling_pct=float(walk),
+                mixed_pct=float(mix),
             )
         )
     db.session.commit()
@@ -17258,12 +17421,23 @@ def data_sources_employee_commuting_national_averages():
     if request.method == "POST":
         payload = request.get_json(silent=True) or {}
         try:
-            rows = _normalize_employee_commuting_national_average_payload(payload.get("rows"))
+            raw_rows = payload.get("rows")
+            rows, skipped_rows = _normalize_employee_commuting_national_average_payload(raw_rows)
+            if not rows and isinstance(raw_rows, list) and any(
+                isinstance(r, dict) and not _is_wholly_empty_national_average_payload_row(r) for r in raw_rows
+            ):
+                return jsonify(
+                    {
+                        "error": "No valid national average rows to save; database was not changed.",
+                        "skipped_rows": skipped_rows,
+                    }
+                ), 400
             _replace_employee_commuting_national_average_rows(rows)
             return jsonify(
                 {
                     "ok": True,
                     "saved_rows": len(rows),
+                    "skipped_rows": skipped_rows,
                     "rows": _serialize_employee_commuting_national_average_rows(),
                     "published_workbook": EMPLOYEE_COMMUTING_NATIONAL_AVERAGES_XLSX.name,
                 }
