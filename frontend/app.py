@@ -4088,14 +4088,12 @@ def _run_mapping_for_virtual_sheet(user_id: int, company_name: str, sheet_name: 
     total_tco2e, rows_count, _used_col = _sum_tco2e(mapped_df)
 
     try:
-        mr.status = "succeeded"
         mr.output_path = str(out_path)
         mr.input_path = str(input_path)
         db.session.commit()
     except Exception:
         db.session.rollback()
 
-    unmapped_count_vs = 0
     try:
         _upsert_mapping_run_summary(
             run_id=run_id,
@@ -4104,20 +4102,8 @@ def _run_mapping_for_virtual_sheet(user_id: int, company_name: str, sheet_name: 
             mapped_df=mapped_df,
             output_path=out_path,
         )
-        unmapped_count_vs = int(
-            _sync_unmapped_rows_for_mapping_run(
-                run_id=run_id,
-                user_id=int(user_id),
-                company_name=company_name,
-                sheet_name=sheet_name,
-                source_entry_group="averages",
-                mapped_df=mapped_df,
-            )
-            or 0
-        )
         db.session.commit()
     except Exception:
-        unmapped_count_vs = 0
         db.session.rollback()
 
     try:
@@ -4139,9 +4125,42 @@ def _run_mapping_for_virtual_sheet(user_id: int, company_name: str, sheet_name: 
         sheet_name=sheet_name,
         mapped_df=mapped_df,
         mapped_excel_path=str(out_path) if out_path else None,
-        unmapped_row_count=unmapped_count_vs,
         source_entry_group="averages",
     )
+
+    unmapped_count_vs = 0
+    try:
+        unmapped_count_vs = int(
+            _sync_unmapped_rows_for_mapping_run(
+                run_id=run_id,
+                user_id=int(user_id),
+                company_name=company_name,
+                sheet_name=sheet_name,
+                source_entry_group="averages",
+                mapped_df=mapped_df,
+            )
+            or 0
+        )
+        db.session.commit()
+    except Exception:
+        unmapped_count_vs = 0
+        db.session.rollback()
+
+    try:
+        n_tot = int(len(mapped_df.index))
+        if n_tot <= 0:
+            mr.status = "empty"
+        elif int(unmapped_count_vs or 0) > 0:
+            mr.status = "partial"
+        else:
+            mr.status = "succeeded"
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+    arch_mv = MappingPreviewArchive.query.filter_by(run_id=run_id).first()
+    if arch_mv:
+        _sync_snapshot_unmapped_rows(arch_mv, [])
 
     return {
         "ok": True,
@@ -7279,6 +7298,81 @@ def _json_safe_value(value: object) -> object:
     return value
 
 
+def _row_norm_lookup(row: dict[str, object]) -> dict[str, object]:
+    """Fold column names to alphanumeric lowercase for case-insensitive lookup."""
+    out: dict[str, object] = {}
+    for k, v in row.items():
+        fold = re.sub(r"[^a-z0-9]", "", str(k).lower())
+        if fold and fold not in out:
+            out[fold] = v
+    return out
+
+
+def _cell_str_norm(value: object) -> str:
+    if value is None:
+        return ""
+    try:
+        if isinstance(value, float) and pd.isna(value):
+            return ""
+    except Exception:
+        pass
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    s = str(value).strip()
+    if s.lower() in {"", "nan", "none", "null"}:
+        return ""
+    return s
+
+
+def _row_is_unmapped(row: dict[str, object], *, sheet_name: str | None = None) -> bool:
+    """
+    True when a persisted preview row should be treated as unmapped for audit/UI.
+    Uses multiple signals — not status alone.
+    """
+    if not isinstance(row, dict):
+        return True
+    if sheet_name and _mapping_preview_sheet_is_water_tracker(sheet_name):
+        return False
+    lx = _row_norm_lookup(row)
+    signal_keys = frozenset({
+        "status",
+        "mappingstatus",
+        "efid",
+        "efname",
+        "emissionfactorname",
+        "emissionfactorcategory",
+        "matchmethod",
+        "mapped",
+        "mappedef",
+    })
+    if not signal_keys.intersection(lx.keys()):
+        return False
+
+    def gv(*folds: str):
+        for f in folds:
+            if f in lx:
+                return lx[f]
+        return None
+
+    st = _cell_str_norm(gv("status", "mappingstatus")).lower()
+    if st in ("no match", "unmapped"):
+        return True
+    mm = _cell_str_norm(gv("matchmethod")).lower()
+    if "no match" in mm:
+        return True
+    ef_id = gv("efid")
+    ef_name = gv("efname", "emissionfactorname", "emissionfactorcategory")
+    if not _cell_str_norm(ef_id) or not _cell_str_norm(ef_name):
+        return True
+    mapped_v = gv("mapped", "mappedef")
+    if mapped_v is False:
+        return True
+    ms = _cell_str_norm(mapped_v).lower()
+    if ms in ("false", "0", "no"):
+        return True
+    return False
+
+
 def _unmapped_row_label(row: "pd.Series") -> str:
     candidates = (
         "Product Type",
@@ -7306,6 +7400,180 @@ def _unmapped_row_label(row: "pd.Series") -> str:
     return " / ".join(parts)[:500] if parts else "Unmapped row"
 
 
+def _unmapped_description_from_payload_dict(payload: dict[str, object]) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    for key in ("Description", "description"):
+        value = str(payload.get(key) or "").strip()
+        if value and value.lower() not in {"nan", "none"}:
+            return value
+    try:
+        label = _unmapped_row_label(pd.Series(payload))
+    except Exception:
+        label = ""
+    return (str(label) or "").strip()
+
+
+def _mapping_unmapped_dedupe_key(
+    company_name: str, sheet_name: str, payload: dict[str, object], row_number: int
+) -> str:
+    c = re.sub(r"\s+", " ", str(company_name or "").strip()).lower()
+    sh = re.sub(r"\s+", " ", str(sheet_name or "").strip()).lower()
+    desc = _unmapped_description_from_payload_dict(payload)
+    nd = re.sub(r"\s+", " ", desc).strip().lower()
+    if nd and nd not in ("nan", "none"):
+        return f"d|{c}|{sh}|{nd}"
+    try:
+        rn = int(row_number)
+    except Exception:
+        rn = 0
+    return f"r|{c}|{sh}|{rn}"
+
+
+def _mapping_preview_status_from_counts(total_rows: int, unmapped_count: int) -> str:
+    if total_rows <= 0:
+        return "empty"
+    if unmapped_count > 0:
+        return "partial"
+    return "succeeded"
+
+
+def _mapping_preview_reconcile_mapping_run_status(
+    mr: "MappingRun | None", *, total_rows: int, unmapped_rows: int
+) -> None:
+    """Keep MappingRun.status consistent with persisted preview rows (do not clobber failed/cancelled/running)."""
+    if mr is None:
+        return
+    st = str(mr.status or "").strip().lower()
+    if st in ("failed", "cancelled", "running"):
+        return
+    if total_rows <= 0:
+        mr.status = "empty"
+    elif unmapped_rows > 0:
+        mr.status = "partial"
+    else:
+        mr.status = "succeeded"
+
+
+def _mapping_preview_row_dict_from_series(row: "pd.Series", columns: list[str]) -> dict[str, object]:
+    return {str(c): _json_safe_value(row.get(c)) for c in columns}
+
+
+def _mapping_preview_count_from_dataframe(mapped_df: "pd.DataFrame", sheet_name: str) -> tuple[int, int, int]:
+    """Return (total, mapped, unmapped)."""
+    if mapped_df is None or getattr(mapped_df, "empty", False):
+        return 0, 0, 0
+    cols = [str(c) for c in mapped_df.columns]
+    total = int(len(mapped_df.index))
+    unmapped = 0
+    for idx in mapped_df.index:
+        r = mapped_df.loc[idx]
+        rec = _mapping_preview_row_dict_from_series(r, cols)
+        if _row_is_unmapped(rec, sheet_name=sheet_name):
+            unmapped += 1
+    mapped = total - unmapped
+    return total, mapped, unmapped
+
+
+def _mapping_preview_scan_bundle_stats(
+    bundle_abs: Path, sheet_name: str, company_name: str
+) -> tuple[int, int, int, int]:
+    """(total, mapped, unmapped_rows, unique_unmapped_keys). Keys use _mapping_unmapped_dedupe_key."""
+    rows_path = bundle_abs / "rows.jsonl"
+    if not rows_path.is_file():
+        return 0, 0, 0, 0
+    total = 0
+    unmapped = 0
+    uniq_keys: set[str] = set()
+    cn = str(company_name or "").strip()
+    sh = str(sheet_name or "").strip()
+    with open(rows_path, "rb") as rf:
+        for line in rf:
+            raw_ln = line.strip()
+            if not raw_ln:
+                continue
+            try:
+                rec = json.loads(raw_ln.decode("utf-8"))
+            except Exception:
+                continue
+            if not isinstance(rec, dict):
+                continue
+            cur_i = total
+            total += 1
+            if _row_is_unmapped(rec, sheet_name=sheet_name):
+                unmapped += 1
+                rpv = rec.get("_preview_row_number")
+                try:
+                    rn_i = int(rpv) if rpv is not None and str(rpv).strip() != "" else int(cur_i) + 2
+                except Exception:
+                    rn_i = int(cur_i) + 2
+                uniq_keys.add(_mapping_unmapped_dedupe_key(cn, sh, rec, rn_i))
+    mapped = total - unmapped
+    return total, mapped, unmapped, len(uniq_keys)
+
+
+def _mapping_preview_scan_bundle_counts(bundle_abs: Path, sheet_name: str) -> tuple[int, int, int]:
+    t, m, u, _uq = _mapping_preview_scan_bundle_stats(bundle_abs, sheet_name, "")
+    return t, m, u
+
+
+def _mapping_preview_recompute_archive_counts(arch: MappingPreviewArchive) -> None:
+    """Align ORM counters + totals JSON with persisted JSONL (source of truth)."""
+    bundle_abs = _mapping_preview_bundle_abs(arch.run_id)
+    t, m, u = _mapping_preview_scan_bundle_counts(bundle_abs, arch.sheet_name)
+    arch.data_row_count = int(t)
+    arch.mapped_row_count = int(m)
+    arch.unmapped_row_count = int(u)
+    totals: dict[str, object] = {}
+    try:
+        raw = json.loads(arch.totals_summary_json or "{}")
+        if isinstance(raw, dict):
+            totals = raw
+    except Exception:
+        totals = {}
+    totals["count_logic_v2"] = True
+    totals["preview_status"] = _mapping_preview_status_from_counts(t, u)
+    arch.totals_summary_json = json.dumps(totals, ensure_ascii=True, default=str)
+    try:
+        mr = MappingRun.query.get(arch.run_id)
+        _mapping_preview_reconcile_mapping_run_status(mr, total_rows=int(t), unmapped_rows=int(u))
+    except Exception:
+        pass
+
+
+def _sync_snapshot_unmapped_rows(
+    arch: MappingPreviewArchive,
+    persisted_rows: list[dict[str, object]],
+) -> None:
+    """
+    After preview persistence: validate bundle vs archive vs DB unmapped counts.
+    MappingUnmappedRow inserts are done in _sync_unmapped_rows_for_mapping_run.
+    """
+    _ = persisted_rows
+    validate_preview_snapshot_consistency(arch.run_id)
+
+
+def validate_preview_snapshot_consistency(run_id: str) -> None:
+    """Compare preview JSONL unmapped tallies to archive fields and open MappingUnmappedRow rows."""
+    rid = str(run_id or "").strip()
+    if not rid:
+        return
+    arch = MappingPreviewArchive.query.filter_by(run_id=rid).first()
+    if not arch:
+        return
+    bundle_abs = _mapping_preview_bundle_abs(rid)
+    t, _m, u_bundle, u_unique = _mapping_preview_scan_bundle_stats(
+        bundle_abs, arch.sheet_name, arch.company_name
+    )
+    open_db = int(MappingUnmappedRow.query.filter_by(run_id=rid, review_status="open").count())
+    arch_u = int(arch.unmapped_row_count)
+    if u_bundle != arch_u or open_db != u_unique:
+        print(
+            f"[SNAPSHOT_UNMAPPED_MISMATCH] run_id={rid} bundle_unmapped_rows={u_bundle} "
+            f"arch_unmapped={arch_u} db_open_unmapped={open_db} bundle_unique_unmapped={u_unique} total_rows={t}"
+        )
+
+
 def _mapping_unmapped_context_value(row: "pd.Series", candidates: tuple[str, ...]) -> str:
     for col in candidates:
         if col in row.index:
@@ -7328,72 +7596,144 @@ def _sync_unmapped_rows_for_mapping_run(
         print(f"[UNMAPPED_SKIP] reason=empty_mapped_df run={run_id} company={company_name!r} sheet={sheet_name!r}")
         return 0
     entry_group = str(source_entry_group or "").strip() or None
-    previous_query = MappingUnmappedRow.query.filter(
-        MappingUnmappedRow.company_name == company_name,
-        MappingUnmappedRow.sheet_name == sheet_name,
-        MappingUnmappedRow.review_status == "open",
-    )
-    if entry_group:
-        previous_query = previous_query.filter(MappingUnmappedRow.source_entry_group == entry_group)
-    superseded_count = 0
-    for previous in previous_query.all():
-        previous.review_status = "superseded"
-        previous.resolved_at = datetime.utcnow()
-        superseded_count += 1
+    sh = str(sheet_name or "").strip()
+    cn = str(company_name or "").strip()
 
-    print(
-        f"[UNMAPPED_SYNC] Superseded {superseded_count} open row(s) for "
-        f"{company_name} / {sheet_name}{' / ' + entry_group if entry_group else ''}"
-    )
-
+    current: dict[str, dict[str, object]] = {}
+    order_keys: list[str] = []
+    total_unmapped = 0
     status_col = _df_find_column_casefold(mapped_df, ("status", "Status", "mapping_status", "Mapping Status"))
-    if not status_col:
-        MappingUnmappedRow.query.filter_by(run_id=run_id).delete()
-        print(
-            f"[UNMAPPED_SKIP] reason=no_status_column run={run_id} company={company_name!r} sheet={sheet_name!r} "
-            "; no MappingUnmappedRow inserts"
-        )
-        print(f"[UNMAPPED_SYNC] Mapping output has no status column for run {run_id}; no open rows inserted")
-        return 0
-
-    status_series = mapped_df[status_col].fillna("").astype(str).str.strip().str.lower()
-    no_match_mask = status_series == "no match"
-    if not bool(getattr(no_match_mask, "any", lambda: False)()):
-        MappingUnmappedRow.query.filter_by(run_id=run_id).delete()
-        print(
-            f"[UNMAPPED_SKIP] reason=no_no_match_rows run={run_id} company={company_name!r} sheet={sheet_name!r} "
-            "group="
-            + repr(entry_group)
-        )
-        print(f"[UNMAPPED_SYNC] No open No match rows remain for run {run_id}")
-        return 0
-
-    MappingUnmappedRow.query.filter_by(run_id=run_id).delete()
-    inserted = 0
-    for idx in mapped_df[no_match_mask].index.tolist():
+    for i, idx in enumerate(mapped_df.index):
         row = mapped_df.loc[idx]
         payload = {str(col): _json_safe_value(row.get(col)) for col in mapped_df.columns}
+        if not _row_is_unmapped(payload, sheet_name=sh):
+            continue
+        total_unmapped += 1
+        try:
+            preview_rn = int(idx) + 2
+        except (TypeError, ValueError):
+            preview_rn = int(i) + 2
+        dedupe_key = _mapping_unmapped_dedupe_key(cn, sh, payload, preview_rn)
+        if dedupe_key in current:
+            continue
+        status_disp = "No match"
+        if status_col:
+            status_disp = str(row.get(status_col) or "").strip() or "No match"
+        current[dedupe_key] = {
+            "payload": payload,
+            "row_label": _unmapped_row_label(row),
+            "status_value": status_disp,
+            "row_number": int(preview_rn),
+        }
+        order_keys.append(dedupe_key)
+
+    scope = MappingUnmappedRow.query.filter(
+        MappingUnmappedRow.company_name == cn,
+        MappingUnmappedRow.sheet_name == sh,
+    )
+    if entry_group:
+        scope = scope.filter(MappingUnmappedRow.source_entry_group == entry_group)
+
+    existing: list[MappingUnmappedRow] = scope.all()
+
+    def row_key(m: MappingUnmappedRow) -> str:
+        p = _unmapped_payload(m)
+        return _mapping_unmapped_dedupe_key(
+            str(m.company_name or ""),
+            str(m.sheet_name or ""),
+            p,
+            int(m.row_number or 0),
+        )
+
+    by_key: dict[str, list[MappingUnmappedRow]] = defaultdict(list)
+    for mrow in existing:
+        by_key[row_key(mrow)].append(mrow)
+
+    current_key_set = set(current.keys())
+    closed = 0
+    reopened = 0
+    inserted = 0
+    updated = 0
+
+    for mrow in existing:
+        if mrow.review_status != "open":
+            continue
+        k = row_key(mrow)
+        if k not in current_key_set:
+            mrow.review_status = "resolved"
+            mrow.resolved_at = datetime.utcnow()
+            mrow.resolved_by_user_id = None
+            closed += 1
+
+    for dedupe_key in order_keys:
+        meta = current[dedupe_key]
+        candidates = list(by_key.get(dedupe_key, []))
+        open_rows = [x for x in candidates if x.review_status == "open"]
+        if len(open_rows) > 1:
+            open_rows.sort(key=lambda x: int(x.id or 0))
+            for extra in open_rows[1:]:
+                extra.review_status = "superseded"
+                extra.resolved_at = datetime.utcnow()
+                closed += 1
+            open_rows = open_rows[:1]
+
+        if open_rows:
+            m = open_rows[0]
+            m.run_id = run_id
+            m.user_id = user_id
+            m.row_number = int(meta["row_number"])
+            m.row_label = str(meta["row_label"] or "")
+            m.status_value = str(meta["status_value"] or "No match")
+            m.row_payload = json.dumps(meta["payload"], ensure_ascii=True, default=str)
+            m.source_entry_group = entry_group
+            updated += 1
+            continue
+
+        reopen_candidates = [
+            x
+            for x in candidates
+            if x.review_status in ("superseded", "resolved", "ignored")
+        ]
+        reopen_candidates.sort(key=lambda x: int(x.id or 0), reverse=True)
+        if reopen_candidates:
+            m = reopen_candidates[0]
+            for extra in reopen_candidates[1:]:
+                extra.review_status = "superseded"
+                extra.resolved_at = datetime.utcnow()
+            m.run_id = run_id
+            m.user_id = user_id
+            m.review_status = "open"
+            m.resolved_at = None
+            m.resolved_by_user_id = None
+            m.row_number = int(meta["row_number"])
+            m.row_label = str(meta["row_label"] or "")
+            m.status_value = str(meta["status_value"] or "No match")
+            m.row_payload = json.dumps(meta["payload"], ensure_ascii=True, default=str)
+            m.source_entry_group = entry_group
+            reopened += 1
+            continue
+
         db.session.add(
             MappingUnmappedRow(
                 run_id=run_id,
                 user_id=user_id,
-                company_name=company_name,
-                sheet_name=sheet_name,
+                company_name=cn,
+                sheet_name=sh,
                 source_entry_group=entry_group,
-                row_number=int(idx) + 2,
-                row_label=_unmapped_row_label(row),
-                status_value=str(row.get(status_col) or "No match").strip() or "No match",
-                row_payload=json.dumps(payload, ensure_ascii=True, default=str),
+                row_number=int(meta["row_number"]),
+                row_label=str(meta["row_label"] or ""),
+                status_value=str(meta["status_value"] or "No match"),
+                row_payload=json.dumps(meta["payload"], ensure_ascii=True, default=str),
                 review_status="open",
             )
         )
         inserted += 1
-    print(f"[UNMAPPED_SYNC] Inserted {inserted} open No match row(s) for run {run_id}")
+
     print(
-        f"[UNMAPPED_INSERT] run={run_id} n={inserted} company={company_name!r} sheet={sheet_name!r} "
-        f"group={entry_group!r}"
+        f"[UNMAPPED_SYNC] inserted={inserted} closed={closed} reopened={reopened} updated={updated} "
+        f"run={run_id} company={cn!r} sheet={sh!r}"
     )
-    return inserted
+    return int(total_unmapped)
 
 
 _MAPPING_REVIEW_DETAIL_MAX = 32000
@@ -7842,7 +8182,13 @@ def _mapping_preview_write_bundle(run_id: str, mapped_df: pd.DataFrame) -> tuple
             pos = rf.tell()
             offsets.append(int(pos))
             row = mapped_df.iloc[i]
+            idx = mapped_df.index[i]
+            try:
+                preview_rn = int(idx) + 2
+            except (TypeError, ValueError):
+                preview_rn = int(i) + 2
             rec = {c: _json_safe_value(row[c]) for c in cols}
+            rec["_preview_row_number"] = int(preview_rn)
             rf.write((json.dumps(rec, ensure_ascii=True, default=str) + "\n").encode("utf-8"))
     with open(root / "columns.json", "w", encoding="utf-8") as cf:
         json.dump(cols, cf, ensure_ascii=True)
@@ -8390,17 +8736,20 @@ def _persist_mapping_preview_archive(
     sheet_name: str,
     mapped_df: pd.DataFrame,
     mapped_excel_path: str | None,
-    unmapped_row_count: int,
     source_entry_group: str | None = None,
-) -> None:
+) -> MappingPreviewArchive:
     bundle_rel, n_rows, cols = _mapping_preview_write_bundle(run_id, mapped_df)
     total_tco2e, sheet_rows_count, _ = _sum_tco2e(mapped_df)
-    totals = {
+    sh = (sheet_name or "").strip()
+    total_cnt, mapped_cnt, unmapped_cnt = _mapping_preview_count_from_dataframe(mapped_df, sh)
+    totals: dict[str, object] = {
         "columns": cols,
         "tco2e_total": float(total_tco2e or 0.0),
         "sheet_rows_count": int(sheet_rows_count or 0),
         "dataframe_rows": int(len(mapped_df)),
         "source_entry_group": str(source_entry_group or "").strip(),
+        "count_logic_v2": True,
+        "preview_status": _mapping_preview_status_from_counts(total_cnt, unmapped_cnt),
     }
     prev = MappingPreviewArchive.query.filter_by(run_id=run_id).first()
     if prev:
@@ -8410,16 +8759,17 @@ def _persist_mapping_preview_archive(
         run_id=run_id,
         user_id=int(user_id),
         company_name=(company_name or "").strip(),
-        sheet_name=(sheet_name or "").strip(),
+        sheet_name=sh,
         created_at=datetime.utcnow(),
-        mapped_row_count=int(len(mapped_df)),
-        unmapped_row_count=int(unmapped_row_count or 0),
+        mapped_row_count=int(mapped_cnt),
+        unmapped_row_count=int(unmapped_cnt),
         totals_summary_json=json.dumps(totals, ensure_ascii=True, default=str),
         mapped_excel_path=(str(mapped_excel_path).strip() if mapped_excel_path else None),
         preview_bundle_rel=bundle_rel,
         data_row_count=int(n_rows),
     )
     db.session.add(arch)
+    return arch
 
 
 def _try_persist_mapping_preview_archive(
@@ -8430,11 +8780,11 @@ def _try_persist_mapping_preview_archive(
     sheet_name: str,
     mapped_df: pd.DataFrame | None,
     mapped_excel_path: str | None,
-    unmapped_row_count: int,
     source_entry_group: str | None = None,
 ) -> None:
     if mapped_df is None or getattr(mapped_df, "empty", False):
         return
+    sh = (sheet_name or "").strip()
     try:
         _persist_mapping_preview_archive(
             run_id=run_id,
@@ -8443,10 +8793,12 @@ def _try_persist_mapping_preview_archive(
             sheet_name=sheet_name,
             mapped_df=mapped_df,
             mapped_excel_path=mapped_excel_path,
-            unmapped_row_count=unmapped_row_count,
             source_entry_group=source_entry_group,
         )
         db.session.commit()
+        t, m, u = _mapping_preview_count_from_dataframe(mapped_df, sh)
+        print(f"[SNAPSHOT_BUILD] rows={t} mapped={m} unmapped={u}")
+        print(f"[SNAPSHOT_STATUS] status={_mapping_preview_status_from_counts(t, u)}")
     except Exception as exc:
         db.session.rollback()
         print(f"[MAPPING_PREVIEW] persist_failed run={run_id} exc={exc!r}")
@@ -14949,7 +15301,6 @@ def _run_mapping_job(
         db.session.commit()
         raise JobCancelled()
     _update_job_progress(job_id, 75, "Saving mapping output...")
-    mr.status = "succeeded"
     mr.output_path = str(out_path)
     mr.input_path = str(input_path)
     _persist_mapping_metadata_to_data_entry(
@@ -14972,20 +15323,11 @@ def _run_mapping_job(
             mapped_df=mapped_df,
             output_path=out_path,
         )
-        unmapped_count = _sync_unmapped_rows_for_mapping_run(
-            run_id=run_id,
-            user_id=int(user_id),
-            company_name=resolved_company,
-            sheet_name=resolved_sheet,
-            source_entry_group=entry_group_filter or None,
-            mapped_df=mapped_df,
-        )
         db.session.commit()
     except Exception as exc:
-        unmapped_count = 0
         db.session.rollback()
         print(
-            f"[UNMAPPED_SKIP] pipeline=run_mapping_job reason=_sync_unmapped_rows_failed "
+            f"[UNMAPPED_SKIP] pipeline=run_mapping_job reason=_upsert_mapping_run_summary_failed "
             f"run={run_id} company={resolved_company!r} sheet={resolved_sheet!r} exc={exc!r}"
         )
 
@@ -15008,9 +15350,42 @@ def _run_mapping_job(
         sheet_name=resolved_sheet,
         mapped_df=mapped_df,
         mapped_excel_path=str(out_path) if out_path else None,
-        unmapped_row_count=int(unmapped_count or 0),
         source_entry_group=entry_group_filter or None,
     )
+
+    try:
+        unmapped_count = _sync_unmapped_rows_for_mapping_run(
+            run_id=run_id,
+            user_id=int(user_id),
+            company_name=resolved_company,
+            sheet_name=resolved_sheet,
+            source_entry_group=entry_group_filter or None,
+            mapped_df=mapped_df,
+        )
+        db.session.commit()
+    except Exception as exc:
+        unmapped_count = 0
+        db.session.rollback()
+        print(
+            f"[UNMAPPED_SKIP] pipeline=run_mapping_job reason=_sync_unmapped_rows_failed "
+            f"run={run_id} company={resolved_company!r} sheet={resolved_sheet!r} exc={exc!r}"
+        )
+
+    try:
+        n_tot = int(len(mapped_df.index))
+        if n_tot <= 0:
+            mr.status = "empty"
+        elif int(unmapped_count or 0) > 0:
+            mr.status = "partial"
+        else:
+            mr.status = "succeeded"
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+    arch_mv = MappingPreviewArchive.query.filter_by(run_id=run_id).first()
+    if arch_mv:
+        _sync_snapshot_unmapped_rows(arch_mv, [])
 
     if _is_job_cancel_requested(job_id):
         mr.status = "cancelled"
@@ -16821,6 +17196,12 @@ def mapping_previews_page():
             rid_s = str(rid)
             status_by_run[rid_s] = str(st or "")
             excel_ok_by_run[rid_s] = bool(op and os.path.exists(str(op)))
+    try:
+        for a in archives:
+            _mapping_preview_recompute_archive_counts(a)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
     return render_template(
         "mapping_previews.html",
         user=current_user,
@@ -16886,6 +17267,19 @@ def api_mapping_preview_meta(run_id: str):
     excel_ok = bool(getattr(mr, "output_path", None) and os.path.exists(str(mr.output_path)))
     preview_mode = "water" if _mapping_preview_sheet_is_water_tracker(arch.sheet_name) else "emissions"
     display_columns = _mapping_preview_display_columns_for_sheet(arch.sheet_name, columns)
+    try:
+        with db.session.no_autoflush:
+            _mapping_preview_recompute_archive_counts(arch)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    try:
+        raw_totals2 = json.loads(arch.totals_summary_json or "{}")
+        if isinstance(raw_totals2, dict):
+            totals = raw_totals2
+    except Exception:
+        pass
+    preview_status = _mapping_preview_status_from_counts(int(arch.data_row_count), int(arch.unmapped_row_count))
     return jsonify(
         {
             "run_id": arch.run_id,
@@ -16895,6 +17289,7 @@ def api_mapping_preview_meta(run_id: str):
             "mapped_row_count": arch.mapped_row_count,
             "unmapped_row_count": arch.unmapped_row_count,
             "data_row_count": arch.data_row_count,
+            "preview_status": preview_status,
             "columns": columns,
             "display_columns": display_columns if display_columns else columns,
             "preview_mode": preview_mode,
@@ -16965,6 +17360,12 @@ def api_mapping_preview_rows(run_id: str):
         start = (page - 1) * page_size
         indices = list(range(start, min(start + page_size, n)))
         rows_out = _mapping_preview_read_rows_at_indices(bundle_abs, offsets, indices)
+
+    sh_nm = arch.sheet_name
+    for rec in rows_out:
+        if isinstance(rec, dict):
+            rec.pop("_preview_row_number", None)
+            rec["_unmapped"] = bool(_row_is_unmapped(rec, sheet_name=sh_nm))
 
     return jsonify(
         {

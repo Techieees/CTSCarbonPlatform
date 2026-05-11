@@ -173,7 +173,21 @@ export function bootMappingPreviewPage(cfg) {
     elBody.innerHTML = "";
     for (const r of rows) {
       const tr = document.createElement("tr");
-      tr.innerHTML = columns.map((c) => `<td>${esc(r[c] ?? "")}</td>`).join("");
+      const unmapped = !!(r && Object.prototype.hasOwnProperty.call(r, "_unmapped") && r._unmapped);
+      if (unmapped) tr.classList.add("mp-row--unmapped");
+      columns.forEach((c, colIdx) => {
+        const td = document.createElement("td");
+        if (colIdx === 0 && unmapped) {
+          const badge = document.createElement("span");
+          badge.className = "badge rounded-pill bg-danger-subtle text-danger border border-danger-subtle mp-unmapped-badge me-1";
+          badge.textContent = "No match";
+          td.appendChild(badge);
+        }
+        const text = document.createElement("span");
+        text.textContent = r[c] == null ? "" : String(r[c]);
+        td.appendChild(text);
+        tr.appendChild(td);
+      });
       elBody.appendChild(tr);
     }
   }
@@ -214,14 +228,12 @@ export function bootMappingPreviewPage(cfg) {
 
     if (elStats) {
       if (mode === "water") {
-        const parts = [`${m.data_row_count ?? 0} data rows (snapshot)`];
-        parts.push(`${m.mapped_row_count ?? ""} rows in snapshot`);
-        elStats.textContent = parts.join(" · ");
+        elStats.textContent = `${m.data_row_count ?? 0} data rows (snapshot)`;
       } else {
         const parts = [
           `${m.data_row_count ?? 0} preview rows`,
-          `${m.mapped_row_count ?? ""} mapped rows recorded`,
-          `${m.unmapped_row_count ?? ""} unmapped (No match)`,
+          `${m.mapped_row_count ?? 0} mapped rows`,
+          `${m.unmapped_row_count ?? 0} unmapped`,
         ];
         if (tc != null) parts.push(`Σ tCO₂e (df): ${tc}`);
         elStats.textContent = parts.join(" · ");

@@ -223,6 +223,10 @@
                                     <td>
                                         {% if r.status == 'succeeded' %}
                                             <span class="badge bg-success">Succeeded</span>
+                                        {% elif r.status == 'partial' %}
+                                            <span class="badge bg-warning text-dark">Partial</span>
+                                        {% elif r.status == 'empty' %}
+                                            <span class="badge bg-secondary">Empty</span>
                                         {% elif r.status == 'failed' %}
                                             <span class="badge bg-danger">Failed</span>
                                         {% else %}
@@ -230,12 +234,12 @@
                                         {% endif %}
                                     </td>
                                     <td class="text-end text-nowrap">
-                                        {% if r.status == 'succeeded' and r.id in mapping_preview_run_ids %}
+                                        {% if r.status in ['succeeded', 'partial'] and r.id in mapping_preview_run_ids %}
                                             <a class="btn btn-sm btn-outline-primary d-inline-flex align-items-center me-1" href="{{ url_for('mapping_preview_detail', run_id=r.id) }}">
                                                 Open preview
                                             </a>
                                         {% endif %}
-                                        {% if r.status == 'succeeded' and r.output_path %}
+                                        {% if r.status in ['succeeded', 'partial'] and r.output_path %}
                                             <a class="btn btn-sm btn-ghost d-inline-flex align-items-center" href="{{ url_for('api_mapping_download', run_id=r.id) }}">
                                                 {{ illu.illu_btn_download('me-1') }}Download
                                             </a>

@@ -5,6 +5,10 @@
 
 {% block content %}
 {% set is_water = 'water tracker' in ((archive.sheet_name or '')|lower) %}
+<style>
+  .mp-row--unmapped > td { background-color: #fde8ef !important; }
+  .mp-unmapped-badge { font-size: 0.7rem; vertical-align: middle; }
+</style>
 <div id="mpRoot" class="container-fluid py-4 px-3 px-md-4 eg-page eg-stack mp-root {{ 'eg-page--water' if is_water else 'eg-page--emissions' }}">
   <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
     <div>

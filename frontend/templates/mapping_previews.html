@@ -25,7 +25,7 @@
               <th>Company</th>
               <th>Sheet</th>
               <th>Created</th>
-              <th class="text-end">Rows</th>
+              <th class="text-end">Total rows</th>
               <th class="text-end">Unmapped</th>
               <th>Run status</th>
               <th class="text-end">Actions</th>
@@ -39,11 +39,15 @@
               <td>{{ a.company_name }}</td>
               <td class="text-muted">{{ a.sheet_name }}</td>
               <td class="text-muted small">{{ a.created_at.strftime('%Y-%m-%d %H:%M') if a.created_at else '' }}</td>
-              <td class="text-end">{{ a.mapped_row_count }}</td>
+              <td class="text-end">{{ a.data_row_count }}</td>
               <td class="text-end">{{ a.unmapped_row_count }}</td>
               <td>
                 {% if st == 'succeeded' %}
                   <span class="badge bg-success">Succeeded</span>
+                {% elif st == 'partial' %}
+                  <span class="badge bg-warning text-dark">Partial</span>
+                {% elif st == 'empty' %}
+                  <span class="badge bg-secondary">Empty</span>
                 {% elif st == 'failed' %}
                   <span class="badge bg-danger">Failed</span>
                 {% elif st %}
