@@ -1,4 +1,5 @@
 (() => {
+  // Busy overlay: UX theater with good intentions
   const root = document.getElementById("ctsBusyOverlay");
   const textEl = document.getElementById("ctsBusyOverlayText");
 

@@ -30,6 +30,7 @@ import difflib
 from io import BytesIO, StringIO
 import re
 import time
+import traceback
 import math
 import calendar
 import ipaddress
@@ -4586,6 +4587,18 @@ def _run_mapping_for_virtual_sheet(user_id: int, company_name: str, sheet_name: 
     except Exception:
         db.session.rollback()
 
+    persist_res = _run_normalized_emission_persistence_txn(
+        run_id=run_id,
+        user_id=int(user_id),
+        company_name=company_name,
+        sheet_name=sheet_name,
+        source_entry_group="averages",
+        mapped_df=mapped_df,
+        workbook_output_path=out_path,
+        pipeline="virtual_sheet",
+    )
+    persist_ok = bool(persist_res.get("ok"))
+
     try:
         _persist_mapping_review_snapshot(
             run_id=run_id,
@@ -4597,21 +4610,6 @@ def _run_mapping_for_virtual_sheet(user_id: int, company_name: str, sheet_name: 
     except Exception as exc:
         db.session.rollback()
         print(f"[MAPPING_REVIEW] snapshot_error pipeline=virtual_sheet run={run_id} exc={exc!r}")
-
-    try:
-        _persist_normalized_emission_records_from_mapped_df(
-            run_id=run_id,
-            user_id=int(user_id),
-            company_name=company_name,
-            sheet_name=sheet_name,
-            source_entry_group="averages",
-            mapped_df=mapped_df,
-            workbook_output_path=out_path,
-        )
-        db.session.commit()
-    except Exception as exc:
-        db.session.rollback()
-        print(f"[MAPPING_PERSIST] persist_failed pipeline=virtual_sheet run={run_id} exc={exc!r}")
 
     try:
         _upsert_mapping_run_summary(
@@ -4657,7 +4655,14 @@ def _run_mapping_for_virtual_sheet(user_id: int, company_name: str, sheet_name: 
 
     try:
         n_tot = int(len(mapped_df.index))
-        if n_tot <= 0:
+        if not persist_ok:
+            mr.status = "failed"
+            em = str(persist_res.get("error") or "normalized persistence failed").strip()
+            mr.error_message = em[:2000]
+        elif persist_ok and n_tot > 0 and int(persist_res.get("db_count_after_commit") or 0) <= 0:
+            mr.status = "partial"
+            mr.error_message = "normalized layer empty after successful commit"[:2000]
+        elif n_tot <= 0:
             mr.status = "empty"
         elif int(unmapped_count_vs or 0) > 0:
             mr.status = "partial"
@@ -4672,7 +4677,7 @@ def _run_mapping_for_virtual_sheet(user_id: int, company_name: str, sheet_name: 
         _sync_snapshot_unmapped_rows(arch_mv, [])
 
     return {
-        "ok": True,
+        "ok": bool(persist_ok),
         "sheet": sheet_name,
         "run_id": run_id,
         "rows_count": int(rows_count or 0),
@@ -7880,14 +7885,11 @@ def _upsert_mapping_run_summary(
             f"company={company_name!r} sheet={sheet_name!r} tco2e={total_tco2e:.6f} rows={rows_count}"
         )
     else:
-        if output_path:
-            total_tco2e, rows_count, used_col = _sum_tco2e_from_xlsx(output_path, sheet_name)
-        if used_col is None:
-            total_tco2e, rows_count, used_col = _sum_tco2e(mapped_df)
+        total_tco2e, rows_count = 0.0, 0
+        used_col = "normalized_emission_record_empty"
         print(
-            f"[DASHBOARD_TOTALS] source=workbook_or_dataframe run={run_id} "
-            f"company={company_name!r} sheet={sheet_name!r} tco2e={float(total_tco2e or 0.0):.6f} "
-            f"rows={rows_count} col={used_col!r}"
+            f"[DASHBOARD_TOTALS] source=normalized_emission_record_empty run={run_id} "
+            f"company={company_name!r} sheet={sheet_name!r} (no rows in NER; operational totals are zero)"
         )
 
     if template_mode is None:
@@ -8610,6 +8612,16 @@ def _persist_mapping_review_snapshot(
         raise
 
 
+# --- Operational dashboard data sources (canonical layer) ---
+# Scope 1/2/3 pages (/scope1, /scope2, /scope3): _home_overview_context → operational stubs + NER-backed reporting rows
+# Home overview (/home): same as scope pages via _home_overview_context
+# Carbon accounting (/carbon-accounting): _latest_sheet_totals_for_company → MappingRun latest per (company, sheet) + aggregates from normalized_emission_record
+# Emissions Records (/emissions-records): NormalizedEmissionRecord via _ner_filtered_query
+# Admin Emission Report (/admin_report): operational stubs (MappingRun + NER aggregates), period charts via _period_profile_for_summary (NER only)
+# User report (/report): same operational stubs for non-admin
+# Admin mapping reconciliation: compares NER vs MappingRunSummary vs preview archive (debug only)
+
+
 def _normalized_emission_aggregates_for_run(run_id: str) -> tuple[float, int] | None:
     row = (
         db.session.query(
@@ -8624,6 +8636,89 @@ def _normalized_emission_aggregates_for_run(run_id: str) -> tuple[float, int] | 
     if cnt <= 0:
         return None
     return total, cnt
+
+
+def _verify_normalized_row_count_for_run(mapping_run_id: str) -> int:
+    rid = str(mapping_run_id or "").strip()
+    if not rid:
+        return 0
+    return int(
+        db.session.query(func.count(NormalizedEmissionRecord.id))
+        .filter(NormalizedEmissionRecord.mapping_run_id == rid)
+        .scalar()
+        or 0
+    )
+
+
+def _run_normalized_emission_persistence_txn(
+    *,
+    run_id: str,
+    user_id: int | None,
+    company_name: str,
+    sheet_name: str,
+    source_entry_group: str | None,
+    mapped_df: "pd.DataFrame",
+    workbook_output_path: str | Path | None,
+    pipeline: str,
+) -> dict[str, object]:
+    """
+    Insert/replace normalized_emission_record for this run, flush, commit, then COUNT(*) verification.
+    """
+    rid = str(run_id or "").strip()
+    inserted = 0
+    try:
+        inserted = int(
+            _persist_normalized_emission_records_from_mapped_df(
+                run_id=rid,
+                user_id=user_id,
+                company_name=company_name,
+                sheet_name=sheet_name,
+                source_entry_group=source_entry_group,
+                mapped_df=mapped_df,
+                workbook_output_path=workbook_output_path,
+            )
+            or 0
+        )
+        db.session.flush()
+        pre_cnt = _verify_normalized_row_count_for_run(rid)
+        print(
+            f"[MAPPING_PERSIST_COMMIT] run_id={rid} pipeline={pipeline} "
+            f"phase=pre_commit rows_in_session={pre_cnt} inserted_counter={inserted}"
+        )
+        db.session.commit()
+        post_cnt = _verify_normalized_row_count_for_run(rid)
+        print(
+            f"[MAPPING_PERSIST_COMMIT] run_id={rid} pipeline={pipeline} "
+            f"success=true post_commit_select_count={post_cnt}"
+        )
+        return {
+            "ok": True,
+            "inserted": inserted,
+            "db_count_after_commit": post_cnt,
+            "error": None,
+            "traceback": None,
+        }
+    except Exception as exc:
+        db.session.rollback()
+        tb = traceback.format_exc()
+        print(f"[MAPPING_PERSIST_ERROR] run_id={rid} pipeline={pipeline} exc={exc!r}")
+        print(tb)
+        post_cnt = 0
+        try:
+            post_cnt = _verify_normalized_row_count_for_run(rid)
+        except Exception:
+            post_cnt = -1
+        print(
+            f"[MAPPING_PERSIST_COMMIT] run_id={rid} pipeline={pipeline} success=false "
+            f"post_rollback_select_count={post_cnt}"
+        )
+        return {
+            "ok": False,
+            "inserted": 0,
+            "db_count_after_commit": int(post_cnt),
+            "error": str(exc),
+            "traceback": tb,
+        }
 
 
 def _reporting_period_parts_from_cell(raw_date: object, *, fallback_dt: datetime | None) -> tuple[str | None, str | None]:
@@ -8661,9 +8756,17 @@ def _persist_normalized_emission_records_from_mapped_df(
     eg = str(source_entry_group or "").strip() or None
 
     if not rid or not co_key or not sheet_key:
+        print(
+            f"[MAPPING_PERSIST_DONE] run_id={rid!r} company={co_key!r} sheet={sheet_key!r} "
+            f"reason=missing_keys rows_inserted=0 rows_skipped=0 db_row_count=0"
+        )
         print(f"[MAPPING_PERSIST] skip reason=missing_keys run={rid!r} company={co_key!r} sheet={sheet_key!r}")
         return 0
     if mapped_df is None or getattr(mapped_df, "empty", False):
+        print(
+            f"[MAPPING_PERSIST_DONE] run_id={rid} company={co_key!r} sheet={sheet_key!r} "
+            f"reason=empty_df rows_inserted=0 rows_skipped=0 db_row_count=0"
+        )
         print(f"[MAPPING_PERSIST] skip reason=empty_df run={rid} company={co_key!r} sheet={sheet_key!r}")
         return 0
 
@@ -8726,6 +8829,12 @@ def _persist_normalized_emission_records_from_mapped_df(
     )
     period_col = _find_period_column(df)
 
+    print(
+        f"[MAPPING_PERSIST_START] run_id={rid} company={co_key!r} sheet={sheet_key!r} "
+        f"dataframe_row_count={n_df} emissions_sum_df_from_cols={float(sum_before or 0.0):.6f} "
+        f"source_entry_group={eg!r} emissions_col_t={em_t_col!r} emissions_col_kg={em_kg_col!r} period_col={period_col!r}"
+    )
+
     records = df.to_dict(orient="records")
     scope_int = _infer_scope_from_sheet(sheet_key)
     batch_now = datetime.utcnow()
@@ -8737,8 +8846,14 @@ def _persist_normalized_emission_records_from_mapped_df(
         nonlocal inserted
         if not chunk:
             return
+        n_batch = len(chunk)
+        batch_em = sum(float(c.get("emissions_tco2e") or 0.0) for c in chunk)
         db.session.bulk_insert_mappings(NormalizedEmissionRecord, chunk)
-        inserted += len(chunk)
+        inserted += n_batch
+        print(
+            f"[MAPPING_PERSIST_ROW] run_id={rid} batch_rows={n_batch} cumulative_inserted={inserted} "
+            f"batch_emissions_tco2e={batch_em:.6f}"
+        )
         chunk.clear()
 
     for pos, rec in enumerate(records):
@@ -8800,16 +8915,20 @@ def _persist_normalized_emission_records_from_mapped_df(
 
     flush()
 
+    db.session.flush()
+    pre_row_cnt = _verify_normalized_row_count_for_run(rid)
     sum_after_row = (
         db.session.query(func.coalesce(func.sum(NormalizedEmissionRecord.emissions_tco2e), 0.0))
         .filter(NormalizedEmissionRecord.mapping_run_id == rid)
         .scalar()
     )
     sum_after = float(sum_after_row or 0.0)
+    rows_skipped = max(0, int(n_df) - int(inserted))
     print(
-        f"[MAPPING_PERSIST] run={rid} company={co_key!r} sheet={sheet_key!r} "
-        f"rows_received={n_df} rows_persisted={inserted} "
-        f"emissions_sum_df={float(sum_before or 0.0):.6f} emissions_sum_db={sum_after:.6f}"
+        f"[MAPPING_PERSIST_DONE] run_id={rid} company={co_key!r} sheet={sheet_key!r} "
+        f"rows_received={n_df} rows_inserted={inserted} rows_skipped={rows_skipped} "
+        f"db_row_count_pre_commit={pre_row_cnt} emissions_sum_df={float(sum_before or 0.0):.6f} "
+        f"emissions_sum_db_session={sum_after:.6f}"
     )
     if abs(float(sum_before or 0.0) - sum_after) > max(1e-6, float(sum_before or 0.0) * 1e-9):
         print(
@@ -11180,8 +11299,8 @@ def _format_period_label(points: list[dict[str, object]], fallback_dt: datetime 
 
 def _build_reporting_rows_from_summary(sub: "MappingRunSummary") -> list[dict[str, object]]:
     """
-    Chart rows keyed by reporting period from the mapped workbook (not upload / mapping time).
-    Emits sortKey (YYYY-MM) and dateLabel for MonthlyTrend / stacked charts.
+    Row-level chart data from normalized_emission_record for this mapping run (canonical layer only).
+    Emits sortKey (YYYY-MM or year) and dateLabel for MonthlyTrend / stacked charts.
     """
     out: list[dict[str, object]] = []
     rid = str(getattr(sub, "run_id", "") or "")
@@ -11225,101 +11344,101 @@ def _build_reporting_rows_from_summary(sub: "MappingRunSummary") -> list[dict[st
             )
         if out:
             return out
-    try:
-        mr = MappingRun.query.get(rid)
-    except Exception:
-        mr = None
-    if not mr:
-        return out
-    op = getattr(mr, "output_path", None)
-    if not op or not os.path.exists(str(op)):
-        return out
-    df = _read_sheet_df_from_workbook(op, getattr(sub, "sheet_name", None))
-    if df is None or getattr(df, "empty", True):
-        return out
-    tco2e_col = _find_tco2e_column(df)
-    period_col = _find_period_column(df)
-    if not tco2e_col or not period_col:
-        return out
-    mode_col = _find_mode_of_transport_column(df)
-    sheet_name = str(getattr(sub, "sheet_name", "") or "Category")
-    scope = _effective_scope(getattr(sub, "scope", None), sheet_name)
-    for _, row in df.iterrows():
-        try:
-            raw_date = row.get(period_col)
-            raw_val = row.get(tco2e_col)
-        except Exception:
-            continue
-        dt = _parse_period_value(raw_date)
-        val = _parse_float_loose(raw_val)
-        if dt is None or val is None:
-            continue
-        sraw = str(raw_date).strip() if raw_date is not None else ""
-        m_yonly = re.match(r"^\s*((?:19|20)\d{2})(?:\.0)?\s*$", sraw)
-        if m_yonly:
-            sk = m_yonly.group(1)
-            label = m_yonly.group(1)
-        else:
-            sk = dt.strftime("%Y-%m")
-            label = dt.strftime("%b %Y")
-        rec: dict[str, object] = {
-            "scope": scope,
-            "sheet": sheet_name,
-            "category": sheet_name,
-            "company": str(getattr(sub, "company_name", "") or ""),
-            "emissions": float(val),
-            "sortKey": sk,
-            "dateLabel": label,
-        }
-        if mode_col:
-            try:
-                mv = row.get(mode_col)
-                if mv is not None and str(mv).strip() != "":
-                    rec["commute_mode"] = str(mv).strip()
-            except Exception:
-                pass
-        out.append(rec)
-    if not out and tco2e_col and period_col:
-        total, _, _ = _sum_tco2e(df)
-        if total > 0:
-            sk = None
-            label = None
-            for _, row in df.iterrows():
-                try:
-                    raw_date = row.get(period_col)
-                except Exception:
-                    continue
-                dt = _parse_period_value(raw_date)
-                if dt:
-                    sk = dt.strftime("%Y-%m")
-                    label = dt.strftime("%b %Y")
-                    break
-            if not sk:
-                ca = getattr(sub, "created_at", None)
-                if isinstance(ca, datetime):
-                    sk = ca.strftime("%Y-%m")
-                    label = ca.strftime("%b %Y")
-                else:
-                    sk = datetime.utcnow().strftime("%Y-%m")
-                    label = sk
-            fallback_rec: dict[str, object] = {
-                "scope": scope,
-                "sheet": sheet_name,
-                "category": sheet_name,
-                "company": str(getattr(sub, "company_name", "") or ""),
-                "emissions": float(total),
-                "sortKey": sk,
-                "dateLabel": label,
-            }
-            out.append(fallback_rec)
     return out
+
+
+def _build_period_profile_from_normalized_run(run_id: str, fallback_dt: datetime | None) -> dict[str, object]:
+    rid = str(run_id or "").strip()
+    empty: dict[str, object] = {"points": [], "total": 0.0, "rows_count": 0, "min_date": None, "max_date": None}
+    if not rid:
+        return empty
+    rc = int(
+        db.session.query(func.count(NormalizedEmissionRecord.id))
+        .filter(NormalizedEmissionRecord.mapping_run_id == rid)
+        .scalar()
+        or 0
+    )
+    grp = (
+        db.session.query(
+            NormalizedEmissionRecord.reporting_period_key,
+            func.coalesce(func.sum(NormalizedEmissionRecord.emissions_tco2e), 0.0),
+        )
+        .filter(NormalizedEmissionRecord.mapping_run_id == rid)
+        .group_by(NormalizedEmissionRecord.reporting_period_key)
+        .all()
+    )
+    buckets: dict[str, float] = defaultdict(float)
+    for rk, val in grp:
+        sk = str(rk or "").strip()
+        if not sk:
+            continue
+        buckets[sk] += float(val or 0.0)
+    if not buckets:
+        tot_all = float(
+            db.session.query(func.coalesce(func.sum(NormalizedEmissionRecord.emissions_tco2e), 0.0))
+            .filter(NormalizedEmissionRecord.mapping_run_id == rid)
+            .scalar()
+            or 0.0
+        )
+        if tot_all <= 0:
+            return {**empty, "rows_count": rc}
+        fb = fallback_dt if isinstance(fallback_dt, datetime) else datetime.utcnow()
+        dt = datetime(fb.year, fb.month, 1)
+        k = fb.strftime("%Y-%m")
+        pt: dict[str, object] = {
+            "key": k,
+            "label": fb.strftime("%b %Y"),
+            "date": dt,
+            "value": round(float(tot_all), 6),
+        }
+        return {
+            "points": [pt],
+            "total": round(float(tot_all), 6),
+            "rows_count": rc,
+            "min_date": dt,
+            "max_date": dt,
+        }
+    def _ner_bucket_sort_key(raw: object) -> tuple[int, int]:
+        k = str(raw).strip()
+        dt = _parse_period_value(k)
+        if dt is None and len(k) == 7 and k.count("-") == 1:
+            dt = _parse_period_value(f"{k}-01")
+        if dt is None:
+            return (9999, 12)
+        return (int(dt.year), int(dt.month))
+
+    points: list[dict[str, object]] = []
+    for raw_key in sorted(buckets.keys(), key=_ner_bucket_sort_key):
+        k = str(raw_key).strip()
+        dt = _parse_period_value(k)
+        if dt is None and len(k) == 7 and k.count("-") == 1:
+            dt = _parse_period_value(f"{k}-01")
+        if dt is None:
+            continue
+        chart_key = k if re.match(r"^\d{4}-\d{2}$", k) else dt.strftime("%Y-%m")
+        points.append(
+            {
+                "key": chart_key,
+                "label": dt.strftime("%b %Y"),
+                "date": dt,
+                "value": round(float(buckets[raw_key]), 6),
+            }
+        )
+    tot = round(sum(float(p["value"]) for p in points), 6)
+    return {
+        "points": points,
+        "total": tot,
+        "rows_count": rc,
+        "min_date": points[0]["date"] if points else None,
+        "max_date": points[-1]["date"] if points else None,
+    }
 
 
 def _period_profile_for_summary(sub: "MappingRunSummary", run_cache: dict[str, "MappingRun | None"] | None = None) -> dict[str, object]:
     rid = str(getattr(sub, "run_id", "") or "")
     cache_key = "|".join(
         [
-            "v3",
+            "v4_ner",
             rid,
             str(getattr(sub, "sheet_name", "") or ""),
             str(getattr(sub, "created_at", "") or ""),
@@ -11332,27 +11451,7 @@ def _period_profile_for_summary(sub: "MappingRunSummary", run_cache: dict[str, "
         if cached is not None:
             return cached
 
-    profile: dict[str, object] | None = None
-    try:
-        mr = None
-        if run_cache is not None:
-            if rid in run_cache:
-                mr = run_cache[rid]
-            else:
-                mr = MappingRun.query.get(rid)
-                run_cache[rid] = mr
-        else:
-            mr = MappingRun.query.get(rid)
-        op = getattr(mr, "output_path", None) if mr else None
-        if op and os.path.exists(str(op)):
-            df = _read_sheet_df_from_workbook(op, getattr(sub, "sheet_name", None))
-            if df is not None and not getattr(df, "empty", True):
-                profile = _build_period_profile_from_df(df)
-    except Exception:
-        profile = None
-
-    if profile is None:
-        profile = _fallback_period_profile_for_summary(sub)
+    profile = _build_period_profile_from_normalized_run(rid, getattr(sub, "created_at", None))
     with _PERIOD_PROFILE_CACHE_LOCK:
         _PERIOD_PROFILE_CACHE[cache_key] = profile
     return profile
@@ -11497,26 +11596,58 @@ def _validate_and_normalize_rows(headers: list[str], rows: list[list[str]]) -> t
     return out, errors
 
 
-def _latest_sheet_totals_for_company(company_keys: list[str]) -> list[MappingRunSummary]:
+def _operational_sheet_stubs_for_companies(
+    company_keys: list[str] | None,
+    *,
+    admin_all: bool,
+) -> list[SimpleNamespace]:
     """
-    For a company (possibly multiple aliases), return the latest summary per sheet.
+    Latest MappingRun per (company_name, sheet_name), with tco2e_total / rows_count from normalized_emission_record only.
+    Returned objects mimic MappingRunSummary fields used by dashboards (run_id, company_name, sheet_name, scope, tco2e_total, rows_count, created_at).
     """
-    if not company_keys:
-        return []
-    q = (
-        MappingRunSummary.query.filter(MappingRunSummary.company_name.in_(company_keys))
-        .order_by(MappingRunSummary.created_at.desc())
-        .all()
-    )
-    seen: set[str] = set()
-    out: list[MappingRunSummary] = []
-    for r in q:
-        k = (r.sheet_name or "").strip().lower()
-        if not k or k in seen:
+    q = MappingRun.query.order_by(MappingRun.created_at.desc())
+    if not admin_all:
+        if not company_keys:
+            return []
+        q = q.filter(MappingRun.company_name.in_(company_keys))
+    seen: set[tuple[str, str]] = set()
+    out: list[SimpleNamespace] = []
+    for mr in q.all():
+        c0 = (mr.company_name or "").strip()
+        s0 = (mr.sheet_name or "").strip()
+        dkey = (c0.lower(), s0.lower())
+        if not c0 or not s0 or dkey in seen:
             continue
-        seen.add(k)
-        out.append(r)
+        seen.add(dkey)
+        rid = str(mr.id or "")
+        row = (
+            db.session.query(
+                func.coalesce(func.sum(NormalizedEmissionRecord.emissions_tco2e), 0.0),
+                func.count(NormalizedEmissionRecord.id),
+            )
+            .filter(NormalizedEmissionRecord.mapping_run_id == rid)
+            .one()
+        )
+        tot = float(row[0] or 0.0)
+        ncnt = int(row[1] or 0)
+        sc = _infer_scope_from_sheet(s0)
+        out.append(
+            SimpleNamespace(
+                run_id=rid,
+                company_name=c0,
+                sheet_name=s0,
+                scope=sc,
+                tco2e_total=tot,
+                rows_count=ncnt,
+                created_at=getattr(mr, "created_at", None),
+            )
+        )
     return out
+
+
+def _latest_sheet_totals_for_company(company_keys: list[str]) -> list[SimpleNamespace]:
+    """Latest MappingRun per (company, sheet); operational totals from normalized_emission_record only."""
+    return _operational_sheet_stubs_for_companies(company_keys, admin_all=False)
 
 
 def _backfill_mapping_summaries(max_runs: int = 200) -> None:
@@ -18005,6 +18136,18 @@ def _run_mapping_job(
 
     unmapped_count = 0
     _update_job_progress(job_id, 82, "Persisting normalized emissions…")
+    persist_res = _run_normalized_emission_persistence_txn(
+        run_id=run_id,
+        user_id=int(user_id),
+        company_name=resolved_company,
+        sheet_name=resolved_sheet,
+        source_entry_group=entry_group_filter or None,
+        mapped_df=mapped_df,
+        workbook_output_path=out_path,
+        pipeline="run_mapping_job",
+    )
+    persist_ok = bool(persist_res.get("ok"))
+
     try:
         _persist_mapping_review_snapshot(
             run_id=run_id,
@@ -18016,21 +18159,6 @@ def _run_mapping_job(
     except Exception as exc:
         db.session.rollback()
         print(f"[MAPPING_REVIEW] snapshot_error pipeline=run_mapping_job run={run_id} exc={exc!r}")
-
-    try:
-        _persist_normalized_emission_records_from_mapped_df(
-            run_id=run_id,
-            user_id=int(user_id),
-            company_name=resolved_company,
-            sheet_name=resolved_sheet,
-            source_entry_group=entry_group_filter or None,
-            mapped_df=mapped_df,
-            workbook_output_path=out_path,
-        )
-        db.session.commit()
-    except Exception as exc:
-        db.session.rollback()
-        print(f"[MAPPING_PERSIST] persist_failed pipeline=run_mapping_job run={run_id} exc={exc!r}")
 
     _update_job_progress(job_id, 85, "Updating mapping summaries...")
     try:
@@ -18081,7 +18209,15 @@ def _run_mapping_job(
 
     try:
         n_tot = int(len(mapped_df.index))
-        if n_tot <= 0:
+        if not persist_ok:
+            mr.status = "failed"
+            mr.error_message = str(persist_res.get("error") or "normalized persistence failed").strip()[:2000]
+        elif persist_ok and n_tot > 0 and int(persist_res.get("db_count_after_commit") or 0) <= 0:
+            mr.status = "partial"
+            prev = (mr.error_message or "").strip()
+            extra = "normalized layer empty after successful commit"
+            mr.error_message = (f"{prev} ; {extra}" if prev else extra)[:2000]
+        elif n_tot <= 0:
             mr.status = "empty"
         elif int(unmapped_count or 0) > 0:
             mr.status = "partial"
@@ -18101,9 +18237,12 @@ def _run_mapping_job(
         raise JobCancelled()
     _update_job_progress(job_id, 95, "Finalizing mapping...")
     um_n = int(unmapped_count or 0)
-    notif_msg = f"{resolved_company} / {resolved_sheet} mapping finished."
-    if um_n > 0:
-        notif_msg += f" {um_n} row(s) still have no EF match — review Admin ▸ Unmapped rows."
+    if not persist_ok:
+        notif_msg = f"{resolved_company} / {resolved_sheet}: normalized emissions persistence failed."
+    else:
+        notif_msg = f"{resolved_company} / {resolved_sheet} mapping finished."
+        if um_n > 0:
+            notif_msg += f" {um_n} row(s) still have no EF match — review Admin ▸ Unmapped rows."
     map_card = _mapping_card_payload_for_pair(resolved_company, resolved_sheet)
     if map_card is None:
         map_card = {
@@ -18127,9 +18266,9 @@ def _run_mapping_job(
     map_card["mapping_timestamp"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
     _create_user_notification(
         int(user_id),
-        title="Mapping run completed",
+        title=("Mapping run failed" if not persist_ok else "Mapping run completed"),
         message=notif_msg,
-        notification_type="success",
+        notification_type=("danger" if not persist_ok else "success"),
         link="/",
         mapping_card=map_card,
         feed_event="mapping_completed",
@@ -18139,7 +18278,7 @@ def _run_mapping_job(
 
     preview = mapped_df.head(40).fillna("").to_dict(orient="records")
     resp: dict[str, object] = {
-        "ok": True,
+        "ok": bool(persist_ok),
         "run_id": run_id,
         "company": resolved_company,
         "sheet": resolved_sheet,
@@ -21965,11 +22104,7 @@ def report():
     template_filter = request.args.get('template', '').strip().lower()
     month_filter = request.args.get('date', '').strip()
     company_keys = _company_candidate_keys(current_user.company_name)
-    summaries = (
-        MappingRunSummary.query.filter(MappingRunSummary.company_name.in_(company_keys))
-        .order_by(MappingRunSummary.created_at.desc())
-        .all()
-    )
+    summaries = _operational_sheet_stubs_for_companies(company_keys, admin_all=False)
     filtered_summaries = []
     seen = set()
     run_cache: dict[str, MappingRun | None] = {}
@@ -22022,7 +22157,7 @@ def admin_report():
     company_filter = request.args.get('company', '').strip().lower()
     template_filter = request.args.get('template', '').strip().lower()
     month_filter = request.args.get('date', '').strip()
-    summaries = MappingRunSummary.query.order_by(MappingRunSummary.created_at.desc()).all()
+    summaries = _operational_sheet_stubs_for_companies(None, admin_all=True)
     filtered_submissions = []
     seen = set()
     run_cache: dict[str, MappingRun | None] = {}
@@ -23138,17 +23273,10 @@ def _home_overview_context():
     default_year = datetime.utcnow().year
 
     if bool(getattr(current_user, "is_admin", False)):
-        all_rows = MappingRunSummary.query.order_by(MappingRunSummary.created_at.desc()).all()
-        latest_by_company_sheet: dict[tuple[str, str], MappingRunSummary] = {}
-        for r in all_rows:
-            key = ((r.company_name or "").strip(), (r.sheet_name or "").strip().lower())
-            if key in latest_by_company_sheet:
-                continue
-            if not key[0] or not key[1]:
-                continue
-            latest_by_company_sheet[key] = r
-
-        latest_list = list(latest_by_company_sheet.values())
+        latest_list = _operational_sheet_stubs_for_companies(None, admin_all=True)
+        latest_by_company_sheet: dict[tuple[str, str], SimpleNamespace] = {
+            ((r.company_name or "").strip(), (r.sheet_name or "").strip().lower()): r for r in latest_list
+        }
         reporting_rows_full: list[dict[str, object]] = []
         for r in latest_list:
             try:
@@ -23679,6 +23807,37 @@ def api_feed_post_reaction(post_id: int):
     )
 
 
+def _ner_emission_record_company_keys_for_user(raw_company_name: str) -> list[str]:
+    """
+    Spellings that may appear on NormalizedEmissionRecord.company_name for this tenant.
+    Merges _company_candidate_keys (file stem / slug / canonical) with template-resolved names
+    so NER rows match even when persistence used a different resolved spelling than the profile UI.
+    """
+    raw = (raw_company_name or "").strip()
+    out: set[str] = set()
+    if raw:
+        out.add(raw)
+    for k in _company_candidate_keys(raw):
+        s = str(k or "").strip()
+        if s:
+            out.add(s)
+    pool = list(out)
+    for name in pool:
+        try:
+            r = _resolve_template_company_name(name)
+            if r and str(r).strip():
+                out.add(str(r).strip())
+        except Exception:
+            pass
+    try:
+        canon, _country = _canonical_company_name_and_country(raw)
+        if canon and str(canon).strip():
+            out.add(str(canon).strip())
+    except Exception:
+        pass
+    return sorted({x for x in out if x}, key=lambda x: x.lower())
+
+
 def _ner_filtered_query(
     *,
     company_keys: list[str] | None,
@@ -23866,7 +24025,7 @@ def _build_mapping_reconciliation_rows(*, limit: int = 350) -> list[dict[str, ob
                 "total_emissions_tco2e_normalized": round(norm_sum, 6),
                 "total_emissions_tco2e_summary": round(summary_t, 6),
                 "total_emissions_tco2e_archive": round(arch_t, 6),
-                "sources": "normalized_emission_record / mapping_run_summary / mapping_preview_archive",
+                "sources": "normalized_emission_record (canonical) vs mapping_run_summary vs mapping_preview_archive (debug only)",
                 "mismatch_flags": flags,
             }
         )
@@ -23979,7 +24138,10 @@ def carbon_accounting():
 @login_required
 def emissions_records_page():
     _ensure_db_tables()
-    keys = None if getattr(current_user, "is_admin", False) else _company_candidate_keys(getattr(current_user, "company_name", "") or "")
+    is_admin = bool(getattr(current_user, "is_admin", False))
+    raw_user_company = getattr(current_user, "company_name", "") or ""
+    base_candidate_keys = _company_candidate_keys(raw_user_company) if not is_admin else []
+    keys = None if is_admin else _ner_emission_record_company_keys_for_user(raw_user_company)
     company = request.args.get("company", "").strip()
     scope = request.args.get("scope", "").strip()
     category = request.args.get("category", "").strip()
@@ -24007,6 +24169,69 @@ def emissions_records_page():
     )
     if run_id_filter:
         qf = qf.filter(NormalizedEmissionRecord.mapping_run_id == run_id_filter)
+
+    try:
+        ner_total = int(db.session.query(func.count(NormalizedEmissionRecord.id)).scalar() or 0)
+        ner_after_tenant = ner_total
+        if not is_admin:
+            if not keys:
+                ner_after_tenant = 0
+            else:
+                ner_after_tenant = int(
+                    db.session.query(func.count(NormalizedEmissionRecord.id))
+                    .filter(NormalizedEmissionRecord.company_name.in_(keys))
+                    .scalar()
+                    or 0
+                )
+        ner_after_full = int(qf.with_entities(func.count(NormalizedEmissionRecord.id)).scalar() or 0)
+        distinct_sample = [
+            str(x[0])
+            for x in db.session.query(NormalizedEmissionRecord.company_name)
+            .distinct()
+            .order_by(NormalizedEmissionRecord.company_name.asc())
+            .limit(80)
+            .all()
+            if x and x[0]
+        ]
+        filter_payload = {
+            "company": company,
+            "scope": scope,
+            "category": category,
+            "period": period,
+            "mapped": mapped,
+            "ef_source": ef_source,
+            "q": search,
+            "from": date_from,
+            "to": date_to,
+            "run_id": run_id_filter,
+        }
+        msg = (
+            "[EMISSIONS_RECORDS_DEBUG] user_id=%s is_admin=%s current_user.company_name=%r "
+            "base_candidate_keys=%r expanded_ner_keys=%r ner_total=%s ner_after_tenant_company_filter=%s "
+            "ner_after_all_request_filters=%s ner_distinct_company_sample=%r request_filters=%r"
+        )
+        args = (
+            int(getattr(current_user, "id", 0) or 0),
+            is_admin,
+            raw_user_company,
+            base_candidate_keys,
+            keys if keys is not None else None,
+            ner_total,
+            ner_after_tenant,
+            ner_after_full,
+            distinct_sample,
+            filter_payload,
+        )
+        try:
+            app.logger.info(msg, *args)
+        except Exception:
+            print(msg % args)
+    except Exception as exc:
+        try:
+            app.logger.info("[EMISSIONS_RECORDS_DEBUG] logging_failed exc=%r", exc)
+        except Exception:
+            print(f"[EMISSIONS_RECORDS_DEBUG] logging_failed exc={exc!r}")
+
     kpis = _emissions_records_kpis_from_query(qf)
     mismatch_any = False
     if getattr(current_user, "is_admin", False):
@@ -24089,6 +24314,70 @@ def api_admin_mapping_reconciliation():
         return jsonify({"error": "Access denied"}), 403
     _ensure_db_tables()
     return jsonify({"rows": _build_mapping_reconciliation_rows(limit=400)})
+
+
+@app.route("/api/admin/normalized-emissions-debug")
+@login_required
+def api_admin_normalized_emissions_debug():
+    if not getattr(current_user, "is_admin", False):
+        return jsonify({"error": "Access denied"}), 403
+    _ensure_db_tables()
+    total_rows = int(db.session.query(func.count(NormalizedEmissionRecord.id)).scalar() or 0)
+    total_t = float(
+        db.session.query(func.coalesce(func.sum(NormalizedEmissionRecord.emissions_tco2e), 0.0)).scalar() or 0.0
+    )
+    latest_runs = (
+        db.session.query(
+            NormalizedEmissionRecord.mapping_run_id,
+            func.max(NormalizedEmissionRecord.mapped_at).label("ner_last_at"),
+        )
+        .group_by(NormalizedEmissionRecord.mapping_run_id)
+        .order_by(desc(func.max(NormalizedEmissionRecord.mapped_at)))
+        .limit(25)
+        .all()
+    )
+    tsum = func.coalesce(func.sum(NormalizedEmissionRecord.emissions_tco2e), 0.0).label("tsum")
+    by_company = (
+        db.session.query(
+            NormalizedEmissionRecord.company_name,
+            func.count(NormalizedEmissionRecord.id),
+            tsum,
+        )
+        .group_by(NormalizedEmissionRecord.company_name)
+        .order_by(desc(tsum))
+        .limit(200)
+        .all()
+    )
+    by_scope = (
+        db.session.query(
+            NormalizedEmissionRecord.scope,
+            func.count(NormalizedEmissionRecord.id),
+            func.coalesce(func.sum(NormalizedEmissionRecord.emissions_tco2e), 0.0),
+        )
+        .group_by(NormalizedEmissionRecord.scope)
+        .all()
+    )
+    return jsonify(
+        {
+            "normalized_emission_record_total_rows": total_rows,
+            "total_emissions_tco2e": round(total_t, 6),
+            "latest_mapping_runs": [
+                {"mapping_run_id": str(a[0]), "last_mapped_at": a[1].isoformat() if a[1] else None}
+                for a in latest_runs
+            ],
+            "counts_by_company": [
+                {"company": str(c), "rows": int(n), "tco2e": round(float(t), 6)} for c, n, t in by_company
+            ],
+            "counts_by_scope": [
+                {
+                    "scope": int(sc) if sc is not None else None,
+                    "rows": int(n),
+                    "tco2e": round(float(t), 6),
+                }
+                for sc, n, t in by_scope
+            ],
+        }
+    )
 
 
 @app.route("/search", methods=["GET"])

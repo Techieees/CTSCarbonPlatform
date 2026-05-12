@@ -7,6 +7,7 @@
 {% endblock %}
 
 {% block content %}
+<!-- This analytics page runs on spreadsheets and spite -->
 <div class="container py-4 analytics-output-page">
   <section class="analytics-output-hero">
     <div class="analytics-output-hero__eyebrow">{{ page_group }}</div>
@@ -375,6 +376,7 @@
     {% endif %}
   </section>
   {% elif page_key == 'decarbonization' %}
+  <!-- Decarb controls: optimism as a service -->
   <section class="analytics-output-controls mt-4">
     <form method="post" class="analytics-output-form js-analytics-run-form" data-loading-message="Generating scenario..." id="decarbonizationRunForm">
       <div class="row g-3">
@@ -443,6 +445,7 @@
     </form>
   </section>
   {% elif page_key in ('mapped_window_output', 'emissions_totals', 'share_analysis', 'audit_ready_output') %}
+  <!-- Outputs & audit: the spreadsheet event horizon -->
   <section class="analytics-output-controls mt-4">
     <form method="post" class="analytics-output-form js-analytics-run-form" data-loading-message="{% if page_key == 'audit_ready_output' %}Preparing audit dataset...{% elif page_key == 'mapped_window_output' %}Generating mapped window output...{% else %}Generating fresh output...{% endif %}">
       <div class="row g-3 align-items-end">
@@ -513,6 +516,7 @@
   </section>
   {% endif %}
 
+  <!-- Run feedback: success is a rumor until QA agrees -->
   {% if run_notice %}
   <section class="analytics-output-feedback analytics-output-feedback--success mt-4">
     {{ run_notice }}

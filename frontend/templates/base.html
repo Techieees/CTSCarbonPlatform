@@ -2,6 +2,7 @@
 {% import 'macros/ui_illustrations.html' as illu %}
 <html lang="en">
 <head>
+    <!-- Bro opened view-source -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}CTS Carbon Platform{% endblock %}</title>
@@ -44,6 +45,7 @@
     {% set use_app_sidebar = current_user.is_authenticated and request.endpoint not in public_landing_endpoints %}
     {% set is_marketing = request.endpoint in public_landing_endpoints %}
     {% set account_display_name = ((current_user.first_name or '') ~ ' ' ~ (current_user.last_name or ''))|trim if current_user.is_authenticated else 'Account' %}
+    <!-- Welcome to the carbon dimension -->
     <div class="app-shell{% if use_app_sidebar %} app-shell--with-sidebar{% endif %}">
     {% if use_app_sidebar %}
     <div class="app-layout" id="appLayout">
@@ -66,6 +68,7 @@
     </script>
     {% include 'partials/app_sidebar.html' %}
     <div class="app-main-wrap">
+    <!-- Topbar: looks enterprise, feels startup -->
     <header class="app-topbar">
         <div class="app-topbar__inner container-fluid px-3">
             <button class="app-topbar__menu-toggle" type="button" data-sidebar-mobile-toggle aria-label="Open navigation menu" aria-controls="appSidebar" aria-expanded="false">
@@ -112,6 +115,7 @@
     </header>
     {% endif %}
     {% if not use_app_sidebar %}
+    <!-- Marketing nav — yes, this worked on localhost -->
     <nav class="navbar navbar-expand-lg navbar-light saas-nav">
         <div class="container">
             <a class="navbar-brand navbar-logo d-flex align-items-center" href="{{ url_for('index') }}" aria-label="Home">
@@ -273,6 +277,7 @@
             {% endif %}
         {% endwith %}
 
+        <!-- Built by Florian Demir -->
         {% block content %}{% endblock %}
     </main>
     {% if current_user.is_authenticated %}
@@ -283,6 +288,7 @@
     </div>
     {% endif %}
 
+    <!-- Footer: where momentum goes to read terms -->
     <footer class="saas-footer saas-footer--enterprise">
         <div class="saas-footer__main">
             <div class="container position-relative py-3 py-lg-3">
@@ -388,6 +394,7 @@
     </div>
 
     {% if current_user.is_authenticated and current_user.is_admin %}
+    <!-- Admin upload notifications modal: gentle ambush -->
     <div class="modal fade admin-upload-notification-modal" id="adminUploadNotificationsModal" tabindex="-1" aria-labelledby="adminUploadNotificationsModalTitle" aria-hidden="true">
       <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable admin-upload-notification-modal__dialog">
         <div class="modal-content admin-upload-notification-modal__surface">

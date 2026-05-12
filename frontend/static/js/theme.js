@@ -1,4 +1,5 @@
 (function () {
+  // Dark mode: the only feature users unanimously love
   const STORAGE_KEY = "cts-theme";
   const mediaQuery = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
 

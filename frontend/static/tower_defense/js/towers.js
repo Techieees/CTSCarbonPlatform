@@ -1,5 +1,6 @@
 /**
  * Tower definitions, Tower instances, projectiles, support aura.
+ * Serious enterprise carbon platform includes serious enterprise tower defense.
  */
 
 export const TOWER_TYPES = {

@@ -1,5 +1,6 @@
 import { formatFull, initChart } from "./echarts_theme.js";
 
+// World map chart: borders are imaginary, emissions are not
 const FLAGS_URL = "/static/data/country_flags.json";
 const COORDS_URL = "/static/data/country_coordinates.json";
 

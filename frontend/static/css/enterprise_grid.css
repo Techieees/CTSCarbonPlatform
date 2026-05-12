@@ -1,6 +1,7 @@
 /**
  * CTS Enterprise Grid / table shell — shared presentation layer.
  * Scope: .eg-* classes only; safe to load globally. Pair with compact Bootstrap tables.
+ * Refactor? maybe next quarter.
  */
 
 :root {

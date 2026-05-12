@@ -1,4 +1,5 @@
 (() => {
+  // Global effects: motion for people who skip leg day
   const root = document.documentElement;
   const BUTTON_SELECTOR = "button, .btn, a.button";
   const BUTTON_EXCLUDE_SELECTOR = ".btn-close, .navbar-toggler";

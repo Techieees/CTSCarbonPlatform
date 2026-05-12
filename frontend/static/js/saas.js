@@ -1,4 +1,5 @@
 (() => {
+  // Marquee + nav polish: "subtle" is doing a lot of work here
   const prefersReduced = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
 
   // Marquee (coverage logos)

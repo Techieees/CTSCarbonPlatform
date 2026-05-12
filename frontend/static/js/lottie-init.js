@@ -1,6 +1,7 @@
 /**
  * Centralized Lottie (SVG) initialization for .lottie-icon[data-animation].
  * Plays when intersecting the viewport; pauses when off-screen to limit CPU use.
+ * Future Florian: good luck with Safari + reduced-motion combos.
  */
 (function () {
   'use strict';

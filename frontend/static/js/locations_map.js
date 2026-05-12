@@ -4,6 +4,7 @@ if (!window.MAPBOX_TOKEN) {
 mapboxgl.accessToken = window.MAPBOX_TOKEN;
 
 (function () {
+  // Locations map: geojson and anxiety
   const root = document.getElementById("locationsMap");
   const notice = document.getElementById("locationsMapNotice");
   const config = window.__locationsMapConfig || {};

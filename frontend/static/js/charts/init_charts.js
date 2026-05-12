@@ -13,6 +13,7 @@ import { initEnterpriseDashboards } from "../components/charts/enterprise_pages.
 import { initScopeDetailCharts } from "./scope_detail_charts.js";
 import { initScope3CategoryCharts } from "./scope3_category_charts.js";
 
+// Chart init hub — ECharts and friends punch in here
 let themeChangeBindingReady = false;
 
 function updateReportMetrics(rows) {

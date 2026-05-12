@@ -1,4 +1,5 @@
 const THEME_NAME = "cts-enterprise-saas";
+// Theme glue: prettier than the underlying data, by design
 const CHART_HEIGHT_SCALE = 2;
 let themeRegistered = false;
 let resizeBindingReady = false;

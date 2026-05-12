@@ -1,6 +1,7 @@
 /**
  * Enterprise-style dashboard overlays: home, admin analytics, admin report.
  * Uses only client-side aggregation of existing template JSON / DOM meta.
+ * KPI glue code: handle with sarcasm and unit tests.
  */
 
 import { readJsonScript, buildAnalyticsRows, pickAvailablePayloadId } from "../../charts/analytics_rows.js";

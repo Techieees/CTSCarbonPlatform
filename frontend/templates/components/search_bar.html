@@ -1,4 +1,5 @@
 {% import 'macros/ui_illustrations.html' as illu %}
+<!-- Global search: grep for executives -->
 <form class="collab-search {% if request.endpoint == 'search_page' %}is-open is-persistent{% endif %}" action="{{ url_for('search_page') }}" method="get" role="search" data-collab-search>
   <label class="visually-hidden" for="globalSearchInput">Search</label>
   <button class="collab-search__toggle" type="button" aria-label="Open search" aria-expanded="{{ 'true' if request.endpoint == 'search_page' else 'false' }}" aria-controls="globalSearchInput">

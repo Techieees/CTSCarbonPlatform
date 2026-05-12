@@ -4,6 +4,7 @@
 {% block title %}Mapping preview · {{ run_id }}{% endblock %}
 
 {% block content %}
+<!-- Mapping preview detail: row-level drama -->
 {% set is_water = 'water tracker' in ((archive.sheet_name or '')|lower) %}
 <style>
   .mp-row--unmapped > td { background-color: #fde8ef !important; }

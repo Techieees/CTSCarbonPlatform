@@ -2,6 +2,7 @@
 {% set messaging_name = (((current_user.first_name or '') ~ ' ' ~ (current_user.last_name or ''))|trim) or (current_user.email or 'Messaging') %}
 {% set messaging_avatar = nav_profile_photo_url() %}
 {% set messaging_initial = (messaging_name[:1] or 'M')|upper %}
+<!-- Chat widget: async humans, sync anxiety -->
 <section class="chat-widget" data-chat-widget>
   <div class="chat-widget__collapsed-bar" data-chat-collapsed-bar>
     <button class="chat-widget__collapsed-main" type="button" data-chat-toggle aria-expanded="false" aria-label="Open messaging">
