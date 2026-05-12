@@ -522,10 +522,67 @@ def _current_profile_payload() -> dict[str, object]:
     }
 
 
-def _template_bundle_for_company(company_name: str) -> dict[str, object]:
+def _mapping_coverage_profile_from_user_id(user_id: int | None) -> dict[str, object]:
+    """Profile slice for TemplateRegistry category enablement; no Flask request."""
+    if user_id is None:
+        return {}
+    u = db.session.get(User, int(user_id))
+    if u is None:
+        return {}
+    return {
+        "company_name": (getattr(u, "company_name", None) or "").strip(),
+        "business_type": (getattr(u, "business_type", None) or "").strip(),
+        "product_type": (getattr(u, "product_type", None) or "").strip(),
+        "heating_source": (getattr(u, "heating_source", None) or "").strip(),
+        "travel_provider": (getattr(u, "travel_provider", None) or "").strip(),
+        "template_mode": normalize_template_mode(getattr(u, "template_mode", None)),
+    }
+
+
+def _template_bundle_with_context(
+    company_name: str,
+    *,
+    template_mode: str,
+    profile: dict[str, object] | None,
+) -> dict[str, object]:
     return TEMPLATE_REGISTRY.get_bundle(
-        template_mode=_current_template_mode(),
+        template_mode=normalize_template_mode(template_mode),
         company_name=company_name,
+        profile=profile or {},
+    )
+
+
+def _template_bundle_for_company(company_name: str) -> dict[str, object]:
+    return _template_bundle_with_context(
+        company_name,
+        template_mode=_current_template_mode(),
+        profile=_current_profile_payload(),
+    )
+
+
+def _get_template_company_sheets_with_context(
+    company_name: str,
+    *,
+    template_mode: str,
+    profile: dict[str, object] | None,
+) -> list[str]:
+    resolved_company = _resolve_template_company_name(company_name) or (company_name or "").strip()
+    bundle = _template_bundle_with_context(
+        resolved_company,
+        template_mode=template_mode,
+        profile=profile,
+    )
+    return [
+        str(item.get("sheet_name") or "")
+        for item in (bundle.get("visible_templates") or [])
+        if str(item.get("sheet_name") or "").strip()
+    ]
+
+
+def _get_template_company_sheets(company_name: str) -> list[str]:
+    return _get_template_company_sheets_with_context(
+        company_name,
+        template_mode=_current_template_mode(),
         profile=_current_profile_payload(),
     )
 
@@ -4498,8 +4555,19 @@ def _run_mapping_for_virtual_sheet(user_id: int, company_name: str, sheet_name: 
     except Exception:
         db.session.rollback()
 
+    vs_user = db.session.get(User, int(user_id)) if user_id is not None else None
+    vs_template_mode = (
+        normalize_template_mode(getattr(vs_user, "template_mode", None))
+        if vs_user is not None
+        else TEMPLATE_MODE_LEGACY
+    )
     try:
-        mapped_df, out_path, input_path = run_mapping(company_name, sheet_name, df)
+        mapped_df, out_path, input_path = run_mapping(
+            company_name,
+            sheet_name,
+            df,
+            template_mode=vs_template_mode,
+        )
     except Exception as exc:
         try:
             mr.status = "failed"
@@ -4552,6 +4620,8 @@ def _run_mapping_for_virtual_sheet(user_id: int, company_name: str, sheet_name: 
             sheet_name=sheet_name,
             mapped_df=mapped_df,
             output_path=out_path,
+            template_mode=vs_template_mode,
+            coverage_profile=_mapping_coverage_profile_from_user_id(int(user_id)),
         )
         db.session.commit()
     except Exception:
@@ -5748,12 +5818,6 @@ def _list_template_companies_for_user() -> list[dict[str, str]]:
     if not resolved:
         return []
     return [{"key": resolved, "label": resolved}]
-
-
-def _get_template_company_sheets(company_name: str) -> list[str]:
-    resolved_company = _resolve_template_company_name(company_name) or (company_name or "").strip()
-    bundle = _template_bundle_for_company(resolved_company)
-    return [str(item.get("sheet_name") or "") for item in (bundle.get("visible_templates") or []) if str(item.get("sheet_name") or "").strip()]
 
 
 def _get_template_sheet_headers(company_name: str, sheet_name: str) -> list[str]:
@@ -7021,7 +7085,7 @@ def _supersede_open_unmapped_rows(
             f"[UNMAPPED_SYNC] supersede_open id={row.id} row_number={row.row_number} "
             f"entry_group={row.source_entry_group!r} reason={reason!r}"
         )
-    if rows:
+    if len(rows) > 0:
         print(
             f"[UNMAPPED] Superseded {len(rows)} open row(s) for {company_name} / {sheet_name}"
             f"{(' / ' + entry_group) if entry_group else ''}: {reason}"
@@ -7758,11 +7822,40 @@ def _count_company_mapped_categories(company_name: str) -> int:
     return len(seen)
 
 
-def _calculate_mapping_coverage(company_name: str) -> tuple[int, int, float]:
+def _calculate_mapping_coverage(
+    company_name: str,
+    *,
+    template_mode: str | None = None,
+    coverage_profile: dict[str, object] | None = None,
+) -> tuple[int, int, float]:
     mapped_categories_count = int(_count_company_mapped_categories(company_name) or 0)
-    total_categories = int(_count_company_schema_sheets(company_name) or 0)
+    if template_mode is None:
+        total_categories = int(_count_company_schema_sheets(company_name) or 0)
+    else:
+        total_categories = int(
+            _count_company_schema_sheets_with_context(
+                company_name,
+                template_mode=template_mode,
+                profile=coverage_profile,
+            )
+            or 0
+        )
     coverage_pct = round((mapped_categories_count / total_categories) * 100, 2) if total_categories > 0 else 0.0
     return mapped_categories_count, total_categories, coverage_pct
+
+
+def _count_company_schema_sheets_with_context(
+    company_name: str,
+    *,
+    template_mode: str,
+    profile: dict[str, object] | None,
+) -> int:
+    sheets = [
+        s
+        for s in _get_template_company_sheets_with_context(company_name, template_mode=template_mode, profile=profile)
+        if str(s).strip() != KLARAKARBON_SHEET_NAME
+    ]
+    return int(len(sheets))
 
 
 def _upsert_mapping_run_summary(
@@ -7771,6 +7864,9 @@ def _upsert_mapping_run_summary(
     sheet_name: str,
     mapped_df: "pd.DataFrame",
     output_path: str | Path | None,
+    *,
+    template_mode: str | None = None,
+    coverage_profile: dict[str, object] | None = None,
 ) -> None:
     total_tco2e = 0.0
     rows_count = 0
@@ -7794,7 +7890,14 @@ def _upsert_mapping_run_summary(
             f"rows={rows_count} col={used_col!r}"
         )
 
-    mapped_categories_count, total_categories, coverage_pct = _calculate_mapping_coverage(company_name)
+    if template_mode is None:
+        mapped_categories_count, total_categories, coverage_pct = _calculate_mapping_coverage(company_name)
+    else:
+        mapped_categories_count, total_categories, coverage_pct = _calculate_mapping_coverage(
+            company_name,
+            template_mode=template_mode,
+            coverage_profile=coverage_profile,
+        )
     print("SUMMARY:", mapped_categories_count, total_categories, coverage_pct)
 
     summ = MappingRunSummary.query.filter_by(run_id=run_id).first()
@@ -8366,7 +8469,7 @@ def _persist_mapping_review_snapshot(
     t0 = _time.perf_counter()
     co_key = (company_name or "").strip()
     sheet_key = (sheet_name or "").strip()
-    n_df = 0 if mapped_df is None else len(getattr(mapped_df, "index", []) or [])
+    n_df = 0 if mapped_df is None else int(len(mapped_df.index))
     print(f"[MAPPING_REVIEW] snapshot_start run_id={run_id} company={co_key!r} sheet={sheet_key!r} rows={n_df}")
     try:
         MappingReviewSnapshot.query.filter_by(mapping_run_id=run_id).delete(synchronize_session=False)
@@ -8565,7 +8668,7 @@ def _persist_normalized_emission_records_from_mapped_df(
         return 0
 
     df = mapped_df
-    n_df = int(len(getattr(df, "index", []) or []))
+    n_df = int(len(df.index))
     sum_before, _, _ = _sum_tco2e(df)
 
     deleted = int(
@@ -13615,7 +13718,7 @@ def api_products_input_save():
         current_user.heating_source = str(profile_payload["heating_source"] or "") or None
         current_user.travel_provider = str(profile_payload["travel_provider"] or "") or None
         current_user.operating_locations_json = json.dumps(profile_payload["operating_locations"], ensure_ascii=True)
-        if rows:
+        if len(rows) > 0:
             first = rows[0]
             current_user.product_type = str(first["product_type"] or "") or None
             current_user.quantity = str(first["quantity"] or "") or None
@@ -17937,6 +18040,8 @@ def _run_mapping_job(
             sheet_name=resolved_sheet,
             mapped_df=mapped_df,
             output_path=out_path,
+            template_mode=template_mode,
+            coverage_profile=_mapping_coverage_profile_from_user_id(int(user_id)),
         )
         db.session.commit()
     except Exception as exc:
@@ -18180,7 +18285,7 @@ def api_mapping_run():
                 }
             ), 409
 
-    if rows:
+    if len(rows) > 0:
         normalized_rows, validation_errors = _normalize_data_entry_rows(headers, rows)
         if validation_errors:
             return jsonify({"error": validation_errors[0], "validation_errors": validation_errors[:20]}), 400
@@ -23619,17 +23724,17 @@ def _ner_filtered_query(
                 NormalizedEmissionRecord.ef_id.ilike(like),
             )
         )
-    df = (date_from or "").strip()
-    dt = (date_to or "").strip()
-    if df:
+    d_from_s = (date_from or "").strip()
+    d_to_s = (date_to or "").strip()
+    if d_from_s:
         try:
-            d0 = datetime.strptime(df[:10], "%Y-%m-%d")
+            d0 = datetime.strptime(d_from_s[:10], "%Y-%m-%d")
             q = q.filter(NormalizedEmissionRecord.mapped_at >= d0)
         except ValueError:
             pass
-    if dt:
+    if d_to_s:
         try:
-            d1 = datetime.strptime(dt[:10], "%Y-%m-%d") + timedelta(days=1)
+            d1 = datetime.strptime(d_to_s[:10], "%Y-%m-%d") + timedelta(days=1)
             q = q.filter(NormalizedEmissionRecord.mapped_at < d1)
         except ValueError:
             pass
