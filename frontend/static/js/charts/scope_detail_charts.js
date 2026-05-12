@@ -179,6 +179,105 @@ function sumSheets(rows) {
   return rows.reduce((a, r) => a + Number(r.tco2e || 0), 0);
 }
 
+function isEmployeeCommutingReportingRow(r) {
+  const s = `${String(r.sheet || r.category || "")}`.toLowerCase();
+  const sc = `${String(r.sheet || "")}`.toLowerCase();
+  const catPart = /\bcat(?:egory)?\s*7\b/.test(s) || /\bcat(?:egory)?\s*7\b/.test(sc);
+  if (/\bscope\s*3\b/.test(s) && catPart) {
+    return true;
+  }
+  if (/\bemployee\s+commute/.test(sc) || sc.includes("cat 7 employee commute")) {
+    return true;
+  }
+  if (/\bcommut/.test(sc) && /\bemployee\b/.test(sc)) {
+    return true;
+  }
+  return catPart && /\bemployee\b/.test(s);
+}
+
+function initEmployeeCommutingScopeCharts(reportingRows) {
+  const rows = (reportingRows || []).filter(
+    (r) => rowMatchesScope(r, 3) && isEmployeeCommutingReportingRow(r)
+  );
+  const modePick = (r) =>
+    String((r.commute_mode === undefined || r.commute_mode === null ? "" : r.commute_mode) || "").trim() || "Mode unspecified";
+
+  whenVisible(document.getElementById("scopeDetailEcModeBar"), (el) => {
+    if (!rows.length) {
+      showEmptyState(el, "No Employee Commuting (Cat 7) workbook rows found in mapped previews yet.");
+      return;
+    }
+    const totals = rows.reduce((a, r) => a + Number(r.emissions || 0), 0);
+    const byMode = new Map();
+    rows.forEach((rt) => {
+      const k = modePick(rt);
+      byMode.set(k, (byMode.get(k) || 0) + Number(rt.emissions || 0));
+    });
+    const arr = [...byMode.entries()].sort((x, y) => y[1] - x[1]).slice(0, 14);
+    if (!totals || !arr.length) {
+      showEmptyState(el, "Commuting rows present but summed to zero.");
+      return;
+    }
+    mountHorizontalBarChart(el, {
+      labels: arr.map(([k]) => k),
+      values: arr.map(([, v]) => v),
+      height: 300,
+      categoryColorKind: "commute_mode",
+      seriesName: "tCO₂e",
+      tooltipSuffix: " tCO₂e",
+      horizontal: false,
+    });
+  });
+
+  whenVisible(document.getElementById("scopeDetailEcCompanyBar"), (el) => {
+    if (!rows.length) {
+      showEmptyState(el, "No commuting rows aggregated by company.");
+      return;
+    }
+    const byCompany = new Map();
+    rows.forEach((rt) => {
+      const co =
+        `${String(rt.company === undefined || rt.company === null ? "" : rt.company).trim()}` ||
+        `${String(rt.sheet || "")}` ||
+        "—";
+      byCompany.set(co, (byCompany.get(co) || 0) + Number(rt.emissions || 0));
+    });
+    const arr = [...byCompany.entries()].sort((x, y) => y[1] - x[1]).slice(0, 16);
+    mountHorizontalBarChart(el, {
+      labels: arr.map(([k]) => k),
+      values: arr.map(([, v]) => v),
+      height: 300,
+      categoryColorKind: "company",
+      seriesName: "tCO₂e",
+      tooltipSuffix: " tCO₂e",
+    });
+  });
+
+  whenVisible(document.getElementById("scopeDetailEcMonthTrend"), (el) => {
+    if (!rows.length) {
+      showEmptyState(el, "Commuting trend needs workbook reporting-period values.");
+      return;
+    }
+    const monthPortfolio = rows.map((rt) => ({
+      company: "Portfolio",
+      dateLabel: rt.dateLabel || rt.sortKey,
+      sortKey: rt.sortKey,
+      emissions: Number(rt.emissions || 0),
+    }));
+    const mt = monthlyTotals(monthPortfolio);
+    if (!mt.length) {
+      showEmptyState(el, "Could not derive a monthly commuting curve from reporting periods.");
+      return;
+    }
+    mountMonthlyTrendChart(el, {
+      labels: mt.map((x) => x.dateLabel),
+      values: mt.map((x) => x.value),
+      height: 280,
+      tooltipSuffix: " tCO₂e",
+    });
+  });
+}
+
 function mountMiniDonut(container, label, value, totalScope, height = 240) {
   const rest = Math.max(0, Number(totalScope || 0) - Number(value || 0));
   const chart = initChart(container);
@@ -216,6 +315,9 @@ function initScopeAdmin(scopeNum, payload) {
 
   if (!companyRows.length) {
     whenVisible(document.getElementById("scopeDetailMonthly"), (el) => showEmptyState(el, "Company-level time series requires user portfolio mapping rows."));
+    if (scopeNum === 3) {
+      initEmployeeCommutingScopeCharts(payload.reporting_rows || []);
+    }
     return;
   }
 
@@ -274,6 +376,9 @@ function initScopeAdmin(scopeNum, payload) {
       whenVisible(el, (node) => showEmptyState(node, "Keyword split available when category sheets are mapped."));
     }
   });
+  if (scopeNum === 3) {
+    initEmployeeCommutingScopeCharts(payload.reporting_rows || []);
+  }
 }
 
 function initScopeUser(scopeNum, payload) {
@@ -288,7 +393,19 @@ function initScopeUser(scopeNum, payload) {
 
   const fb = filterBreakdown(breakdown, scopeNum);
   if (!fb.length) {
-    ["scopeDetailMonthly", "scopeDetailDonut", "scopeDetailCategoryH", "scopeDetailCombo", "scopeDetailStackMonth", "scopeDetailMini1", "scopeDetailMini2", "scopeDetailMini3"].forEach((id) => {
+    [
+      "scopeDetailMonthly",
+      "scopeDetailDonut",
+      "scopeDetailCategoryH",
+      "scopeDetailCombo",
+      "scopeDetailStackMonth",
+      "scopeDetailMini1",
+      "scopeDetailMini2",
+      "scopeDetailMini3",
+      "scopeDetailEcModeBar",
+      "scopeDetailEcCompanyBar",
+      "scopeDetailEcMonthTrend",
+    ].forEach((id) => {
       const el = document.getElementById(id);
       if (el) {
         whenVisible(el, (node) => showEmptyState(node, "No mapped categories for this scope yet."));
@@ -387,6 +504,7 @@ function initScopeUser(scopeNum, payload) {
         mountMiniDonut(node, title, val, t3, 260);
       });
     });
+    initEmployeeCommutingScopeCharts(reportingRows);
   }
 }
 

@@ -775,7 +775,7 @@ def _preprocess_cat7_proportional(
         hc = pd.read_csv(headcount_csv)
 
         # Target months (calendar year); allow company-specific overrides
-        months_all = pd.date_range(start="2025-01-01", end="2025-12-01", freq="MS")
+        months_all = pd.date_range(start="2026-01-01", end="2026-12-01", freq="MS")
 
         final_pieces: List[pd.DataFrame] = []
         def _norm_company(val: object) -> str:
@@ -913,7 +913,7 @@ def _preprocess_cat7_national_averages(
         if source_df is None or source_df.empty:
             return in_sheets
 
-        months_all = pd.date_range(start="2025-01-01", end="2025-12-01", freq="MS")
+        months_all = pd.date_range(start="2026-01-01", end="2026-12-01", freq="MS")
 
         def _clean_company(value: object) -> str:
             try:
@@ -1001,10 +1001,20 @@ def _preprocess_cat7_national_averages(
                 continue
 
             one_month_df = pd.DataFrame(month_rows)
-            months = months_all
-            if company_name.strip().lower() == "fortica":
-                months = pd.date_range(start="2025-10-01", end="2025-12-01", freq="MS")
-            for month in months:
+            months_loop = months_all
+            rm = row.get("Reporting Month (YYYY-MM)")
+            if rm is not None and str(rm).strip():
+                srm = str(rm).strip().replace("/", "-")[:7]
+                if len(srm) == 7 and srm[4] == "-":
+                    try:
+                        y_s, m_s = srm.split("-", 1)
+                        y_i, m_i = int(y_s), int(m_s)
+                        months_loop = pd.date_range(start=f"{y_i:04d}-{m_i:02d}-01", periods=1, freq="MS")
+                    except Exception:
+                        months_loop = months_all
+            if company_name.strip().lower() == "fortica" and months_loop is months_all:
+                months_loop = pd.date_range(start="2026-10-01", end="2026-12-01", freq="MS")
+            for month in months_loop:
                 copy_df = one_month_df.copy()
                 copy_df["Reporting period (month, year)"] = month.strftime("%Y-%m-%d")
                 final_pieces.append(copy_df)

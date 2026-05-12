@@ -4,7 +4,7 @@
 {% set runs_active = ep in ('mapping_runs', 'admin_mapping_runs') %}
 {% set supplier_pages_active = can_manage_supplier_registries() and ep in ('suppliers_hub_redirect', 'suppliers_all_page', 'suppliers_carbon_steel_page', 'suppliers_internal_page') %}
 {% set carbon_active = ep in ('carbon_accounting', 'scope1_detail', 'scope2_detail', 'scope3_detail') %}
-{% set data_sources_active = ep in ('data_sources_ccc_api', 'engage_waste_api_page', 'data_sources_klarakarbon', 'data_sources_employee_commuting_headcount', 'data_sources_employee_commuting_national_averages', 'data_sources_averages', 'data_sources_scenarios', 'admin') %}
+{% set data_sources_active = ep in ('data_sources_ccc_api', 'engage_waste_api_page', 'data_sources_klarakarbon', 'data_sources_employee_commuting', 'data_sources_averages', 'data_sources_scenarios', 'admin') %}
 {% set data_outputs_active = ep in ('analytics_mapped_window_output', 'analytics_emissions_totals', 'analytics_share_analysis', 'data_output_travel', 'data_output_klarakarbon') %}
 {% set data_active = ep in ('dashboard', 'products_input_page', 'mapping_runs', 'admin_mapping_runs', 'mapping_review_page', 'mapping_previews_page', 'mapping_preview_detail') or data_sources_active or data_outputs_active %}
 {% set analytics_active = ep in ('analytics_forecasting', 'analytics_decarbonization', 'analytics_emissions_map', 'governance_double_counting_check') %}
@@ -451,15 +451,11 @@
             {{ illu.illu_sidebar_ds_scenarios('app-sidebar__icon') }}
             <span>Scenarios</span>
           </a>
-          {% if current_user.is_admin %}
-          <a href="{{ url_for('data_sources_employee_commuting_headcount') }}" class="app-sidebar__menu-item {% if ep == 'data_sources_employee_commuting_headcount' %}is-active{% endif %}" {% if ep == 'data_sources_employee_commuting_headcount' %}aria-current="page"{% endif %}>
+          <a href="{{ url_for('data_sources_employee_commuting') }}" class="app-sidebar__menu-item {% if ep == 'data_sources_employee_commuting' %}is-active{% endif %}" {% if ep == 'data_sources_employee_commuting' %}aria-current="page"{% endif %}>
             {{ illu.illu_sidebar_ds_headcount('app-sidebar__icon') }}
-            <span>Headcount</span>
+            <span>Employee Commuting</span>
           </a>
-          <a href="{{ url_for('data_sources_employee_commuting_national_averages') }}" class="app-sidebar__menu-item {% if ep == 'data_sources_employee_commuting_national_averages' %}is-active{% endif %}" {% if ep == 'data_sources_employee_commuting_national_averages' %}aria-current="page"{% endif %}>
-            {{ illu.illu_sidebar_ds_national('app-sidebar__icon') }}
-            <span>National Averages</span>
-          </a>
+          {% if current_user.is_admin %}
           <a href="{{ url_for('admin') }}#travel-preprocessing-upload" class="app-sidebar__menu-item">
             {{ illu.illu_nav_pen_entry('app-sidebar__icon') }}
             <span>Travel Preprocessing Upload</span>

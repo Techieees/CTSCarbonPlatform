@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+{% block title %}Employee Commuting · Data Sources{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/analytics-output.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/employee-commuting.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container py-4 analytics-output-page" id="ec-page-root">
+  <section class="ec-hero mb-4">
+    <div class="text-muted small text-uppercase fw-semibold tracking-wide mb-2">Data · Data Sources · Employee Commuting</div>
+    <div class="d-flex flex-column flex-lg-row gap-3 justify-content-between align-items-lg-start">
+      <div>
+        <h1 class="h2 ec-hero__title">{{ employee_commuting_display_category }}</h1>
+        <p class="ec-hero__lead mb-0">
+          Manage monthly headcount, (for administrators) national commute mixes, and queue imports into Data Entry for
+          <strong>{{ employee_commuting_display_category }}</strong>.
+          The internal workbook template key is <code class="small">{{ employee_commuting_template_key }}</code>.
+        </p>
+      </div>
+      <div class="d-flex flex-column flex-sm-row gap-2">
+        <a class="btn btn-outline-secondary analytics-output-hero__action" href="{{ dashboard_url }}">Open Data Entry</a>
+        <a class="btn btn-ghost analytics-output-hero__action" href="{{ url_for('dashboard') }}">Mapping hub</a>
+      </div>
+    </div>
+  </section>
+
+  {% if reporting_period_year_arg is none %}
+  <p class="text-muted small mb-3">
+    Month options default to a rolling window around the current calendar year.
+    Add <code class="small">?period_year=2028</code> to this URL if you need another year’s dropdown only.
+  </p>
+  {% else %}
+  <p class="text-muted small mb-3">Showing months for reporting year <strong>{{ reporting_period_year_arg }}</strong>.</p>
+  {% endif %}
+
+  <div id="ecFlash" class="alert alert-danger d-none" role="alert"></div>
+  <div id="ecNotice" class="alert alert-success d-none" role="status"></div>
+
+  <ul class="nav nav-tabs ec-subnav px-1" id="ecMainTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button type="button" class="nav-link active" id="ec-tab-headcount" data-bs-toggle="tab" data-bs-target="#ec-pane-headcount" role="tab" aria-controls="ec-pane-headcount" aria-selected="true">
+        Headcount
+      </button>
+    </li>
+    {% if privileged %}
+    <li class="nav-item" role="presentation">
+      <button type="button" class="nav-link" id="ec-tab-national" data-bs-toggle="tab" data-bs-target="#ec-pane-national" role="tab" aria-controls="ec-pane-national" aria-selected="false">
+        National averages
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button type="button" class="nav-link" id="ec-tab-dataset" data-bs-toggle="tab" data-bs-target="#ec-pane-dataset" role="tab" aria-controls="ec-pane-dataset" aria-selected="false">
+        Generated dataset · history
+      </button>
+    </li>
+    {% endif %}
+  </ul>
+
+  <div class="tab-content pt-3" id="ecTabContent">
+    <div class="tab-pane fade show active" id="ec-pane-headcount" role="tabpanel" aria-labelledby="ec-tab-headcount" tabindex="0">
+      <article class="analytics-output-card ec-shell mb-4">
+        <div class="analytics-output-card__header flex-wrap gap-2">
+          <div class="flex-grow-1">
+            <h2 class="analytics-output-card__title mb-1 h5">Headcount (monthly)</h2>
+            <p class="analytics-output-card__meta mb-0">
+              Columns <strong>Company Name</strong>, <strong>Month</strong>, <strong>Headcount</strong>.
+              {% if not privileged %}
+              Your company name is fixed to <strong>{{ scoped_company_name or '—' }}</strong>.
+              {% endif %}
+            </p>
+          </div>
+          <button type="button" class="btn btn-sm btn-primary" id="ecHeadcountAddBtn">Add row</button>
+          <button type="button" class="btn btn-sm btn-outline-primary" id="ecHeadcountSaveBtn">Save headcount</button>
+        </div>
+        <div class="analytics-output-controls px-3 pb-3">
+          <div id="ecHeadcountBusy" class="small text-muted d-none mb-2">Saving…</div>
+          <div class="ec-table-shell table-responsive border rounded">
+            <table class="table table-hover table-sm align-middle mb-0" id="ecHeadcountTable">
+              <thead>
+                <tr>
+                  <th>Company Name</th>
+                  <th>Month</th>
+                  <th class="text-end">Headcount</th>
+                  <th class="text-end narrow">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="ecHeadcountBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </article>
+
+      <article class="analytics-output-card ec-shell mb-4">
+        <div class="analytics-output-card__header">
+          <div>
+            <h2 class="analytics-output-card__title mb-1 h5">How this is calculated</h2>
+            <p class="analytics-output-card__meta mb-2">Short, user-facing summary of the pipeline:</p>
+          </div>
+        </div>
+        <div class="px-3 pb-3">
+          <ul class="small text-muted ps-3 mb-0">
+            <li><strong>Headcount</strong> is tracked <strong>every month</strong> for each legal entity (company).</li>
+            <li>Each company is linked to a <strong>country</strong>; administrator-maintained <strong>national averages</strong> supply a typical <strong>one-way commute distance</strong> (km) and <strong>mode split</strong> (% car, bus, walking/cycling, mixed).</li>
+            <li>Those percentages <strong>allocate headcount across transport modes</strong> (integer-split so totals match headcount).</li>
+            <li>Distance rules (round-trip, ~20 commute days per month) follow the same assumptions as the CTS mapping preprocessor; <strong>mapping</strong> applies emission factors to produce <strong>tCO₂e</strong> — so you should <strong>run Map</strong> on
+              <strong>{{ employee_commuting_display_category }}</strong> after import.</li>
+            <li>Imported rows are tagged <kbd class="small">Data Source = Employee Commuting</kbd> and appear under
+              <strong>{{ employee_commuting_display_category }}</strong> in Data Entry (template key <code class="small">{{ employee_commuting_template_key }}</code>).</li>
+          </ul>
+        </div>
+      </article>
+    </div>
+
+    {% if privileged %}
+    <div class="tab-pane fade" id="ec-pane-national" role="tabpanel" aria-labelledby="ec-tab-national" tabindex="0">
+      <article class="analytics-output-card ec-shell mb-4">
+        <div class="analytics-output-card__header flex-wrap gap-2">
+          <div class="flex-grow-1">
+            <h2 class="analytics-output-card__title mb-1 h5">National averages</h2>
+            <p class="analytics-output-card__meta mb-0">Admin / super_admin / owner only. One row per country; mode percentages must sum to 100%.</p>
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-primary" id="ecNationalAddBtn">Add country</button>
+          <button type="button" class="btn btn-sm btn-primary" id="ecNationalSaveBtn">Save national averages</button>
+        </div>
+        <div class="analytics-output-controls px-3 pb-3">
+          <div id="ecNationalBusy" class="small text-muted d-none mb-2">Saving…</div>
+          <div class="ec-table-shell table-responsive border rounded">
+            <table class="table table-hover table-sm align-middle mb-0">
+              <thead>
+                <tr>
+                  {% for fld in national_fields %}
+                  <th>{{ fld.label }}</th>
+                  {% endfor %}
+                  <th class="text-end narrow">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="ecNationalBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="px-3 pb-3 small text-muted">
+          Published preprocessing workbook: <code class="small">{{ published_workbook_name }}</code>
+        </div>
+      </article>
+    </div>
+
+    <div class="tab-pane fade" id="ec-pane-dataset" role="tabpanel" aria-labelledby="ec-tab-dataset" tabindex="0">
+      <article class="analytics-output-card ec-shell mb-4">
+        <div class="analytics-output-card__header flex-wrap gap-2">
+          <div class="flex-grow-1">
+            <h2 class="analytics-output-card__title mb-1 h5">Create dataset</h2>
+            <p class="analytics-output-card__meta mb-0">
+              Writes rows into Data Entry for <strong>{{ employee_commuting_display_category }}</strong>, then queues the same
+              <strong>background mapping jobs</strong> used after CCC import so <strong>Mapping Preview Archive</strong> and dashboards stay in sync once mapping completes.
+            </p>
+          </div>
+        </div>
+        <div class="analytics-output-controls px-3 pb-3">
+          <div class="row g-3 align-items-end mb-3">
+            <div class="col-md-6 col-lg-4">
+              <label class="form-label" for="ecTemplateModeSelect">Template mode</label>
+              <select id="ecTemplateModeSelect" class="form-select form-select-sm">
+                {% for m in template_mode_options %}
+                <option value="{{ m }}" {% if m == template_mode_current %}selected{% endif %}>{{ m }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6 col-lg-8 d-flex gap-2 flex-wrap align-items-center">
+              <button type="button" class="btn btn-primary btn-sm" id="ecGenerateBtn">
+                Create Employee Commuting Data Set
+              </button>
+              <span class="small text-muted" id="ecGenerateJobLabel"></span>
+            </div>
+          </div>
+
+          <div class="progress my-3 d-none" id="ecJobProgressWrap" style="height: 0.5rem;">
+            <div class="progress-bar" id="ecJobProgressBar" role="progressbar" style="width: 0;"></div>
+          </div>
+          <div class="small text-muted mb-3" id="ecJobProgressMessage"></div>
+
+          <h3 class="h6 fw-semibold">Recent runs</h3>
+          <div class="ec-table-shell table-responsive border rounded">
+            <table class="table table-sm table-hover mb-0 align-middle">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Job</th>
+                  <th>Status</th>
+                  <th class="text-end">Saved rows</th>
+                  <th class="text-end">Dup. skipped</th>
+                  <th class="text-end">Maps queued</th>
+                  <th>Created</th>
+                  <th>Completed</th>
+                </tr>
+              </thead>
+              <tbody id="ecRunsBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </article>
+    </div>
+    {% endif %}
+  </div>
+
+  <template id="ecHeadcountPrivilegedRowTpl">
+    <tr>
+      <td><select class="form-select form-select-sm ec-company-select" aria-label="Company Name"></select></td>
+      <td><select class="form-select form-select-sm ec-month-select" aria-label="Month"></select></td>
+      <td class="text-end"><input type="number" class="form-control form-control-sm ec-hc-num text-end" min="0" step="1" aria-label="Headcount" /></td>
+      <td class="text-end narrow"><button type="button" class="btn btn-sm btn-outline-danger ec-row-del" title="Remove row">&times;</button></td>
+    </tr>
+  </template>
+
+  <template id="ecHeadcountUserRowTpl">
+    <tr>
+      <td><span class="form-control-plaintext ec-comp-readonly fw-medium py-1 small text-body-secondary wrap-text"></span></td>
+      <td><select class="form-select form-select-sm ec-month-select" aria-label="Month"></select></td>
+      <td class="text-end"><input type="number" class="form-control form-control-sm ec-hc-num text-end" min="0" step="1" aria-label="Headcount" /></td>
+      <td class="text-end narrow"><button type="button" class="btn btn-sm btn-outline-danger ec-row-del" title="Remove row">&times;</button></td>
+    </tr>
+  </template>
+
+  <template id="ecNationalRowTpl">
+    <tr>
+      {% for fld in national_fields %}
+      {% if fld.input_type == 'number' %}
+      <td><input type="number" class="form-control form-control-sm ec-na-{{ fld.key }}" step="any" aria-label="{{ fld.label }}" /></td>
+      {% else %}
+      <td><input type="text" class="form-control form-control-sm ec-na-{{ fld.key }}" aria-label="{{ fld.label }}" /></td>
+      {% endif %}
+      {% endfor %}
+      <td class="text-end narrow"><button type="button" class="btn btn-sm btn-outline-danger ec-row-del" title="Remove row">&times;</button></td>
+    </tr>
+  </template>
+</div>
+
+<script type="application/json" id="ec-page-boot">{{ {
+  'privileged': privileged,
+  'scoped_company_name': scoped_company_name or '',
+  'display_category': employee_commuting_display_category,
+  'reporting_months': reporting_periods or [],
+  'company_options': company_options or [],
+  'api_headcount': api_headcount,
+  'api_national': api_national,
+  'api_generate': api_generate,
+  'api_runs': api_runs,
+  'job_status_tpl': job_status_template,
+  'headcount_seed': headcount_rows,
+  'national_seed': national_rows,
+  'runs_seed': runs_preview,
+  'template_mode': template_mode_current
+}|tojson }}</script>
+
+{% endblock %}
+
+{% block scripts %}
+<script defer src="{{ url_for('static', filename='js/employee-commuting.js') }}"></script>
+{% endblock %}

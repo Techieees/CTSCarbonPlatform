@@ -12,7 +12,7 @@ import {
   withOpacity,
   companyPairGradient
 } from "./echarts_theme.js";
-import { getColorByKey, getCompanyColorPair } from "./chart_colors.js";
+import { getColorByKey, getCompanyColorPair, getCommuteModeColor } from "./chart_colors.js";
 
 export function renderCompanyChart(config) {
   const {
@@ -91,7 +91,10 @@ export function renderCompanyChart(config) {
     }
     return raw.map((v, di) => {
       const label = normalizedLabels[di] ?? `Item ${di + 1}`;
-      const c = getColorByKey(label, categoryColorKind);
+      let c =
+        categoryColorKind === "commute_mode"
+          ? getCommuteModeColor(label)
+          : getColorByKey(label, categoryColorKind);
       const radius = horizontal ? [0, 12, 12, 0] : [12, 12, 0, 0];
       const val = animateValues ? v : 0;
       let fill = c;

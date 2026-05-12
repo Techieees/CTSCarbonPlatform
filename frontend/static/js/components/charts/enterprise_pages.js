@@ -317,6 +317,98 @@ function initHomeEnterprise() {
     });
   });
 
+  function isHomeEmployeeCommutingRow(r) {
+    const raw = `${String(r.sheet || "")} ${String(r.category || "")}`.toLowerCase();
+    if (/\bscope\s*3\b/.test(raw) && /\bcat(?:egory)?\s*7\b/.test(raw)) {
+      return true;
+    }
+    const sheet = `${String(r.sheet || "")}`.toLowerCase();
+    if (/\bemployee\s+commute/.test(sheet) || sheet.includes("cat 7 employee commute")) {
+      return true;
+    }
+    if (/\bcommut/.test(sheet) && /\bemployee\b/.test(sheet)) {
+      return true;
+    }
+    return false;
+  }
+
+  const ecRows = (reportingRows || []).filter(
+    (r) => Number(r.scope || 0) === 3 && isHomeEmployeeCommutingRow(r)
+  );
+
+  bind("homeChartEcModes", (el) => {
+    if (!ecRows.length) {
+      showEmptyState(el, "Mapped Employee Commuting rows will appear once Cat 7 workbooks include reporting-period values.");
+      return;
+    }
+    const totals = ecRows.reduce((a, rt) => a + Number(rt.emissions || 0), 0);
+    const m = new Map();
+    ecRows.forEach((rt) => {
+      const k = `${String(rt.commute_mode != null ? rt.commute_mode : "").trim()}` || "Mode unspecified";
+      m.set(k, (m.get(k) || 0) + Number(rt.emissions || 0));
+    });
+    const pairs = [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12);
+    if (!totals || !pairs.length) {
+      showEmptyState(el, "Commuting workbook rows summed to zero in this snapshot.");
+      return;
+    }
+    mountHorizontalBarChart(el, {
+      labels: pairs.map(([k]) => k),
+      values: pairs.map(([, v]) => v),
+      height: 280,
+      categoryColorKind: "commute_mode",
+      seriesName: "tCO₂e",
+      tooltipSuffix: " tCO₂e",
+      horizontal: false,
+    });
+  });
+
+  bind("homeChartEcCompanies", (el) => {
+    if (!ecRows.length) {
+      showEmptyState(el, "Mapped Employee Commuting rows by company appear after Cat 7 uploads are mapped.");
+      return;
+    }
+    const m = new Map();
+    ecRows.forEach((rt) => {
+      const co =
+        `${String(rt.company !== undefined && rt.company !== null ? rt.company : "").trim()}` || "—";
+      m.set(co, (m.get(co) || 0) + Number(rt.emissions || 0));
+    });
+    const pairs = [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 16);
+    mountHorizontalBarChart(el, {
+      labels: pairs.map(([k]) => k),
+      values: pairs.map(([, v]) => v),
+      height: 300,
+      categoryColorKind: "company",
+      seriesName: "tCO₂e",
+      tooltipSuffix: " tCO₂e",
+    });
+  });
+
+  bind("homeChartEcTrend", (el) => {
+    if (!ecRows.length) {
+      showEmptyState(el, "Commuting emissions trend requires workbook reporting-period values.");
+      return;
+    }
+    const monthPortfolio = ecRows.map((rt) => ({
+      company: "Portfolio",
+      dateLabel: rt.dateLabel || rt.sortKey,
+      sortKey: rt.sortKey,
+      emissions: Number(rt.emissions || 0),
+    }));
+    const mt = monthlyTotals(monthPortfolio);
+    if (!mt.length) {
+      showEmptyState(el, "Could not consolidate commuting months.");
+      return;
+    }
+    mountMonthlyTrendChart(el, {
+      labels: mt.map((x) => x.dateLabel),
+      values: mt.map((x) => x.value),
+      height: 280,
+      tooltipSuffix: " tCO₂e",
+    });
+  });
+
   bind("homeChartMonthHeat", (el) => {
     let rows = [];
     if (Array.isArray(reportingRows) && reportingRows.length) {

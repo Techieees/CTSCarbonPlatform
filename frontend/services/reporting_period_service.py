@@ -1,4 +1,4 @@
-"""Reporting period normalization for Data Entry (2026 canonical labels)."""
+"""Reporting period normalization for Data Entry (CTS month–year labels)."""
 
 from __future__ import annotations
 
@@ -23,9 +23,13 @@ _MONTH_ABBREV = (
     "Dec",
 )
 
-# Canonical *storage* labels for 2026: machine-parsable, no typographic apostrophe (Jan-2026).
+# Baseline canonical month labels used for comparisons (2026 was the historical default launch year).
+# `normalize_reporting_period` resolves any supported calendar year via month+year parsing.
 # Filtering/sorting should use parsed keys (YYYY-MM), not string collation on labels.
 _CANONICAL_PERIODS = [f"{abbr}-2026" for abbr in _MONTH_ABBREV]
+
+MIN_REPORTING_YEAR = 1990
+MAX_REPORTING_YEAR = 2100
 _LEGACY_APOSTROPHE_PERIODS = [f"{abbr}'-2026" for abbr in _MONTH_ABBREV]
 
 _MONTH_NAME_TO_NUM = {
@@ -47,10 +51,49 @@ def get_reporting_period_options_2026() -> list[str]:
     return list(_CANONICAL_PERIODS)
 
 
-def _canonical_for_month(month: int, year: int) -> str | None:
-    if year != 2026 or month < 1 or month > 12:
+def canonical_month_year_label(month: int, year: int) -> str | None:
+    """Jan-YYYY style label with no apostrophe (e.g. Jan-2025)."""
+    if month < 1 or month > 12 or year < MIN_REPORTING_YEAR or year > MAX_REPORTING_YEAR:
         return None
-    return _CANONICAL_PERIODS[month - 1]
+    return f"{_MONTH_ABBREV[month - 1]}-{year}"
+
+
+def get_reporting_period_options_for_year(year: int) -> list[str]:
+    """Twelve CTS-style month labels for one calendar year (chronological)."""
+    yy = int(year)
+    if yy < MIN_REPORTING_YEAR or yy > MAX_REPORTING_YEAR:
+        return []
+    out: list[str] = []
+    for m in range(1, 13):
+        lab = canonical_month_year_label(m, yy)
+        if lab:
+            out.append(lab)
+    return out
+
+
+def get_reporting_period_options_surrounding_center(
+    center_year: int | None = None,
+    *,
+    past_years: int = 1,
+    future_years: int = 1,
+) -> list[str]:
+    """
+    Union of monthly labels across a small year window around `center_year`
+    (defaults to UTC current year).
+    Used by Data Entry and Employee Commuting month pickers.
+    """
+    y0 = int(center_year) if center_year is not None else datetime.utcnow().year
+    y_start = max(MIN_REPORTING_YEAR, y0 - max(0, int(past_years)))
+    y_end = min(MAX_REPORTING_YEAR, y0 + max(0, int(future_years)))
+    periods: list[str] = []
+    for yy in range(y_start, y_end + 1):
+        periods.extend(get_reporting_period_options_for_year(yy))
+    # Chronological sort (year, month)
+    return sorted(set(periods), key=reporting_period_sort_key)
+
+
+def _canonical_for_month(month: int, year: int) -> str | None:
+    return canonical_month_year_label(month, year)
 
 
 def display_reporting_period_label(value: object) -> str:
@@ -92,7 +135,8 @@ def reporting_period_sort_key(label: object) -> tuple[int, int]:
 
 def normalize_reporting_period(value: object) -> str:
     """
-    Normalize common inputs to Jan-2026 … Dec-2026 when year/month resolves to 2026.
+    Normalize common inputs to canonical Jan-YYYY labels (no typographic apostrophe)
+    when a calendar month and year can be resolved (year typically 1990–2100).
     Otherwise returns stripped / whitespace-collapsed original string (never raises).
 
     Legacy apostrophe forms (Jan'-2026) are normalized to Jan-2026 so duplicate malformed
@@ -111,6 +155,15 @@ def normalize_reporting_period(value: object) -> str:
     s = _WS_RE.sub(" ", str(value).strip())
     if not s:
         return ""
+
+    # Accept common variants before token parsing (e.g. "JAN 2028", "January 2028").
+    s_norm = s.replace("\u00a0", " ").strip()
+    m_upper = _MONTH_TOKEN_RE.match(s_norm)
+    if m_upper:
+        mon_piece = m_upper.group("mon")
+        yr_piece = m_upper.group("year")
+        if mon_piece and mon_piece.isalpha() and mon_piece == mon_piece.upper() and len(mon_piece) <= 9:
+            s = f"{mon_piece.title()} {yr_piece}".strip()
 
     for p in _CANONICAL_PERIODS:
         if s.casefold() == p.casefold():

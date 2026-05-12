@@ -116,12 +116,27 @@ const CATEGORY_PALETTE = [
   "#1f9d55",
   "#22c55e",
   "#4ade80",
+  "#86efac",
   "#312e81",
   "#1d4ed8",
   "#475569",
   "#334155",
   "#64748b"
 ];
+
+const COMMUTE_MODE_COLOR_MAP = new Map(
+  Object.entries({
+    car: "#2563eb",
+    bus: "#0d9488",
+    "walking and cycling": "#15803d",
+    mixed: "#ca8a04",
+    rail: "#7c3aed",
+    train: "#7c3aed",
+    metro: "#6366f1",
+    motorcycle: "#b45309",
+    taxi: "#0e7490"
+  })
+);
 
 /** CTS-biased synthesis for large category sets (no rainbow). */
 export function generateColors(count) {
@@ -149,6 +164,19 @@ function hashString(s) {
 
 function normalizeKey(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+/** Stable bar colors for Employee Commuting (Cat 7) mode breakdowns — hash fallback is order-independent. */
+export function getCommuteModeColor(mode) {
+  const n = normalizeKey(mode);
+  if (!n || n === "mode unspecified") {
+    return "#64748b";
+  }
+  if (COMMUTE_MODE_COLOR_MAP.has(n)) {
+    return COMMUTE_MODE_COLOR_MAP.get(n);
+  }
+  const idx = hashString(`commute-mode:${n}`) % CATEGORY_PALETTE.length;
+  return CATEGORY_PALETTE[idx];
 }
 
 function allocateMappedColor(registry, key, palette) {

@@ -141,6 +141,27 @@
       "override_fields": ["CO2e (kg)"],
       "override_logic": "prefer_override"
     },
+
+    "Scope 3 Cat 7 Employee Commute": {
+      "columns": [
+        "Source_File",
+        "Country",
+        "Reporting period (month, year)",
+        "Mode of Transport",
+        "km travelled one way",
+        "km travelled per day",
+        "km travelled per month",
+        "Synthetic",
+        "Synthetic_Record_Note",
+        "Data_Type",
+        "employee_commuting_import_dedup",
+        "Site Tag",
+        "Data Source"
+      ],
+      "mapping_keys": ["Mode of Transport", "Country"],
+      "calculation_type": "distance_based",
+      "calculation_fields": ["km travelled per month"]
+    },
   
     "Scope 3 Category 9 Downstream Transportation": {
       "columns": [

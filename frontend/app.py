@@ -135,11 +135,11 @@ EMPLOYEE_COMMUTING_HEADCOUNT_CSV = (
     EMPLOYEE_COMMUTING_DATA_DIR / "employee_commuting_headcount.csv"
 )
 EMPLOYEE_COMMUTING_HEADCOUNT_FIELDS: tuple[dict[str, str], ...] = (
-    {"key": "company_name", "label": "Company_Name", "input_type": "text"},
+    {"key": "company_name", "label": "Company Name", "input_type": "text"},
+    {"key": "month", "label": "Month", "input_type": "select"},
     {"key": "headcount", "label": "Headcount", "input_type": "number"},
 )
 EMPLOYEE_COMMUTING_NATIONAL_AVERAGE_FIELDS: tuple[dict[str, str], ...] = (
-    {"key": "company_name", "label": "Company_Name", "input_type": "text"},
     {"key": "country", "label": "Country", "input_type": "text"},
     {"key": "average_one_day", "label": "Average one day", "input_type": "number"},
     {"key": "car_pct", "label": "Car %", "input_type": "number"},
@@ -280,6 +280,7 @@ OPERATING_SITE_TYPE_OPTIONS: tuple[str, ...] = ("office", "factory", "warehouse"
 STAGE2_2026_SHEET_ALIASES: dict[str, str] = {
     "Scope 3 Category 1 Purchased Goods & Services": "Scope 3 Cat 1 Goods Spend",
     "Scope 3 Category 6 Business Travel": "Scope 3 Cat 6 Business Travel",
+    "Scope 3 Category 7 Employee Commuting": "Scope 3 Cat 7 Employee Commute",
     "Scope 3 Category 9 Downstream Transportation": "Scope 3 Cat 4+9 Transport Spend",
     "Scope 3 Category 12 End of Life": "Scope 3 Cat 12 End of Life",
 }
@@ -550,6 +551,10 @@ job_store = jobs
 _JOBS_LOCK = threading.Lock()
 _JOB_RETENTION_MINUTES = 240
 _SUBPROCESS_TIMEOUT_SECONDS = 300
+# Employee Commuting: ignore stuck in-process jobs older than this when deciding 409 vs allow enqueue.
+_EMPLOYEE_COMMUTING_CONCURRENT_JOB_STALE_MINUTES = 45
+# DB run rows left queued/running after worker crash — auto-fail so new generations are not blocked forever.
+_EMPLOYEE_COMMUTING_DB_RUN_AUTO_FAIL_MINUTES = 90
 
 _EVIDENCE_UPLOAD_GUARD = threading.Lock()
 _EVIDENCE_UPLOAD_LOCKS: dict[tuple[str, str], threading.Lock] = {}
@@ -668,19 +673,78 @@ def _serialize_job(job: dict[str, object]) -> dict[str, object]:
     return response
 
 
-def _active_job_id_for_job_type(job_type: str) -> str | None:
-    """job_id if a background job of this type is pending or running (in-process registry only)."""
+def _job_activity_datetime(job: dict[str, object]) -> datetime | None:
+    """Best-effort timestamp for staleness checks (prefer updated_at, then started_at, then created_at)."""
+    for key in ("updated_at", "started_at", "created_at"):
+        ts = str(job.get(key) or "").strip()
+        if not ts:
+            continue
+        try:
+            return datetime.fromisoformat(ts.replace("Z", ""))
+        except Exception:
+            continue
+    return None
+
+
+def _active_job_id_for_job_type(job_type: str, *, ignore_stale_after_minutes: int | None = None) -> str | None:
+    """
+    job_id if a background job of this type is pending or running (in-process registry only).
+
+    When `ignore_stale_after_minutes` is set, jobs whose last activity is older than that window
+    are ignored (treat as no active job) so a crashed worker does not permanently block new work.
+    """
     jt = str(job_type or "").strip()
     if not jt:
         return None
+    cutoff: datetime | None = None
+    if ignore_stale_after_minutes is not None:
+        cutoff = datetime.utcnow() - timedelta(minutes=max(1, int(ignore_stale_after_minutes)))
     with _JOBS_LOCK:
         for job in jobs.values():
             if str(job.get("type") or "") != jt:
                 continue
             if str(job.get("status") or "") in {"pending", "running"}:
+                if cutoff is not None:
+                    jdt = _job_activity_datetime(job)
+                    if jdt is not None and jdt < cutoff:
+                        continue
                 jid = str(job.get("job_id") or "").strip()
                 return jid or None
     return None
+
+
+def _employee_commuting_fail_stale_db_runs() -> None:
+    """Mark orphaned queued/running run records as failed so UI and concurrency checks recover."""
+    cutoff = datetime.utcnow() - timedelta(minutes=_EMPLOYEE_COMMUTING_DB_RUN_AUTO_FAIL_MINUTES)
+    rows = (
+        EmployeeCommutingGeneratedRun.query.filter(
+            EmployeeCommutingGeneratedRun.status.in_(("queued", "running")),
+            EmployeeCommutingGeneratedRun.created_at < cutoff,
+        )
+        .limit(200)
+        .all()
+    )
+    if not rows:
+        return
+    now = datetime.utcnow()
+    for rr in rows:
+        rr.status = "failed"
+        rr.completed_at = now
+        rr.stats_json = json.dumps({"ok": False, "error": "stale_run_auto_failed"})
+    db.session.commit()
+
+
+def _employee_commuting_blocking_db_run() -> EmployeeCommutingGeneratedRun | None:
+    """Recent non-terminal DB run row (blocks a new generation until complete or stale-failed)."""
+    fresh_cut = datetime.utcnow() - timedelta(minutes=_EMPLOYEE_COMMUTING_DB_RUN_AUTO_FAIL_MINUTES)
+    return (
+        EmployeeCommutingGeneratedRun.query.filter(
+            EmployeeCommutingGeneratedRun.status.in_(("queued", "running")),
+            EmployeeCommutingGeneratedRun.created_at >= fresh_cut,
+        )
+        .order_by(EmployeeCommutingGeneratedRun.id.desc())
+        .first()
+    )
 
 
 def run_in_background(job_type: str, company: str, target, *args, **kwargs) -> str:
@@ -1082,7 +1146,18 @@ def _nav_profile_context():
         except Exception:
             return False
 
-    return dict(nav_profile_photo_url=nav_profile_photo_url, can_manage_supplier_registries=can_manage_supplier_registries)
+    def can_manage_employee_commuting_privileged() -> bool:
+        """Matches API checks: owner / super_admin / admin — not merely is_admin legacy flag."""
+        try:
+            return bool(current_user.is_authenticated and _user_can_manage_employee_commuting_privileged(current_user))
+        except Exception:
+            return False
+
+    return dict(
+        nav_profile_photo_url=nav_profile_photo_url,
+        can_manage_supplier_registries=can_manage_supplier_registries,
+        can_manage_employee_commuting_privileged=can_manage_employee_commuting_privileged,
+    )
 
 
 # Database models
@@ -1862,25 +1937,51 @@ class CsrdPolicy(db.Model):
 
 class EmployeeCommutingHeadcount(db.Model):
     __tablename__ = "employee_commuting_headcount"
+    __table_args__ = (
+        db.UniqueConstraint("company_name", "reporting_period_key", name="uq_ec_headcount_company_month"),
+        db.Index("ix_ec_headcount_company", "company_name"),
+    )
+
     id = db.Column(db.Integer, primary_key=True)
-    company_name = db.Column(db.String(200), nullable=False, unique=True)
+    company_name = db.Column(db.String(200), nullable=False)
+    reporting_period_key = db.Column(db.String(7), nullable=False)  # YYYY-MM
+    reporting_period_label = db.Column(db.String(40), nullable=False)
     headcount = db.Column(db.Integer, nullable=False)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class EmployeeCommutingNationalAverage(db.Model):
-    __tablename__ = "employee_commuting_national_average"
+    """Country-level national transport averages (single row per country)."""
+
+    __tablename__ = "employee_commuting_national_averages"
+    __table_args__ = (db.UniqueConstraint("country", name="uq_ec_nat_avg_country"),)
+
     id = db.Column(db.Integer, primary_key=True)
-    company_name = db.Column(db.String(200), nullable=False, unique=True)
     country = db.Column(db.String(100), nullable=False)
     average_one_day = db.Column(db.Float, nullable=False)
     car_pct = db.Column(db.Float, nullable=False)
     bus_pct = db.Column(db.Float, nullable=False)
     walking_and_cycling_pct = db.Column(db.Float, nullable=False)
     mixed_pct = db.Column(db.Float, nullable=False)
+    updated_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class EmployeeCommutingGeneratedRun(db.Model):
+    """Audit trail for queued / completed Employee Commuting → Data Entry jobs."""
+
+    __tablename__ = "employee_commuting_generated_run"
+
+    id = db.Column(db.Integer, primary_key=True)
+    job_id = db.Column(db.String(32), nullable=True, index=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    status = db.Column(db.String(32), nullable=False, default="queued")
+    stats_json = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    completed_at = db.Column(db.DateTime, nullable=True)
 
 
 class Notification(db.Model):
@@ -2385,6 +2486,79 @@ def _csrd_filename_is_pdf(filename: str) -> bool:
     return Path(secure_filename(filename or "")).suffix.lower() == ".pdf"
 
 
+def _migrate_employee_commuting_legacy_tables() -> None:
+    """SQLite-compatible one-time migrations for renamed / widened commuter tables."""
+    try:
+        from sqlalchemy import inspect, text
+
+        inspector = inspect(db.engine)
+        if inspector.has_table("employee_commuting_headcount"):
+            cols = {c["name"] for c in inspector.get_columns("employee_commuting_headcount")}
+            if "reporting_period_key" not in cols:
+                with db.engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE employee_commuting_headcount RENAME TO employee_commuting_headcount_legacy"))
+                db.create_all()
+
+        inspector = inspect(db.engine)
+        if inspector.has_table("employee_commuting_headcount_legacy"):
+            with db.engine.begin() as conn:
+                legacy = conn.execute(text("SELECT company_name, headcount FROM employee_commuting_headcount_legacy")).fetchall()
+                for cn, hc in legacy:
+                    cname = _clean_employee_commuting_company(cn)
+                    if not cname:
+                        continue
+                    try:
+                        hcv = int(round(float(hc)))
+                    except Exception:
+                        continue
+                    conn.execute(
+                        text(
+                            "INSERT INTO employee_commuting_headcount "
+                            "(company_name, reporting_period_key, reporting_period_label, headcount, created_at, updated_at) "
+                            "VALUES (:cn, :pk, :pl, :hc, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+                        ),
+                        {"cn": cname, "pk": "2026-01", "pl": "Jan-2026", "hc": hcv},
+                    )
+                conn.execute(text("DROP TABLE employee_commuting_headcount_legacy"))
+
+        if inspector.has_table("employee_commuting_national_average") and inspector.has_table("employee_commuting_national_averages"):
+            with db.engine.begin() as conn:
+                exists_new = conn.execute(text("SELECT COUNT(1) FROM employee_commuting_national_averages")).scalar()
+                if int(exists_new or 0) == 0:
+                    old_rows = conn.execute(
+                        text(
+                            "SELECT country, AVG(average_one_day), AVG(car_pct), AVG(bus_pct), "
+                            "AVG(walking_and_cycling_pct), AVG(mixed_pct) "
+                            "FROM employee_commuting_national_average GROUP BY country"
+                        )
+                    ).fetchall()
+                    for r in old_rows:
+                        ctr = _safe_optional_str(r[0])
+                        if not ctr:
+                            continue
+                        conn.execute(
+                            text(
+                                "INSERT INTO employee_commuting_national_averages "
+                                "(country, average_one_day, car_pct, bus_pct, walking_and_cycling_pct, mixed_pct, created_at, updated_at) "
+                                "VALUES (:c, :a, :car, :bus, :wb, :mx, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+                            ),
+                            {
+                                "c": str(ctr).strip(),
+                                "a": float(r[1] or 0),
+                                "car": float(r[2] or 0),
+                                "bus": float(r[3] or 0),
+                                "wb": float(r[4] or 0),
+                                "mx": float(r[5] or 0),
+                            },
+                        )
+    except Exception:
+        pass
+
+
+def _user_can_manage_employee_commuting_privileged(user: object | None) -> bool:
+    return normalize_user_role(getattr(user, "role", None)) in {"owner", "super_admin", "admin"}
+
+
 def _employee_commuting_data_dir() -> Path:
     EMPLOYEE_COMMUTING_DATA_DIR.mkdir(parents=True, exist_ok=True)
     return EMPLOYEE_COMMUTING_DATA_DIR
@@ -2454,23 +2628,16 @@ def _safe_optional_float(value: object) -> float | None:
     return out
 
 
-def _try_build_employee_commuting_national_average_row(
+def _try_build_employee_commuting_country_average_row(
     *,
-    company_name_raw: object,
     country_raw: object,
     average_one_day_raw: object,
     car_pct_raw: object,
     bus_pct_raw: object,
     walking_and_cycling_pct_raw: object,
     mixed_pct_raw: object,
-    row_tag: str,
+    row_tag: object,
 ) -> dict[str, object] | None:
-    """Return a normalized row dict or None if the row must be skipped (logs reason)."""
-    company_name = _clean_employee_commuting_company(company_name_raw)
-    if not company_name:
-        _employee_commuting_skip_log("missing_company_name", row_tag)
-        return None
-
     country = _safe_optional_str(country_raw)
     if not country:
         _employee_commuting_skip_log("missing_country", row_tag)
@@ -2489,10 +2656,6 @@ def _try_build_employee_commuting_national_average_row(
     walking_and_cycling_pct = _safe_optional_float(walking_and_cycling_pct_raw)
     mixed_pct = _safe_optional_float(mixed_pct_raw)
 
-    if car_pct is None and bus_pct is None and walking_and_cycling_pct is None and mixed_pct is None:
-        _employee_commuting_skip_log("all_percentages_missing", row_tag)
-        return None
-
     if car_pct is None or bus_pct is None or walking_and_cycling_pct is None or mixed_pct is None:
         _employee_commuting_skip_log("missing_percentage_columns", row_tag)
         return None
@@ -2507,7 +2670,6 @@ def _try_build_employee_commuting_national_average_row(
         return None
 
     return {
-        "company_name": company_name,
         "country": country,
         "average_one_day": average_one_day,
         "car_pct": car_pct,
@@ -2519,8 +2681,6 @@ def _try_build_employee_commuting_national_average_row(
 
 def _is_wholly_empty_national_average_payload_row(raw: dict[str, object]) -> bool:
     """True when the JSON row has no meaningful content (blank template row)."""
-    if _clean_employee_commuting_company(raw.get("company_name")):
-        return False
     if _safe_optional_str(raw.get("country")):
         return False
     for key in ("average_one_day", "car_pct", "bus_pct", "walking_and_cycling_pct", "mixed_pct"):
@@ -2534,76 +2694,109 @@ def _finite_float_for_commuting_display(value: object, *, default: float = 0.0) 
     return float(x) if x is not None else default
 
 
-def _serialize_employee_commuting_headcount_rows() -> list[dict[str, object]]:
-    rows = EmployeeCommutingHeadcount.query.order_by(EmployeeCommutingHeadcount.company_name.asc()).all()
-    return [
-        {
-            "company_name": _clean_employee_commuting_company(row.company_name),
-            "headcount": int(row.headcount or 0),
-        }
-        for row in rows
-    ]
+def _employee_commuting_user_scope_norms(user_obj: object | None) -> set[str]:
+    raw = getattr(user_obj, "company_name", None) or ""
+    keys = {_norm_name(str(k).strip()) for k in (_company_candidate_keys(str(raw).strip())) if str(k).strip()}
+    return {k for k in keys if k}
+
+
+def _serialize_employee_commuting_headcount_rows(scoped_user: object | None = None) -> list[dict[str, object]]:
+    rows = (
+        EmployeeCommutingHeadcount.query.order_by(
+            EmployeeCommutingHeadcount.company_name.asc(),
+            EmployeeCommutingHeadcount.reporting_period_key.asc(),
+        )
+        .all()
+    )
+
+    privileged = scoped_user is None or _user_can_manage_employee_commuting_privileged(scoped_user)
+    allow_norm = _employee_commuting_user_scope_norms(scoped_user) if not privileged else None
+
+    payload: list[dict[str, object]] = []
+    for row in rows:
+        canon = (_resolve_template_company_name(row.company_name) or str(row.company_name or "").strip()).strip()
+        if not privileged:
+            if _norm_name(canon) not in (allow_norm or set()):
+                continue
+        payload.append(
+            {
+                "company_name": canon,
+                "month": _safe_optional_str(row.reporting_period_label) or (row.reporting_period_key or ""),
+                "reporting_period_key": str(row.reporting_period_key or "").strip(),
+                "reporting_period_label": _safe_optional_str(row.reporting_period_label) or "",
+                "headcount": int(row.headcount or 0),
+            }
+        )
+    return payload
 
 
 def _serialize_employee_commuting_national_average_rows() -> list[dict[str, object]]:
     with db.session.no_autoflush:
         rows = (
-            EmployeeCommutingNationalAverage.query.order_by(
-                EmployeeCommutingNationalAverage.company_name.asc()
-            ).all()
+            EmployeeCommutingNationalAverage.query.order_by(EmployeeCommutingNationalAverage.country.asc()).all()
         )
-    out: list[dict[str, object]] = []
-    for row in rows:
-        country_disp = _safe_optional_str(row.country) or ""
-        out.append(
-            {
-                "company_name": _clean_employee_commuting_company(row.company_name),
-                "country": country_disp,
-                "average_one_day": _finite_float_for_commuting_display(row.average_one_day),
-                "car_pct": _finite_float_for_commuting_display(row.car_pct),
-                "bus_pct": _finite_float_for_commuting_display(row.bus_pct),
-                "walking_and_cycling_pct": _finite_float_for_commuting_display(row.walking_and_cycling_pct),
-                "mixed_pct": _finite_float_for_commuting_display(row.mixed_pct),
-            }
-        )
-    return out
+    return [
+        {
+            "country": _safe_optional_str(row.country) or "",
+            "average_one_day": _finite_float_for_commuting_display(row.average_one_day),
+            "car_pct": _finite_float_for_commuting_display(row.car_pct),
+            "bus_pct": _finite_float_for_commuting_display(row.bus_pct),
+            "walking_and_cycling_pct": _finite_float_for_commuting_display(row.walking_and_cycling_pct),
+            "mixed_pct": _finite_float_for_commuting_display(row.mixed_pct),
+        }
+        for row in rows
+    ]
 
 
 def _publish_employee_commuting_files() -> None:
     _employee_commuting_data_dir()
 
-    headcount_rows = _serialize_employee_commuting_headcount_rows()
-    national_average_rows = _serialize_employee_commuting_national_average_rows()
-
-    headcount_df = pd.DataFrame(
-        [
-            {
-                "Company_Name": row["company_name"],
-                "Headcount": int(row["headcount"] or 0),
-            }
-            for row in headcount_rows
-        ]
+    headcount_records = (
+        EmployeeCommutingHeadcount.query.order_by(
+            EmployeeCommutingHeadcount.company_name.asc(),
+            EmployeeCommutingHeadcount.reporting_period_key.asc(),
+        ).all()
     )
+    hc_rows_export: list[dict[str, object]] = []
+    merged_rows_export: list[dict[str, object]] = []
+    nationals = {str(r.country or "").strip().lower(): r for r in EmployeeCommutingNationalAverage.query.all()}
+
+    for row in headcount_records:
+        cn = _clean_employee_commuting_company(row.company_name)
+        canon, ctr = _canonical_company_name_and_country(cn or "")
+        rk = str(row.reporting_period_key or "").strip()
+        hc_rows_export.append(
+            {
+                "Company_Name": canon or cn,
+                "Reporting Month (YYYY-MM)": rk,
+                "Headcount": int(row.headcount or 0),
+            }
+        )
+        nat = nationals.get(str(ctr or "").strip().lower()) if ctr else None
+        if nat is None or not rk:
+            continue
+        merged_rows_export.append(
+            {
+                "Company_Name": canon or cn,
+                "Country": str(ctr or "").strip(),
+                "Average one day": float(nat.average_one_day or 0.0),
+                "Car %": float(nat.car_pct or 0.0),
+                "Bus %": float(nat.bus_pct or 0.0),
+                "Walking and Cycling %": float(nat.walking_and_cycling_pct or 0.0),
+                "Mixed %": float(nat.mixed_pct or 0.0),
+                "Reporting Month (YYYY-MM)": rk,
+                "Headcount": int(row.headcount or 0),
+            }
+        )
+
+    headcount_df = pd.DataFrame(hc_rows_export)
     if headcount_df.empty:
-        headcount_df = pd.DataFrame(columns=["Company_Name", "Headcount"])
+        headcount_df = pd.DataFrame(columns=["Company_Name", "Reporting Month (YYYY-MM)", "Headcount"])
     headcount_df.to_csv(EMPLOYEE_COMMUTING_HEADCOUNT_CSV, index=False)
 
-    national_average_df = pd.DataFrame(
-        [
-            {
-                "Company_Name": row["company_name"],
-                "Country": row["country"],
-                "Average one day": float(row["average_one_day"] or 0),
-                "Car %": float(row["car_pct"] or 0),
-                "Bus %": float(row["bus_pct"] or 0),
-                "Walking and Cycling %": float(row["walking_and_cycling_pct"] or 0),
-                "Mixed %": float(row["mixed_pct"] or 0),
-            }
-            for row in national_average_rows
-        ]
-    )
-    if national_average_df.empty:
-        national_average_df = pd.DataFrame(
+    merged_df = pd.DataFrame(merged_rows_export)
+    if merged_df.empty:
+        merged_df = pd.DataFrame(
             columns=[
                 "Company_Name",
                 "Country",
@@ -2612,33 +2805,11 @@ def _publish_employee_commuting_files() -> None:
                 "Bus %",
                 "Walking and Cycling %",
                 "Mixed %",
+                "Reporting Month (YYYY-MM)",
+                "Headcount",
             ]
         )
-
-    merged_df = national_average_df.merge(headcount_df, on="Company_Name", how="outer")
-    for col in [
-        "Country",
-        "Average one day",
-        "Car %",
-        "Bus %",
-        "Walking and Cycling %",
-        "Mixed %",
-        "Headcount",
-    ]:
-        if col not in merged_df.columns:
-            merged_df[col] = ""
-    merged_df = merged_df[
-        [
-            "Company_Name",
-            "Country",
-            "Average one day",
-            "Car %",
-            "Bus %",
-            "Walking and Cycling %",
-            "Mixed %",
-            "Headcount",
-        ]
-    ].sort_values("Company_Name", na_position="last")
+    merged_df = merged_df.sort_values(["Company_Name", "Reporting Month (YYYY-MM)"], na_position="last")
 
     with pd.ExcelWriter(EMPLOYEE_COMMUTING_NATIONAL_AVERAGES_XLSX, engine="openpyxl") as writer:
         merged_df.to_excel(writer, sheet_name="Sheet1", index=False)
@@ -2665,14 +2836,11 @@ def _seed_employee_commuting_defaults() -> None:
         headcount_count = EmployeeCommutingHeadcount.query.count()
 
     if national_count == 0:
-        seen_seed: set[str] = set()
+        seen_country: set[str] = set()
         for idx, row in source_df.iterrows():
-            company_name = _clean_employee_commuting_company(row.get("Company_Name"))
-            if not company_name:
-                continue
-            built = _try_build_employee_commuting_national_average_row(
-                company_name_raw=row.get("Company_Name"),
-                country_raw=row.get("Country"),
+            country_col = row.get("Country") or row.get("country")
+            built = _try_build_employee_commuting_country_average_row(
+                country_raw=country_col,
                 average_one_day_raw=row.get("Average one day"),
                 car_pct_raw=row.get("Car %"),
                 bus_pct_raw=row.get("Bus %"),
@@ -2682,18 +2850,13 @@ def _seed_employee_commuting_defaults() -> None:
             )
             if not built:
                 continue
-            dedup = str(built["company_name"]).lower()
-            if dedup in seen_seed:
-                _employee_commuting_skip_log(
-                    "duplicate_company",
-                    {"source": "excel_seed", "sheet_row": idx, "company": built["company_name"]},
-                )
+            dedup_k = str(built["country"]).strip().lower()
+            if dedup_k in seen_country:
                 continue
-            seen_seed.add(dedup)
+            seen_country.add(dedup_k)
             db.session.add(
                 EmployeeCommutingNationalAverage(
-                    company_name=str(built["company_name"]),
-                    country=str(built["country"]),
+                    country=str(built["country"]).strip(),
                     average_one_day=float(built["average_one_day"]),
                     car_pct=float(built["car_pct"]),
                     bus_pct=float(built["bus_pct"]),
@@ -2704,14 +2867,55 @@ def _seed_employee_commuting_defaults() -> None:
         seeded = True
 
     if headcount_count == 0:
+        seen_hc: set[tuple[str, str]] = set()
+        period_key_fallback = "2026-01"
+
+        def _label_for_year_month(y: int, m: int) -> str:
+            from calendar import month_abbr
+
+            ma = month_abbr[int(m)]
+            return f"{ma}-{int(y)}"
+
+        from frontend.services.reporting_period_service import display_reporting_period_label, normalize_reporting_period
+
         for _, row in source_df.iterrows():
             company_name = _clean_employee_commuting_company(row.get("Company_Name"))
             headcount_value = pd.to_numeric(row.get("Headcount"), errors="coerce")
             if not company_name or pd.isna(headcount_value):
                 continue
+
+            rk = period_key_fallback
+            rmk_raw = row.get("Reporting Month (YYYY-MM)")
+            if rmk_raw is not None and str(rmk_raw).strip():
+                srm = str(rmk_raw).strip().replace("/", "-")[:10]
+                if len(srm) >= 7 and srm[4] == "-":
+                    try:
+                        ys, ms = srm.split("-", 2)[:2]
+                        rk = f"{int(ys):04d}-{int(ms):02d}"
+                    except Exception:
+                        rk = period_key_fallback
+
+            canon, _ctr = _canonical_company_name_and_country(company_name)
+            canon_name = canon or company_name
+            dk = (canon_name.lower(), rk.lower())
+            if dk in seen_hc:
+                continue
+            seen_hc.add(dk)
+
+            lbl_raw = row.get("Month") or ""
+            lbl = normalize_reporting_period(str(lbl_raw).strip()) if lbl_raw else ""
+            if not lbl:
+                try:
+                    yy, mm = rk.split("-", 1)
+                    lbl = _label_for_year_month(int(yy), int(mm))
+                except Exception:
+                    lbl = display_reporting_period_label(f"{rk}-01") or rk
+
             db.session.add(
                 EmployeeCommutingHeadcount(
-                    company_name=company_name,
+                    company_name=str(canon_name).strip(),
+                    reporting_period_key=rk,
+                    reporting_period_label=str(lbl).strip(),
                     headcount=int(round(float(headcount_value))),
                 )
             )
@@ -2733,27 +2937,21 @@ def _parse_employee_commuting_non_negative_float(value: object, label: str, row_
 
 
 def _normalize_employee_commuting_headcount_payload(rows: object) -> list[dict[str, object]]:
-    if not isinstance(rows, list):
-        raise ValueError("Rows payload must be a list.")
+    from frontend.services import employee_commuting_service as ecs
 
-    normalized: list[dict[str, object]] = []
-    seen: set[str] = set()
-    for idx, raw in enumerate(rows, start=1):
-        if not isinstance(raw, dict):
-            continue
-        company_name = _clean_employee_commuting_company(raw.get("company_name"))
-        headcount_raw = str(raw.get("headcount") or "").strip()
-        if not company_name and not headcount_raw:
-            continue
-        if not company_name:
-            raise ValueError(f"Row {idx}: `Company_Name` is required.")
-        headcount = int(round(_parse_employee_commuting_non_negative_float(headcount_raw, "Headcount", idx)))
-        dedup_key = company_name.lower()
-        if dedup_key in seen:
-            raise ValueError(f"Row {idx}: `{company_name}` appears more than once.")
-        seen.add(dedup_key)
-        normalized.append({"company_name": company_name, "headcount": headcount})
-    return normalized
+    batch = ecs.normalize_headcount_rows(rows)
+    out: list[dict[str, object]] = []
+    for row in batch:
+        canon = _resolve_template_company_name(str(row["company_name"])) or str(row["company_name"]).strip()
+        out.append(
+            {
+                "company_name": canon,
+                "headcount": int(row["headcount"]),
+                "reporting_period_key": str(row["reporting_period_key"]),
+                "reporting_period_label": str(row["reporting_period_label"]),
+            }
+        )
+    return out
 
 
 def _normalize_employee_commuting_national_average_payload(
@@ -2771,8 +2969,7 @@ def _normalize_employee_commuting_national_average_payload(
         if _is_wholly_empty_national_average_payload_row(raw):
             continue
         tag = {"source": "payload", "row_index": idx, "payload": raw}
-        built = _try_build_employee_commuting_national_average_row(
-            company_name_raw=raw.get("company_name"),
+        built = _try_build_employee_commuting_country_average_row(
             country_raw=raw.get("country"),
             average_one_day_raw=raw.get("average_one_day"),
             car_pct_raw=raw.get("car_pct"),
@@ -2784,9 +2981,9 @@ def _normalize_employee_commuting_national_average_payload(
         if not built:
             skipped += 1
             continue
-        dedup_key = str(built["company_name"]).lower()
+        dedup_key = str(built["country"]).strip().lower()
         if dedup_key in seen:
-            _employee_commuting_skip_log("duplicate_company", tag)
+            _employee_commuting_skip_log("duplicate_country", tag)
             skipped += 1
             continue
         seen.add(dedup_key)
@@ -2794,45 +2991,82 @@ def _normalize_employee_commuting_national_average_payload(
     return normalized, skipped
 
 
-def _replace_employee_commuting_headcount_rows(rows: list[dict[str, object]]) -> None:
-    EmployeeCommutingHeadcount.query.delete()
-    for row in rows:
+def _replace_employee_commuting_headcount_rows(
+    rows: list[dict[str, object]],
+    *,
+    acting_user_id: int | None,
+    privileged: bool,
+    scope_company_name: str | None = None,
+) -> None:
+    if privileged:
+        EmployeeCommutingHeadcount.query.delete()
+        merged = list(rows)
+    else:
+        raw_scope = str(scope_company_name or "").strip()
+        purge_keys = [k for k in _company_candidate_keys(raw_scope) if str(k).strip()]
+        if purge_keys:
+            EmployeeCommutingHeadcount.query.filter(EmployeeCommutingHeadcount.company_name.in_(purge_keys)).delete(
+                synchronize_session=False
+            )
+        allow_norm = {_norm_name(k) for k in purge_keys}
+        canon_scope_norm = _norm_name(_resolve_template_company_name(raw_scope) or raw_scope)
+
+        merged: list[dict[str, object]] = []
+        seen_pair: set[tuple[str, str]] = set()
+        for row in rows:
+            rn = (
+                _resolve_template_company_name(str(row.get("company_name") or "").strip())
+                or str(row.get("company_name") or "").strip()
+            )
+            rn_key = _norm_name(rn)
+            if rn_key not in allow_norm and rn_key != canon_scope_norm:
+                continue
+            dk = (rn.strip().lower(), str(row.get("reporting_period_key") or "").strip())
+            if dk in seen_pair:
+                continue
+            seen_pair.add(dk)
+            merged.append(row)
+
+    for row in merged:
         db.session.add(
             EmployeeCommutingHeadcount(
                 company_name=str(row["company_name"]),
+                reporting_period_key=str(row["reporting_period_key"]),
+                reporting_period_label=str(row["reporting_period_label"]),
                 headcount=int(row["headcount"]),
+                created_by_user_id=acting_user_id,
             )
         )
     db.session.commit()
     _publish_employee_commuting_files()
 
 
-def _replace_employee_commuting_national_average_rows(rows: list[dict[str, object]]) -> None:
+def _replace_employee_commuting_national_average_rows(
+    rows: list[dict[str, object]],
+    *,
+    acting_user_id: int | None = None,
+) -> None:
     with db.session.no_autoflush:
         EmployeeCommutingNationalAverage.query.delete()
     for row in rows:
-        company_name = _clean_employee_commuting_company(row.get("company_name"))
         country = _safe_optional_str(row.get("country"))
         avg = _safe_optional_float(row.get("average_one_day"))
         car = _safe_optional_float(row.get("car_pct"))
         bus = _safe_optional_float(row.get("bus_pct"))
         walk = _safe_optional_float(row.get("walking_and_cycling_pct"))
         mix = _safe_optional_float(row.get("mixed_pct"))
-        if not company_name or not country or avg is None:
-            _employee_commuting_skip_log("replace_row_rejected", row)
-            continue
-        if car is None or bus is None or walk is None or mix is None:
-            _employee_commuting_skip_log("replace_row_rejected", row)
+        if not country or avg is None or car is None or bus is None or walk is None or mix is None:
+            _employee_commuting_skip_log("replace_country_row_rejected", row)
             continue
         db.session.add(
             EmployeeCommutingNationalAverage(
-                company_name=str(company_name),
-                country=str(country),
+                country=str(country).strip(),
                 average_one_day=float(avg),
                 car_pct=float(car),
                 bus_pct=float(bus),
                 walking_and_cycling_pct=float(walk),
                 mixed_pct=float(mix),
+                updated_by_user_id=acting_user_id,
             )
         )
     db.session.commit()
@@ -2888,6 +3122,7 @@ def _ensure_db_tables() -> None:
     """
     try:
         db.create_all()
+        _migrate_employee_commuting_legacy_tables()
         _ensure_mapping_run_summary_columns()
         _ensure_data_entry_columns()
         _ensure_mapping_run_source_entry_group_column()
@@ -8534,6 +8769,8 @@ def _mapping_preview_analytics_profile(sheet_name: str) -> str:
         return "water_tracker"
     if "business travel" in s:
         return "business_travel"
+    if re.search(r"cat\s*7\b", s) or "employee commute" in s or "commuting" in s:
+        return "employee_commuting"
     if "scope 1" in s and "fuel" in s:
         return "scope1_fuel"
     if "scope 3" in s and "category 1" in s:
@@ -8891,6 +9128,57 @@ def _mp_generic_emissions_analytics(columns: list[str], rows: list[dict[str, obj
     ]
 
 
+def _mp_employee_commuting_analytics(columns: list[str], rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    from frontend.services.reporting_period_service import reporting_period_sort_key
+
+    if not rows or not columns:
+        return []
+    em_col = _mapping_preview_find_emissions_column(columns)
+    if not em_col:
+        return []
+    mode_col = _mp_pick_first_matching_column(
+        columns,
+        ("mode of transport", "transport mode", "commute mode"),
+    )
+    month_col = _mp_pick_first_matching_column(
+        columns,
+        ("reporting period", "period (month", "month"),
+    )
+    out: list[dict[str, object]] = []
+    if mode_col:
+        lab, val = _mp_aggregate_sum_by_key(rows, mode_col, em_col, top_n=12)
+        if lab:
+            out.append(
+                {
+                    "renderer": "bar",
+                    "horizontal": False,
+                    "title": "Commuting emissions by mode",
+                    "labels": lab,
+                    "values": val,
+                    "series_name": "tCO₂e (reported)",
+                    "tooltip_suffix": "",
+                }
+            )
+    if month_col:
+        lab2, val2 = _mp_aggregate_sum_by_key(rows, month_col, em_col, top_n=48)
+        if lab2:
+            pairs = sorted(zip(lab2, val2), key=lambda z: reporting_period_sort_key(z[0]))
+            lab2 = [p[0] for p in pairs]
+            val2 = [p[1] for p in pairs]
+            out.append(
+                {
+                    "renderer": "bar",
+                    "horizontal": True,
+                    "title": "Commuting emissions by reporting period",
+                    "labels": lab2,
+                    "values": val2,
+                    "series_name": "tCO₂e (reported)",
+                    "tooltip_suffix": "",
+                }
+            )
+    return out[:2]
+
+
 def _mapping_preview_build_analytics_payload(
     sheet_name: str, columns: list[str], rows: list[dict[str, object]]
 ) -> dict[str, object]:
@@ -8907,6 +9195,8 @@ def _mapping_preview_build_analytics_payload(
         charts = _mp_scope3_cat1_analytics(columns, rows)
     elif profile == "business_travel":
         charts = _mp_business_travel_analytics(columns, rows)
+    elif profile == "employee_commuting":
+        charts = _mp_employee_commuting_analytics(columns, rows)
     else:
         charts = _mp_generic_emissions_analytics(columns, rows)
 
@@ -10270,6 +10560,30 @@ def _column_name_period_priority(name: str) -> int:
     return 99
 
 
+def _find_mode_of_transport_column(df: "pd.DataFrame") -> str | None:
+    """Optional commuting / travel mode column for per-row chart splits (e.g. Cat 7)."""
+    if df is None or getattr(df, "columns", None) is None or len(df.columns) == 0:
+        return None
+    cols = list(df.columns)
+    preferred = (
+        "mode of transport",
+        "transport mode",
+        "commute mode",
+    )
+    for want in preferred:
+        for c in cols:
+            low = str(c).strip().lower()
+            if low == want:
+                return str(c)
+    for c in cols:
+        low = str(c).strip().lower()
+        if "mode of transport" in low:
+            return str(c)
+        if "transport mode" in low or "commute mode" in low:
+            return str(c)
+    return None
+
+
 def _find_period_column(df: "pd.DataFrame", sample_rows: int = 120) -> str | None:
     if df is None or getattr(df, "columns", None) is None or len(df.columns) == 0:
         return None
@@ -10473,6 +10787,7 @@ def _build_reporting_rows_from_summary(sub: "MappingRunSummary") -> list[dict[st
     period_col = _find_period_column(df)
     if not tco2e_col or not period_col:
         return out
+    mode_col = _find_mode_of_transport_column(df)
     sheet_name = str(getattr(sub, "sheet_name", "") or "Category")
     scope = _effective_scope(getattr(sub, "scope", None), sheet_name)
     for _, row in df.iterrows():
@@ -10493,17 +10808,23 @@ def _build_reporting_rows_from_summary(sub: "MappingRunSummary") -> list[dict[st
         else:
             sk = dt.strftime("%Y-%m")
             label = dt.strftime("%b %Y")
-        out.append(
-            {
-                "scope": scope,
-                "sheet": sheet_name,
-                "category": sheet_name,
-                "company": str(getattr(sub, "company_name", "") or ""),
-                "emissions": float(val),
-                "sortKey": sk,
-                "dateLabel": label,
-            }
-        )
+        rec: dict[str, object] = {
+            "scope": scope,
+            "sheet": sheet_name,
+            "category": sheet_name,
+            "company": str(getattr(sub, "company_name", "") or ""),
+            "emissions": float(val),
+            "sortKey": sk,
+            "dateLabel": label,
+        }
+        if mode_col:
+            try:
+                mv = row.get(mode_col)
+                if mv is not None and str(mv).strip() != "":
+                    rec["commute_mode"] = str(mv).strip()
+            except Exception:
+                pass
+        out.append(rec)
     if not out and tco2e_col and period_col:
         total, _, _ = _sum_tco2e(df)
         if total > 0:
@@ -10527,17 +10848,16 @@ def _build_reporting_rows_from_summary(sub: "MappingRunSummary") -> list[dict[st
                 else:
                     sk = datetime.utcnow().strftime("%Y-%m")
                     label = sk
-            out.append(
-                {
-                    "scope": scope,
-                    "sheet": sheet_name,
-                    "category": sheet_name,
-                    "company": str(getattr(sub, "company_name", "") or ""),
-                    "emissions": float(total),
-                    "sortKey": sk,
-                    "dateLabel": label,
-                }
-            )
+            fallback_rec: dict[str, object] = {
+                "scope": scope,
+                "sheet": sheet_name,
+                "category": sheet_name,
+                "company": str(getattr(sub, "company_name", "") or ""),
+                "emissions": float(total),
+                "sortKey": sk,
+                "dateLabel": label,
+            }
+            out.append(fallback_rec)
     return out
 
 
@@ -14211,11 +14531,202 @@ def api_data_entry_site_tags():
 @app.route("/api/data-entry/reporting-periods", methods=["GET"])
 @login_required
 def api_data_entry_reporting_periods():
-    from frontend.services.reporting_period_service import get_reporting_period_options_2026, reporting_period_sort_key
+    from frontend.services.reporting_period_service import (
+        get_reporting_period_options_for_year,
+        get_reporting_period_options_surrounding_center,
+        reporting_period_sort_key,
+    )
 
-    periods = list(get_reporting_period_options_2026())
-    periods = sorted(set(periods), key=reporting_period_sort_key)
+    year_arg = request.args.get("year", type=int)
+    if year_arg is not None:
+        periods_raw = list(get_reporting_period_options_for_year(year_arg))
+    else:
+        periods_raw = list(get_reporting_period_options_surrounding_center())
+    periods = sorted(set(periods_raw), key=reporting_period_sort_key)
     return jsonify({"ok": True, "periods": periods})
+
+
+@app.route("/api/employee-commuting/headcount", methods=["GET", "POST"])
+@login_required
+def api_employee_commuting_headcount():
+    _ensure_db_tables()
+    privileged = _user_can_manage_employee_commuting_privileged(current_user)
+
+    if request.method == "GET":
+        scoped = None if privileged else current_user
+        return jsonify(
+            {
+                "ok": True,
+                "privileged": privileged,
+                "rows": _serialize_employee_commuting_headcount_rows(scoped),
+            }
+        )
+
+    payload_in = request.get_json(silent=True) or {}
+    try:
+        normalized = _normalize_employee_commuting_headcount_payload(payload_in.get("rows"))
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({"error": str(exc)}), 400
+
+    if not privileged:
+        allow = _employee_commuting_user_scope_norms(current_user)
+        if not allow:
+            return jsonify({"error": "Company scope not configured for user"}), 403
+        for row in normalized:
+            canon = (_resolve_template_company_name(row["company_name"]) or row["company_name"]).strip()
+            if _norm_name(canon) not in allow:
+                return jsonify({"error": "Access denied for one or more rows"}), 403
+
+    try:
+        _replace_employee_commuting_headcount_rows(
+            normalized,
+            acting_user_id=int(getattr(current_user, "id", 0) or 0),
+            privileged=privileged,
+            scope_company_name=str(getattr(current_user, "company_name", "") or "") if not privileged else None,
+        )
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({"error": f"Save failed: {exc}"}), 500
+
+    return jsonify(
+        {
+            "ok": True,
+            "saved_rows": len(normalized),
+            "rows": _serialize_employee_commuting_headcount_rows(None if privileged else current_user),
+            "published_workbook": EMPLOYEE_COMMUTING_NATIONAL_AVERAGES_XLSX.name,
+        }
+    )
+
+
+@app.route("/api/employee-commuting/national-averages", methods=["GET", "POST"])
+@login_required
+def api_employee_commuting_national_averages():
+    _ensure_db_tables()
+    privileged = _user_can_manage_employee_commuting_privileged(current_user)
+
+    if not privileged:
+        return jsonify({"error": "Forbidden", "detail": "National averages are restricted to admin, super_admin, or owner."}), 403
+
+    if request.method == "GET":
+        return jsonify({"ok": True, "rows": _serialize_employee_commuting_national_average_rows()})
+
+    payload_in = request.get_json(silent=True) or {}
+    raw_rows = payload_in.get("rows")
+    rows, skipped = _normalize_employee_commuting_national_average_payload(raw_rows)
+    if not rows and isinstance(raw_rows, list) and any(
+        isinstance(r, dict) and not _is_wholly_empty_national_average_payload_row(r) for r in raw_rows
+    ):
+        return jsonify({"error": "No valid rows to save", "skipped_rows": skipped}), 400
+    try:
+        _replace_employee_commuting_national_average_rows(
+            rows,
+            acting_user_id=int(getattr(current_user, "id", 0) or 0),
+        )
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({"error": str(exc)}), 500
+
+    return jsonify(
+        {
+            "ok": True,
+            "saved_rows": len(rows),
+            "skipped_rows": skipped,
+            "rows": _serialize_employee_commuting_national_average_rows(),
+            "published_workbook": EMPLOYEE_COMMUTING_NATIONAL_AVERAGES_XLSX.name,
+        }
+    )
+
+
+def _serialize_employee_commuting_run_row(rr: EmployeeCommutingGeneratedRun) -> dict[str, object]:
+    stats: dict[str, object] = {}
+    if rr.stats_json:
+        try:
+            stats = json.loads(rr.stats_json)
+        except Exception:
+            stats = {"raw": rr.stats_json}
+    return {
+        "id": int(rr.id),
+        "job_id": str(rr.job_id or ""),
+        "status": str(rr.status or ""),
+        "created_at": rr.created_at.isoformat() if rr.created_at else "",
+        "completed_at": rr.completed_at.isoformat() if rr.completed_at else "",
+        "stats": stats,
+    }
+
+
+@app.route("/api/employee-commuting/runs", methods=["GET"])
+@login_required
+def api_employee_commuting_runs():
+    _ensure_db_tables()
+    if not _user_can_manage_employee_commuting_privileged(current_user):
+        return jsonify({"error": "Forbidden"}), 403
+    rows = (
+        EmployeeCommutingGeneratedRun.query.order_by(EmployeeCommutingGeneratedRun.created_at.desc()).limit(50).all()
+    )
+    return jsonify({"ok": True, "runs": [_serialize_employee_commuting_run_row(r) for r in rows]})
+
+
+@app.route("/api/employee-commuting/generate", methods=["POST"])
+@login_required
+def api_employee_commuting_generate():
+    _ensure_db_tables()
+    if not _user_can_manage_employee_commuting_privileged(current_user):
+        return jsonify({"error": "Forbidden", "detail": "Dataset generation requires admin, super_admin, or owner."}), 403
+
+    # Concurrency: one active generation per process + matching DB run row; stale rows/jobs are ignored
+    # so crashes do not permanently lock the feature (see _EMPLOYEE_COMMUTING_*_MINUTES).
+    _employee_commuting_fail_stale_db_runs()
+    active = _active_job_id_for_job_type(
+        "employee_commuting_generate",
+        ignore_stale_after_minutes=_EMPLOYEE_COMMUTING_CONCURRENT_JOB_STALE_MINUTES,
+    )
+    if active:
+        return jsonify(
+            {
+                "error": "Employee commuting generation already queued or running",
+                "detail": "Wait for the current job to finish, or retry after a few minutes if a worker crashed.",
+                "job_id": active,
+            }
+        ), 409
+    blocking_rr = _employee_commuting_blocking_db_run()
+    if blocking_rr:
+        return jsonify(
+            {
+                "error": "Employee commuting generation already queued or running",
+                "detail": "A previous run is still marked active in the database.",
+                "run_id": int(blocking_rr.id),
+                "job_id": str(blocking_rr.job_id or ""),
+            }
+        ), 409
+
+    payload_in = request.get_json(silent=True) or {}
+    tm = normalize_template_mode(str(payload_in.get("template_mode") or _current_template_mode()))
+
+    run_row = EmployeeCommutingGeneratedRun(
+        job_id="",
+        created_by_user_id=int(getattr(current_user, "id", 0) or 0),
+        status="queued",
+        stats_json=json.dumps({"template_mode": tm}),
+    )
+    db.session.add(run_row)
+    db.session.commit()
+
+    uid = int(getattr(current_user, "id", 0) or 0) or None
+    job_id = run_in_background(
+        "employee_commuting_generate",
+        "Employee Commuting",
+        _run_employee_commuting_data_entry_job,
+        template_mode=tm,
+        acting_user_id=uid,
+        run_record_id=int(run_row.id),
+        job_user_id=uid,
+        job_user_email=str(getattr(current_user, "email", "") or ""),
+    )
+    run_row.job_id = job_id
+    run_row.status = "running"
+    db.session.commit()
+    return jsonify({"ok": True, "job_id": job_id, "run_id": int(run_row.id)})
 
 
 @app.route("/api/ccc/import-to-data-entry", methods=["POST"])
@@ -15790,6 +16301,333 @@ def api_run_translation():
         job_user_email=str(getattr(current_user, "email", "") or ""),
     )
     return jsonify({"job_id": job_id, "status": "started"})
+
+
+def _existing_data_entry_scalar_keys_for_column(company_name: str, sheet_name: str, column_name: str) -> set[str]:
+    rows_q = db.session.query(DataEntry.value).filter(
+        DataEntry.company_name == company_name,
+        DataEntry.sheet_name == sheet_name,
+        DataEntry.column_name == column_name,
+    )
+    return {str(v or "").strip().lower() for (v,) in rows_q.all() if str(v or "").strip()}
+
+
+def _inject_employee_commuting_audit_template_cells(
+    headers: list[str],
+    cells: list[str],
+    *,
+    run_db_id: int | None,
+    user_id: int | None,
+    generated_at_iso: str,
+) -> None:
+    """If the Data Entry template exposes audit columns, populate them (optional; never required for insert)."""
+    if not headers or not cells:
+        return
+
+    def norm(h: object) -> str:
+        return re.sub(r"[^a-z0-9]+", "_", str(h or "").strip().lower()).strip("_")
+
+    want: dict[str, str] = {}
+    if run_db_id is not None:
+        want["generated_run_id"] = str(int(run_db_id))
+    if user_id is not None:
+        want["generated_by"] = str(int(user_id))
+    if generated_at_iso:
+        want["generated_at"] = str(generated_at_iso)
+    if not want:
+        return
+    for i, raw_h in enumerate(headers):
+        if i >= len(cells):
+            break
+        key = norm(raw_h)
+        if key in want and want[key]:
+            cells[i] = want[key]
+
+
+def _run_employee_commuting_data_entry_job(
+    *,
+    job_id: str,
+    template_mode: str,
+    acting_user_id: int | None = None,
+    run_record_id: int | None = None,
+) -> dict[str, object]:
+    try:
+        return _run_employee_commuting_data_entry_job_impl(
+            job_id=job_id,
+            template_mode=template_mode,
+            acting_user_id=acting_user_id,
+            run_record_id=run_record_id,
+        )
+    except Exception as exc:
+        if run_record_id:
+            rr_f = db.session.get(EmployeeCommutingGeneratedRun, run_record_id)
+            if rr_f and str(rr_f.status or "").lower() != "completed":
+                rr_f.status = "failed"
+                rr_f.stats_json = json.dumps({"ok": False, "error": str(exc)})
+                rr_f.completed_at = datetime.utcnow()
+                db.session.commit()
+        raise
+
+
+def _run_employee_commuting_data_entry_job_impl(
+    *,
+    job_id: str,
+    template_mode: str,
+    acting_user_id: int | None = None,
+    run_record_id: int | None = None,
+) -> dict[str, object]:
+    from frontend.services import employee_commuting_service as ecs
+
+    _ensure_db_tables()
+    _raise_if_job_cancelled(job_id)
+    _update_job_progress(job_id, 3, "Loading employee commuting definitions…")
+
+    nationals = EmployeeCommutingNationalAverage.query.order_by(EmployeeCommutingNationalAverage.country.asc()).all()
+    hc_rows = EmployeeCommutingHeadcount.query.order_by(
+        EmployeeCommutingHeadcount.company_name.asc(),
+        EmployeeCommutingHeadcount.reporting_period_key.asc(),
+    ).all()
+
+    nat_payload = [
+        {
+            "country": str(r.country),
+            "average_one_day": float(r.average_one_day or 0),
+            "car_pct": float(r.car_pct or 0),
+            "bus_pct": float(r.bus_pct or 0),
+            "walking_and_cycling_pct": float(r.walking_and_cycling_pct or 0),
+            "mixed_pct": float(r.mixed_pct or 0),
+        }
+        for r in nationals
+    ]
+
+    hc_payload: list[dict[str, object]] = []
+    company_to_country: dict[str, str | None] = {}
+    for r in hc_rows:
+        canon = _resolve_template_company_name(str(r.company_name)) or str(r.company_name).strip()
+        _, ctr = _canonical_company_name_and_country(canon or str(r.company_name))
+        company_to_country[str(canon)] = ctr
+        company_to_country[str(r.company_name).strip()] = ctr
+        hc_payload.append(
+            {
+                "company_name": str(canon).strip(),
+                "canonical_company": str(canon).strip(),
+                "reporting_period_key": str(r.reporting_period_key or "").strip(),
+                "headcount": int(r.headcount or 0),
+            }
+        )
+
+    if not hc_payload:
+        _update_job_progress(job_id, 100, "No headcount rows to process.")
+        out_early: dict[str, object] = {
+            "ok": True,
+            "message": "No headcount rows",
+            "saved_rows_count": 0,
+            "generation_stats": {},
+        }
+        if run_record_id:
+            rr0 = db.session.get(EmployeeCommutingGeneratedRun, run_record_id)
+            if rr0:
+                rr0.status = "completed"
+                rr0.stats_json = json.dumps(out_early)
+                rr0.completed_at = datetime.utcnow()
+                db.session.commit()
+        return out_early
+
+    tm = normalize_template_mode(template_mode)
+    sample_company_for_headers = str(hc_payload[0]["canonical_company"])
+    hdrs = _get_template_sheet_headers_with_mode(sample_company_for_headers, ecs.EMPLOYEE_COMMUTING_TARGET_SHEET, template_mode=tm)
+    if not hdrs:
+        _update_job_progress(job_id, 100, "Employee Commuting template headers unavailable.")
+        hdr_fail = {"ok": False, "error": "missing_template_headers"}
+        if run_record_id:
+            rr_h = db.session.get(EmployeeCommutingGeneratedRun, run_record_id)
+            if rr_h:
+                rr_h.status = "failed"
+                rr_h.stats_json = json.dumps(hdr_fail)
+                rr_h.completed_at = datetime.utcnow()
+                db.session.commit()
+        return hdr_fail
+
+    # Single timestamp for the whole generation run (reporting + audit consistency).
+    gen_iso = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    pairs, gen_stats = ecs.generate_employee_commuting_rows(
+        headcount_rows=hc_payload,
+        country_averages=nat_payload,
+        company_to_country=company_to_country,
+        generated_run_id=int(run_record_id) if run_record_id else None,
+        generated_by_user_id=int(acting_user_id) if acting_user_id is not None else None,
+        generated_at_iso=gen_iso,
+        generation_job_id=str(job_id),
+    )
+
+    if not pairs:
+        _update_job_progress(job_id, 100, "Generation produced zero rows.")
+        out = dict(gen_stats)
+        out.update({"ok": True, "saved_rows_count": 0, "duplicates_skipped": 0, "validation_skipped": 0})
+        if run_record_id:
+            rr = db.session.get(EmployeeCommutingGeneratedRun, run_record_id)
+            if rr:
+                rr.status = "completed"
+                rr.stats_json = json.dumps(out)
+                rr.completed_at = datetime.utcnow()
+                db.session.commit()
+        return out
+
+    totals_saved = 0
+    totals_dup = 0
+    totals_val = 0
+    errs: list[str] = []
+    companies_to_map: set[tuple[str, str]] = set()
+
+    by_company: dict[str, list[dict[str, str]]] = defaultdict(list)
+    for company_canon, row_map in pairs:
+        by_company[str(company_canon)].append(dict(row_map))
+
+    total_pairs = float(max(1, len(pairs)))
+    done = 0.0
+
+    for company_canon in sorted(by_company.keys(), key=lambda x: x.lower()):
+        _raise_if_job_cancelled(job_id)
+        resolved_company = _resolve_template_company_name(company_canon) or company_canon
+        resolved_sheet = _resolve_template_sheet_name_with_mode(resolved_company, ecs.EMPLOYEE_COMMUTING_TARGET_SHEET, template_mode=tm)
+        if not resolved_sheet:
+            errs.append(f"no_sheet::{resolved_company}")
+            continue
+        headers = _get_template_sheet_headers_with_mode(resolved_company, ecs.EMPLOYEE_COMMUTING_TARGET_SHEET, template_mode=tm)
+        if not headers:
+            errs.append(f"no_headers::{resolved_company}")
+            continue
+
+        dedup_col = ecs.EMPLOYEE_COMMUTING_DEDUP_COLUMN
+        existing_keys = _existing_data_entry_scalar_keys_for_column(resolved_company, resolved_sheet, dedup_col)
+
+        for batch_map in by_company[company_canon]:
+            done += 1
+            pct = int(15 + min(82, int((done / total_pairs) * 82)))
+            _update_job_progress(job_id, pct, f"Saving {resolved_company}…")
+
+            cells = ecs.map_values_to_headers(headers, batch_map)
+            _inject_employee_commuting_audit_template_cells(
+                headers,
+                cells,
+                run_db_id=int(run_record_id) if run_record_id else None,
+                user_id=int(acting_user_id) if acting_user_id is not None else None,
+                generated_at_iso=gen_iso,
+            )
+            pk = ""
+            try:
+                col_idx = headers.index(dedup_col)
+                pk = str(cells[col_idx] or "").strip()
+            except Exception:
+                pk = ""
+            if pk and pk.lower() in existing_keys:
+                totals_dup += 1
+                continue
+
+            payload_row = {
+                "cells": cells,
+                "is_persisted": False,
+                "row_index": 0,
+                "entry_group": "",
+                "created_at": "",
+            }
+            normalized_rows, verr = _normalize_data_entry_rows(headers, [payload_row])
+            if verr:
+                totals_val += 1
+                continue
+            if not normalized_rows:
+                totals_val += 1
+                continue
+            req_err = _validate_data_entry_row_requirements(headers, normalized_rows)
+            if req_err:
+                totals_val += 1
+                continue
+            try:
+                result = _upsert_data_entries(
+                    resolved_company,
+                    resolved_sheet,
+                    headers,
+                    normalized_rows,
+                    uploaded_by_user_id=acting_user_id,
+                )
+                db.session.flush()
+            except Exception as exc:
+                db.session.rollback()
+                errs.append(str(exc))
+                continue
+
+            saved = int(result.get("saved_rows_count") or 0)
+            fp_dup = int(result.get("duplicate_rows_count") or 0)
+            totals_saved += saved
+            totals_dup += fp_dup
+            if pk:
+                existing_keys.add(pk.lower())
+            if saved > 0:
+                companies_to_map.add((str(resolved_company).strip(), str(resolved_sheet).strip()))
+
+    db.session.commit()
+    _update_job_progress(job_id, 98, "Finalizing commute import…")
+
+    # Auto-mapping is best-effort: generation success is defined by Data Entry inserts above.
+    # Queue at most one mapping job per (company, sheet) per generation; failures here must not roll back saves.
+    mapping_jobs_queued = 0
+    mapping_header_cache: dict[tuple[str, str], list[str]] = {}
+    if acting_user_id and totals_saved > 0 and companies_to_map:
+        uid = int(acting_user_id)
+        mapper = db.session.get(User, uid)
+        me = str(getattr(mapper, "email", "") or "").strip() if mapper else ""
+        for rc, rs in sorted(companies_to_map, key=lambda t: (t[0].lower(), t[1].lower())):
+            try:
+                ck = (str(rc).strip().lower(), str(rs).strip().lower())
+                headers_m = mapping_header_cache.get(ck)
+                if headers_m is None:
+                    headers_m = _get_template_sheet_headers_with_mode(rc, rs, template_mode=tm)
+                    if headers_m:
+                        mapping_header_cache[ck] = headers_m
+                if not headers_m:
+                    errs.append(f"mapping_queue_no_headers::{rc}")
+                    continue
+                run_in_background(
+                    "mapping",
+                    rc,
+                    _run_mapping_job,
+                    user_id=uid,
+                    user_email=me,
+                    resolved_company=rc,
+                    resolved_sheet=rs,
+                    headers=headers_m,
+                    template_mode=tm,
+                    entry_group_filter="",
+                    job_user_id=uid,
+                    job_user_email=me,
+                )
+                mapping_jobs_queued += 1
+            except Exception as exc_map:
+                errs.append(f"mapping_queue_exc::{exc_map!s}")
+
+    result_payload = {
+        "ok": True,
+        "saved_rows_count": totals_saved,
+        "duplicates_skipped": totals_dup,
+        "validation_skipped": totals_val,
+        "generation_stats": dict(gen_stats),
+        "errors": errs[:50],
+        "sheet": ecs.EMPLOYEE_COMMUTING_TARGET_SHEET,
+        "display_category": ecs.EMPLOYEE_COMMUTING_DISPLAY_CATEGORY_NAME,
+        "mapping_jobs_queued": int(mapping_jobs_queued),
+        "template_mode": tm,
+    }
+
+    if run_record_id:
+        rr = db.session.get(EmployeeCommutingGeneratedRun, run_record_id)
+        if rr:
+            rr.status = "completed"
+            rr.stats_json = json.dumps(result_payload)
+            rr.completed_at = datetime.utcnow()
+            db.session.commit()
+
+    _update_job_progress(job_id, 100, "Employee commuting dataset import completed.")
+    return result_payload
 
 
 def _run_ccc_import_job(
@@ -19044,123 +19882,82 @@ def analytics_output_download_file(filename: str):
     return send_file(str(path), as_attachment=True, download_name=path.name)
 
 
-def _employee_commuting_data_source_context(
-    *,
-    page_title: str,
-    page_heading: str,
-    page_description: str,
-    save_url: str,
-    fields: tuple[dict[str, str], ...],
-    rows: list[dict[str, object]],
-) -> dict[str, object]:
-    return {
-        "page_title": page_title,
-        "page_heading": page_heading,
-        "page_description": page_description,
-        "save_url": save_url,
-        "fields": list(fields),
-        "rows": rows,
-        "published_workbook_name": EMPLOYEE_COMMUTING_NATIONAL_AVERAGES_XLSX.name,
-    }
+@app.route("/data-sources/employee-commuting", methods=["GET"])
+@login_required
+def data_sources_employee_commuting():
+    _ensure_db_tables()
+    _seed_employee_commuting_defaults()
+    from frontend.services import employee_commuting_service as ecs_meta
+    from frontend.services.reporting_period_service import (
+        get_reporting_period_options_for_year,
+        get_reporting_period_options_surrounding_center,
+        reporting_period_sort_key,
+    )
+
+    privileged = _user_can_manage_employee_commuting_privileged(current_user)
+    year_sel = request.args.get("period_year", type=int)
+    if year_sel is not None:
+        periods = sorted(set(get_reporting_period_options_for_year(year_sel)), key=reporting_period_sort_key)
+    else:
+        periods = list(get_reporting_period_options_surrounding_center())
+    headcount_rows = _serialize_employee_commuting_headcount_rows(None if privileged else current_user)
+    national_rows = _serialize_employee_commuting_national_average_rows() if privileged else []
+    runs_payload: list[dict[str, object]] = []
+    if privileged:
+        runs_payload = [
+            _serialize_employee_commuting_run_row(r)
+            for r in EmployeeCommutingGeneratedRun.query.order_by(EmployeeCommutingGeneratedRun.created_at.desc())
+            .limit(25)
+            .all()
+        ]
+
+    scoped_co = (
+        str(
+            _resolve_template_company_name(str(getattr(current_user, "company_name", "") or ""))
+            or getattr(current_user, "company_name", "")
+            or ""
+        ).strip()
+    )
+
+    return render_template(
+        "data_sources/employee_commuting.html",
+        user=current_user,
+        privileged=privileged,
+        headcount_fields=EMPLOYEE_COMMUTING_HEADCOUNT_FIELDS,
+        national_fields=EMPLOYEE_COMMUTING_NATIONAL_AVERAGE_FIELDS,
+        headcount_rows=headcount_rows,
+        national_rows=national_rows,
+        reporting_periods=periods,
+        reporting_period_year_arg=year_sel,
+        employee_commuting_display_category=ecs_meta.EMPLOYEE_COMMUTING_DISPLAY_CATEGORY_NAME,
+        employee_commuting_template_key=ecs_meta.EMPLOYEE_COMMUTING_TARGET_SHEET,
+        company_options=[{"key": c, "label": c} for c in COMPANIES] if privileged else [],
+        scoped_company_name=scoped_co,
+        dashboard_url=url_for("products_input_page"),
+        template_mode_options=list(TEMPLATE_MODE_OPTIONS),
+        template_mode_current=normalize_template_mode(_current_template_mode()),
+        api_headcount=url_for("api_employee_commuting_headcount"),
+        api_national=url_for("api_employee_commuting_national_averages") if privileged else "",
+        api_generate=url_for("api_employee_commuting_generate") if privileged else "",
+        api_runs=url_for("api_employee_commuting_runs") if privileged else "",
+        job_status_template=url_for("api_job_status", job_id="__JOB_ID__"),
+        published_workbook_name=EMPLOYEE_COMMUTING_NATIONAL_AVERAGES_XLSX.name,
+        runs_preview=runs_payload,
+    )
 
 
-@app.route("/data-sources/employee-commuting/headcount", methods=["GET", "POST"])
+@app.route("/data-sources/employee-commuting/headcount", methods=["GET"])
 @login_required
 def data_sources_employee_commuting_headcount():
-    if not bool(getattr(current_user, "is_admin", False)):
-        flash("Access denied")
-        return redirect(url_for("dashboard"))
-
-    _ensure_db_tables()
-    _seed_employee_commuting_defaults()
-
-    if request.method == "POST":
-        payload = request.get_json(silent=True) or {}
-        try:
-            rows = _normalize_employee_commuting_headcount_payload(payload.get("rows"))
-            _replace_employee_commuting_headcount_rows(rows)
-            return jsonify(
-                {
-                    "ok": True,
-                    "saved_rows": len(rows),
-                    "rows": _serialize_employee_commuting_headcount_rows(),
-                    "published_workbook": EMPLOYEE_COMMUTING_NATIONAL_AVERAGES_XLSX.name,
-                }
-            )
-        except ValueError as exc:
-            db.session.rollback()
-            return jsonify({"error": str(exc)}), 400
-        except Exception as exc:
-            db.session.rollback()
-            return jsonify({"error": f"Failed to save headcount: {exc}"}), 500
-
-    context = _employee_commuting_data_source_context(
-        page_title="Employee Commuting Headcount",
-        page_heading="Employee Commuting Headcount",
-        page_description=(
-            "Manage monthly employee commuting headcount values here. "
-            "The national averages workbook is updated automatically after each save."
-        ),
-        save_url=url_for("data_sources_employee_commuting_headcount"),
-        fields=EMPLOYEE_COMMUTING_HEADCOUNT_FIELDS,
-        rows=_serialize_employee_commuting_headcount_rows(),
-    )
-    return render_template("data_source_table.html", user=current_user, **context)
+    return redirect(url_for("data_sources_employee_commuting") + "#headcount")
 
 
-@app.route("/data-sources/employee-commuting/national-averages", methods=["GET", "POST"])
+@app.route("/data-sources/employee-commuting/national-averages", methods=["GET"])
 @login_required
 def data_sources_employee_commuting_national_averages():
-    if not bool(getattr(current_user, "is_admin", False)):
-        flash("Access denied")
-        return redirect(url_for("dashboard"))
-
-    _ensure_db_tables()
-    _seed_employee_commuting_defaults()
-
-    if request.method == "POST":
-        payload = request.get_json(silent=True) or {}
-        try:
-            raw_rows = payload.get("rows")
-            rows, skipped_rows = _normalize_employee_commuting_national_average_payload(raw_rows)
-            if not rows and isinstance(raw_rows, list) and any(
-                isinstance(r, dict) and not _is_wholly_empty_national_average_payload_row(r) for r in raw_rows
-            ):
-                return jsonify(
-                    {
-                        "error": "No valid national average rows to save; database was not changed.",
-                        "skipped_rows": skipped_rows,
-                    }
-                ), 400
-            _replace_employee_commuting_national_average_rows(rows)
-            return jsonify(
-                {
-                    "ok": True,
-                    "saved_rows": len(rows),
-                    "skipped_rows": skipped_rows,
-                    "rows": _serialize_employee_commuting_national_average_rows(),
-                    "published_workbook": EMPLOYEE_COMMUTING_NATIONAL_AVERAGES_XLSX.name,
-                }
-            )
-        except ValueError as exc:
-            db.session.rollback()
-            return jsonify({"error": str(exc)}), 400
-        except Exception as exc:
-            db.session.rollback()
-            return jsonify({"error": f"Failed to save national averages: {exc}"}), 500
-
-    context = _employee_commuting_data_source_context(
-        page_title="Employee Commuting National Averages",
-        page_heading="Employee Commuting National Averages",
-        page_description=(
-            "Manage country, average one day, and mode of transport shares here. "
-            "These values are combined with the headcount page and used in the Category 7 calculation."
-        ),
-        save_url=url_for("data_sources_employee_commuting_national_averages"),
-        fields=EMPLOYEE_COMMUTING_NATIONAL_AVERAGE_FIELDS,
-        rows=_serialize_employee_commuting_national_average_rows(),
-    )
-    return render_template("data_source_table.html", user=current_user, **context)
+    target = url_for("data_sources_employee_commuting")
+    suffix = "#national" if _user_can_manage_employee_commuting_privileged(current_user) else "#headcount"
+    return redirect(target + suffix)
 
 
 @app.route("/engage-waste-api")
