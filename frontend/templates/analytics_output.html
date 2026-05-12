@@ -882,7 +882,7 @@
   }
 
   function updateSelectedUi(countEl, btn, n) {
-    countEl.textContent = String(n);
+    if (countEl) countEl.textContent = String(n);
     btn.disabled = n < 1 || btn.dataset.blocked === '1';
   }
 
@@ -926,106 +926,131 @@
     } catch (e) {}
   }
 
-  var filterEl = qs('cccDeImportFilter');
-  var listEl = qs('cccDeImportList');
-  var countEl = qs('cccDeImportSelectedCount');
-  var btn = qs('cccDeImportBtn');
-  var badge = qs('cccDeImportRunningBadge');
-  var progressWrap = qs('cccDeImportProgress');
-  var progressBar = qs('cccDeImportProgressBar');
-  var progressMsg = qs('cccDeImportProgressMessage');
-  var lastEl = qs('cccDeImportLastSummary');
-  var openDash = qs('cccDeOpenDashboardBtn');
+  /** Bootstrap is loaded with defer in base.html; this init must run after deferred scripts (DOMContentLoaded or later). */
+  var __cccDeImportBound = false;
+  function bindCccDeImportPanel() {
+    if (__cccDeImportBound) return;
 
-  if (!btn || !CFG.apiUrl) return;
+    var filterEl = qs('cccDeImportFilter');
+    var listEl = qs('cccDeImportList');
+    var countEl = qs('cccDeImportSelectedCount');
+    var btn = qs('cccDeImportBtn');
+    var badge = qs('cccDeImportRunningBadge');
+    var progressWrap = qs('cccDeImportProgress');
+    var progressBar = qs('cccDeImportProgressBar');
+    var progressMsg = qs('cccDeImportProgressMessage');
+    var lastEl = qs('cccDeImportLastSummary');
+    var openDash = qs('cccDeOpenDashboardBtn');
 
-  var statEls = {
-    projects: qs('cccDeStatProjects'),
-    fetched: qs('cccDeStatFetched'),
-    inserted: qs('cccDeStatInserted'),
-    dup: qs('cccDeStatDup'),
-    statusSkip: qs('cccDeStatStatusSkip'),
-    valSkip: qs('cccDeStatValSkip'),
-    err: qs('cccDeStatErr'),
-  };
-
-  function recount() {
-    var n = document.querySelectorAll('.ccc-de-import-cb:checked').length;
-    updateSelectedUi(countEl, btn, n);
-    var ccount = qs('cccDeConfirmProjectCount');
-    if (ccount) ccount.textContent = String(n);
-  }
-
-  document.querySelectorAll('.ccc-de-import-cb').forEach(function (cb) {
-    cb.addEventListener('change', recount);
-  });
-
-  listEl && listEl.addEventListener('click', function (e) {
-    var row = e.target.closest('.ccc-de-import-row');
-    if (!row || row.classList.contains('ccc-de-import-row--disabled')) return;
-    var cb = row.querySelector('.ccc-de-import-cb');
-    if (cb && !cb.disabled && e.target !== cb) {
-      cb.checked = !cb.checked;
-      cb.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-  });
-
-  filterEl && filterEl.addEventListener('input', function () {
-    var q = (filterEl.value || '').trim().toLowerCase();
-    document.querySelectorAll('.ccc-de-import-row').forEach(function (row) {
-      var hay = row.getAttribute('data-ccc-filter') || '';
-      row.classList.toggle('d-none', q.length > 0 && hay.indexOf(q) === -1);
-    });
-  });
-
-  recount();
-  renderLastSummary(lastEl);
-
-  async function refreshBlocked() {
-    var blocking = await findBlockingCccJob();
-    if (blocking) {
-      btn.dataset.blocked = '1';
-      btn.title = 'A CCC import job is already running (' + (blocking.job_id || '') + ').';
-      if (badge) { badge.hidden = false; }
-    } else {
-      btn.dataset.blocked = '0';
-      btn.title = '';
-      if (badge) { badge.hidden = true; }
-    }
-    recount();
-  }
-  refreshBlocked();
-  if (window.CtsPerf) {
-    window.CtsPerf.managePoll('analytics-output-ccc-blocked', refreshBlocked, 26000, {
-      pauseWhenHidden: true,
-      runImmediate: false,
-    });
-  } else {
-    setInterval(refreshBlocked, 8000);
-  }
-
-  var confirmModalEl = qs('cccDeImportConfirmModal');
-  var doneModalEl = qs('cccDeImportDoneModal');
-  var confirmBs = confirmModalEl && window.bootstrap ? bootstrap.Modal.getOrCreateInstance(confirmModalEl) : null;
-  var doneBs = doneModalEl && window.bootstrap ? bootstrap.Modal.getOrCreateInstance(doneModalEl) : null;
-
-  btn.addEventListener('click', async function () {
-    await refreshBlocked();
-    if (btn.dataset.blocked === '1') {
-      window.alert('A CCC import is already running. Wait for it to finish before starting another.');
+    if (!btn || !CFG.apiUrl) {
+      console.warn('[CCC_IMPORT_BIND]', 'skipped', { hasBtn: !!btn, hasApiUrl: !!CFG.apiUrl });
       return;
     }
-    var labels = Array.prototype.map.call(document.querySelectorAll('.ccc-de-import-cb:checked'), function (c) { return c.value; });
-    if (!labels.length) return;
-    recount();
-    if (confirmBs) confirmBs.show();
-  });
+    if (!window.bootstrap) {
+      return;
+    }
 
-  var confirmStartBtn = qs('cccDeImportConfirmStart');
-  confirmStartBtn && confirmStartBtn.addEventListener('click', async function () {
+    function getConfirmBs() {
+      var el = qs('cccDeImportConfirmModal');
+      return el && window.bootstrap ? bootstrap.Modal.getOrCreateInstance(el) : null;
+    }
+    function getDoneBs() {
+      var el = qs('cccDeImportDoneModal');
+      return el && window.bootstrap ? bootstrap.Modal.getOrCreateInstance(el) : null;
+    }
+
+    __cccDeImportBound = true;
+    console.log('[CCC_IMPORT_BIND]', { apiUrl: CFG.apiUrl, bootstrap: true });
+
+    var statEls = {
+      projects: qs('cccDeStatProjects'),
+      fetched: qs('cccDeStatFetched'),
+      inserted: qs('cccDeStatInserted'),
+      dup: qs('cccDeStatDup'),
+      statusSkip: qs('cccDeStatStatusSkip'),
+      valSkip: qs('cccDeStatValSkip'),
+      err: qs('cccDeStatErr'),
+    };
+
+    function recount() {
+      var n = document.querySelectorAll('.ccc-de-import-cb:checked').length;
+      updateSelectedUi(countEl, btn, n);
+      var ccount = qs('cccDeConfirmProjectCount');
+      if (ccount) ccount.textContent = String(n);
+    }
+
+    document.querySelectorAll('.ccc-de-import-cb').forEach(function (cb) {
+      cb.addEventListener('change', recount);
+    });
+
+    listEl && listEl.addEventListener('click', function (e) {
+      var row = e.target.closest('.ccc-de-import-row');
+      if (!row || row.classList.contains('ccc-de-import-row--disabled')) return;
+      var rowCb = row.querySelector('.ccc-de-import-cb');
+      if (rowCb && !rowCb.disabled && e.target !== rowCb) {
+        rowCb.checked = !rowCb.checked;
+        rowCb.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
+
+    filterEl && filterEl.addEventListener('input', function () {
+      var q = (filterEl.value || '').trim().toLowerCase();
+      document.querySelectorAll('.ccc-de-import-row').forEach(function (row) {
+        var hay = row.getAttribute('data-ccc-filter') || '';
+        row.classList.toggle('d-none', q.length > 0 && hay.indexOf(q) === -1);
+      });
+    });
+
+    recount();
+    renderLastSummary(lastEl);
+
+    async function refreshBlocked() {
+      var blocking = await findBlockingCccJob();
+      if (blocking) {
+        btn.dataset.blocked = '1';
+        btn.title = 'A CCC import job is already running (' + (blocking.job_id || '') + ').';
+        if (badge) { badge.hidden = false; }
+      } else {
+        btn.dataset.blocked = '0';
+        btn.title = '';
+        if (badge) { badge.hidden = true; }
+      }
+      recount();
+    }
+    refreshBlocked();
+    if (window.CtsPerf) {
+      window.CtsPerf.managePoll('analytics-output-ccc-blocked', refreshBlocked, 26000, {
+        pauseWhenHidden: true,
+        runImmediate: false,
+      });
+    } else {
+      setInterval(refreshBlocked, 8000);
+    }
+
+    btn.addEventListener('click', async function () {
+      console.log('[CCC_IMPORT_CLICK]', { disabled: btn.disabled, blocked: btn.dataset.blocked });
+      await refreshBlocked();
+      if (btn.dataset.blocked === '1') {
+        window.alert('A CCC import is already running. Wait for it to finish before starting another.');
+        return;
+      }
+      var labels = Array.prototype.map.call(document.querySelectorAll('.ccc-de-import-cb:checked'), function (c) { return c.value; });
+      if (!labels.length) return;
+      recount();
+      var confirmBs = getConfirmBs();
+      if (confirmBs) {
+        confirmBs.show();
+      } else {
+        window.alert('UI library not ready. Please refresh the page and try again.');
+      }
+    });
+
+    var confirmStartBtn = qs('cccDeImportConfirmStart');
+    confirmStartBtn && confirmStartBtn.addEventListener('click', async function () {
     var labels = Array.prototype.map.call(document.querySelectorAll('.ccc-de-import-cb:checked'), function (c) { return c.value; });
     if (!labels.length) return;
-    if (confirmBs) confirmBs.hide();
+    var confirmBsHide = getConfirmBs();
+    if (confirmBsHide) confirmBsHide.hide();
 
     btn.disabled = true;
     confirmStartBtn.disabled = true;
@@ -1037,6 +1062,7 @@
 
     var pollSidebarTimer = null;
     try {
+      console.log('[CCC_IMPORT_FETCH]', CFG.apiUrl, { projects: labels.length });
       var started = await fetchJson(CFG.apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1101,7 +1127,8 @@
                 partial.classList.add('d-none');
               }
             }
-            if (doneBs) doneBs.show();
+            var doneBsInst = getDoneBs();
+            if (doneBsInst) doneBsInst.show();
           } else {
             window.alert(st === 'failed' ? ('Import failed: ' + (job.error || job.message || 'Unknown')) : 'Import was cancelled or lost.');
           }
@@ -1123,17 +1150,25 @@
     }
   });
 
-  if (openDash) {
-    openDash.addEventListener('click', function () {
-      var checked = Array.prototype.slice.call(document.querySelectorAll('.ccc-de-import-cb:checked'));
-      var companies = checked.map(function (c) { return (c.getAttribute('data-company') || '').trim(); }).filter(Boolean);
-      var uniq = Array.from(new Set(companies));
-      try {
-        if (uniq.length === 1) sessionStorage.setItem('cts_data_entry_company', uniq[0]);
-        sessionStorage.setItem('cts_data_entry_sheet', CFG.targetSheet);
-      } catch (e) {}
-    });
+    if (openDash) {
+      openDash.addEventListener('click', function () {
+        var checked = Array.prototype.slice.call(document.querySelectorAll('.ccc-de-import-cb:checked'));
+        var companies = checked.map(function (c) { return (c.getAttribute('data-company') || '').trim(); }).filter(Boolean);
+        var uniq = Array.from(new Set(companies));
+        try {
+          if (uniq.length === 1) sessionStorage.setItem('cts_data_entry_company', uniq[0]);
+          sessionStorage.setItem('cts_data_entry_sheet', CFG.targetSheet);
+        } catch (e) {}
+      });
+    }
   }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindCccDeImportPanel);
+  } else {
+    bindCccDeImportPanel();
+  }
+  window.addEventListener('load', bindCccDeImportPanel);
 })();
 </script>
 {% endif %}
