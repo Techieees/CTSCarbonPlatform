@@ -1,0 +1,45 @@
+.supplier-mgmt-page .analytics-output-stat__value {
+  font-size: clamp(1.15rem, 2.5vw, 1.45rem);
+}
+
+.supplier-mgmt-page .supplier-mgmt-sync-row {
+  gap: 0.75rem;
+}
+
+.supplier-mgmt-page .supplier-mgmt-scroll {
+  max-height: min(420px, 55vh);
+  overflow: auto;
+}
+
+.supplier-mgmt-page .table.supplier-mgmt-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.08);
+  white-space: nowrap;
+}
+
+body.dark-mode .supplier-mgmt-page .table.supplier-mgmt-table thead th {
+  background: rgba(22, 27, 34, 0.96);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.supplier-mgmt-page .supplier-mgmt-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.supplier-mgmt-page .supplier-mgmt-muted {
+  font-size: 0.85rem;
+  color: rgba(100, 116, 139, 0.95);
+}
+
+body.dark-mode .supplier-mgmt-page .supplier-mgmt-muted {
+  color: rgba(148, 163, 184, 0.95);
+}
+
+.supplier-mgmt-page .supplier-mgmt-runs tbody tr td {
+  font-size: 0.85rem;
+  vertical-align: middle;
+}

@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% import 'macros/ui_illustrations.html' as illu %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/analytics-output.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/supplier-management.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container py-4 supplier-mgmt-page">
+  <section class="analytics-output-hero">
+    <div class="analytics-output-hero__eyebrow">{{ page_group }}</div>
+    <div class="d-flex flex-column flex-lg-row gap-3 justify-content-between align-items-lg-start">
+      <div>
+        <h1 class="analytics-output-hero__title">{{ page_title }}</h1>
+        <p class="analytics-output-hero__lead mb-0">{{ page_summary }}</p>
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('suppliers_all_page') }}">{{ illu.illu_nav_suppliers('me-2') }}All Suppliers</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="row g-3 my-4">
+    <div class="col-md-4">
+      <article class="analytics-output-stat h-100">
+        <span class="analytics-output-stat__label">Total registry rows</span>
+        <strong class="analytics-output-stat__value">{{ stats.total }}</strong>
+      </article>
+    </div>
+    <div class="col-md-4">
+      <article class="analytics-output-stat h-100">
+        <span class="analytics-output-stat__label">Active markers</span>
+        <strong class="analytics-output-stat__value">{{ stats.active }}</strong>
+      </article>
+    </div>
+    <div class="col-md-4 d-flex align-items-stretch justify-content-lg-end pt-3 pt-lg-0">
+      <button type="button" class="btn btn-primary align-self-center" id="btnAddOpenInternal">Add internal supplier</button>
+    </div>
+  </section>
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-transparent border-0 pt-3 px-3">
+      <form class="row g-2 align-items-end" id="intFilterForm">
+        <input type="hidden" name="page" value="1">
+        <div class="col-lg-5">
+          <label class="form-label small mb-1" for="irq">Search</label>
+          <input class="form-control form-control-sm" id="irq" name="q" placeholder="Supplier name…" autocomplete="off">
+        </div>
+        <div class="col-lg-2">
+          <label class="form-label small mb-1" for="iac">Active</label>
+          <select class="form-select form-select-sm" id="iac" name="active">
+            <option value="">All</option>
+            <option value="true">Active only</option>
+            <option value="false">Inactive only</option>
+          </select>
+        </div>
+      </form>
+      <div class="d-flex justify-content-between mt-3 mb-0">
+        <span class="supplier-mgmt-muted small" id="intPageInfo">Page 1</span>
+        <div class="btn-group btn-group-sm">
+          <button type="button" class="btn btn-outline-secondary" id="intPrev">Previous</button>
+          <button type="button" class="btn btn-outline-secondary" id="intNext">Next</button>
+        </div>
+      </div>
+    </div>
+    <div class="card-body pt-0 px-0">
+      <div class="supplier-mgmt-scroll px-3">
+        <table class="table table-sm table-hover align-middle mb-0 supplier-mgmt-table eg-table">
+          <thead class="small text-muted text-uppercase">
+            <tr>
+              <th>Supplier · Company group</th>
+              <th>Notes</th>
+              <th>Updated</th>
+              <th>Active</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="intTbody"><tr><td colspan="5" class="text-muted">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="intModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header border-0">
+        <h2 class="modal-title h5" id="intModalTitle">Internal supplier</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body pt-0">
+        <input type="hidden" id="if_id">
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label" for="if_name">Supplier name</label>
+            <input class="form-control" id="if_name" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="if_grp">Company group</label>
+            <input class="form-control" id="if_grp" autocomplete="organization">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label d-block" for="if_act">Active</label>
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="if_act" checked>
+            </div>
+          </div>
+          <div class="col-12">
+            <label class="form-label" for="if_notes">Notes</label>
+            <textarea class="form-control" id="if_notes" rows="3" placeholder="Context for auditors (optional)"></textarea>
+          </div>
+        </div>
+        <p class="text-danger small mb-0 mt-3 d-none" id="intFormErr"></p>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="intSaveBtn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var API_LIST = {{ api_list_url | tojson }};
+  var API_ITEM_BASE = {{ api_item_base | tojson }};
+  var tbody = document.getElementById('intTbody');
+  var modalEl = document.getElementById('intModal');
+  var bsModal = window.bootstrap ? new bootstrap.Modal(modalEl) : null;
+  var ff = document.getElementById('intFilterForm');
+  function esc(s){ return String(s===undefined||s===null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
+  function itemUrl(id){ return API_ITEM_BASE + encodeURIComponent(id); }
+  async function aj(url,opt){
+    var res = await fetch(url, opt||{});
+    var data={}; try { data = await res.json(); } catch(e){}
+    if(!res.ok) throw new Error((data&&data.error)||('HTTP '+res.status));
+    return data;
+  }
+  function qp(){
+    var fd = new FormData(ff);
+    var sp = new URLSearchParams(fd);
+    if(!sp.get('page')) sp.set('page','1');
+    if(!sp.get('page_size')) sp.set('page_size','25');
+    return sp.toString();
+  }
+  async function load(){
+    tbody.innerHTML = '<tr><td colspan="5" class="text-muted">Loading…</td></tr>';
+    try {
+      var d = await aj(API_LIST+'?'+qp());
+      var rows=d.rows||[], total=+d.total||0, pg=+d.page||1, per=+d.page_size||25;
+      document.getElementById('intPageInfo').textContent = 'Page '+pg+' · '+total+' row(s)';
+      tbody.innerHTML = rows.map(function(r){
+        var act=r.active?'<span class="badge bg-success supplier-mgmt-badge">Active</span>':'<span class="badge bg-secondary supplier-mgmt-badge">Archived</span>';
+        var cg = r.company_group ? ('<div class="supplier-mgmt-muted small">'+esc(r.company_group)+'</div>') : '';
+        return '<tr><td><strong>'+esc(r.supplier_name||'')+'</strong>'+cg+'</td>'+
+          '<td class="supplier-mgmt-muted small">'+(esc((r.notes||'').slice(0,120)))+(String(r.notes||'').length>120?'…':'')+'</td>'+
+          '<td class="small supplier-mgmt-muted">'+esc(r.updated_at||'')+'</td><td>'+act+'</td>'+
+          '<td class="text-end">'+
+          '<button type="button" class="btn btn-sm btn-outline-primary me-1" data-act="ie" data-id="'+esc(r.id)+'">Edit</button>'+
+          '<button type="button" class="btn btn-sm btn-outline-danger" data-act="id" data-id="'+esc(r.id)+'">Remove</button>'+
+          '</td></tr>';
+      }).join('')||'<tr><td colspan="5" class="text-muted">No rows.</td></tr>';
+
+      tbody.querySelectorAll('[data-act="ie"]').forEach(function(b){
+        b.onclick=function(){ openEdit(b.getAttribute('data-id')); };
+      });
+      tbody.querySelectorAll('[data-act="id"]').forEach(function(b){
+        b.onclick=function(){
+          var id=b.getAttribute('data-id');
+          if(!confirm('Soft-delete this internal supplier marker? Mapping jobs use the regenerated token export.')) return;
+          aj(itemUrl(id),{method:'DELETE'}).then(load).catch(function(e){alert(e.message);});
+        };
+      });
+
+      window.__intTotal=total; window.__intPer=per; window.__intPg=pg;
+    } catch(e){ tbody.innerHTML='<tr><td colspan="5" class="text-danger">'+esc(e.message)+'</td></tr>'; }
+  }
+  function cErr(){ var e=document.getElementById('intFormErr'); e.classList.add('d-none'); e.textContent=''; }
+  function sErr(m){ var e=document.getElementById('intFormErr'); e.textContent=m; e.classList.remove('d-none'); }
+  async function openEdit(id){
+    cErr();
+    document.getElementById('intModalTitle').textContent='Edit internal supplier';
+    var data = await aj(itemUrl(id), {method:'GET'});
+    var r=data.row;
+    document.getElementById('if_id').value=id;
+    document.getElementById('if_name').value=r.supplier_name||'';
+    document.getElementById('if_grp').value=r.company_group||'';
+    document.getElementById('if_notes').value=r.notes||'';
+    document.getElementById('if_act').checked=!!r.active;
+    bsModal && bsModal.show();
+  }
+  document.getElementById('btnAddOpenInternal').onclick=function(){
+    cErr();
+    document.getElementById('intModalTitle').textContent='Add internal supplier';
+    document.getElementById('if_id').value='';
+    document.getElementById('if_name').value='';
+    document.getElementById('if_grp').value='';
+    document.getElementById('if_notes').value='';
+    document.getElementById('if_act').checked=true;
+    bsModal && bsModal.show();
+  };
+  document.getElementById('intSaveBtn').onclick=async function(){
+    cErr();
+    var payload={
+      supplier_name: document.getElementById('if_name').value.trim(),
+      company_group: document.getElementById('if_grp').value.trim()||null,
+      notes: document.getElementById('if_notes').value.trim()||null,
+      active: document.getElementById('if_act').checked,
+    };
+    if(!payload.supplier_name){ sErr('Supplier name is required'); return;}
+    try {
+      var id=document.getElementById('if_id').value.trim();
+      if(id) await aj(itemUrl(id),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      else await aj(API_LIST,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      bsModal&&bsModal.hide();
+      load();
+    }catch(e){sErr(e.message);}
+  };
+  ff.addEventListener('submit',function(e){e.preventDefault();ff.elements.page.value='1';load();});
+  ff.querySelector('#irq').addEventListener('blur',function(){ff.elements.page.value='1';load();});
+  document.getElementById('iac').addEventListener('change',function(){ff.elements.page.value='1';load();});
+  document.getElementById('intPrev').onclick=function(){var p=+(ff.elements.page.value||1);ff.elements.page.value=String(Math.max(1,p-1));load();};
+  document.getElementById('intNext').onclick=function(){var p=+(ff.elements.page.value||1);var maxPg=Math.max(1,Math.ceil((window.__intTotal||0)/(window.__intPer||25)));if(p>=maxPg)return;ff.elements.page.value=String(p+1);load();};
+  load();
+})();
+</script>
+{% endblock %}

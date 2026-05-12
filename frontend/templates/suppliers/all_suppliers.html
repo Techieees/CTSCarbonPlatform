@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% import 'macros/ui_illustrations.html' as illu %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/analytics-output.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/supplier-management.css') }}">
+{% endblock %}
+
+{% block content %}
+<div
+  class="container py-4 supplier-mgmt-page"
+  id="supplierAllRoot"
+  data-registry-url="{{ api_registry_url }}"
+  data-sync-url="{{ api_sync_url }}"
+  data-runs-url="{{ api_sync_runs_url }}"
+  data-countries-url="{{ api_countries_url }}"
+  data-job-tpl="{{ job_status_tpl }}"
+  data-active-job-id="{{ active_ccc_supplier_job_id or '' }}"
+>
+  <section class="analytics-output-hero">
+    <div class="analytics-output-hero__eyebrow">{{ page_group }}</div>
+    <div class="d-flex flex-column flex-lg-row gap-3 justify-content-between align-items-lg-start">
+      <div>
+        <h1 class="analytics-output-hero__title">{{ page_title }}</h1>
+        <p class="analytics-output-hero__lead mb-0">{{ page_summary }}</p>
+        {% if active_ccc_supplier_job_id %}
+        <p class="supplier-mgmt-muted mb-0 mt-2">
+          Background job active: <code>{{ active_ccc_supplier_job_id }}</code>. Open Dashboard to monitor cancellation if needed.
+        </p>
+        {% endif %}
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-outline-secondary btn-sm" href="{{ data_sources_ccc_url }}">{{ illu.illu_sidebar_ds_ccc('me-2') }}CCC API Console</a>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('suppliers_carbon_steel_page') }}">{{ illu.illu_sidebar_scope3('me-2') }}Carbon / Steel registry</a>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('suppliers_internal_page') }}">{{ illu.illu_sidebar_double_counting('me-2') }}Internal suppliers</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="row g-3 mt-1 mb-4">
+    <div class="col-md-3">
+      <article class="analytics-output-stat h-100">
+        <span class="analytics-output-stat__label">Registry total</span>
+        <strong class="analytics-output-stat__value">{{ sync_summary.registry_total }}</strong>
+        <div class="supplier-mgmt-muted mt-1">CCC source rows (not deleted)</div>
+      </article>
+    </div>
+    <div class="col-md-3">
+      <article class="analytics-output-stat h-100">
+        <span class="analytics-output-stat__label">Active suppliers</span>
+        <strong class="analytics-output-stat__value">{{ sync_summary.registry_active }}</strong>
+        <div class="supplier-mgmt-muted mt-1">Carbon / steel curated: {{ extra_counts.carbon_steel.total }} · Internal registry: {{ extra_counts.internal.total }}</div>
+      </article>
+    </div>
+    <div class="col-md-3">
+      <article class="analytics-output-stat h-100">
+        <span class="analytics-output-stat__label">Last successful sync</span>
+        <strong class="analytics-output-stat__value" style="font-size: 1rem;">{{ sync_summary.last_success_finished_at or "—" }}</strong>
+        <div class="supplier-mgmt-muted mt-1">
+          Upserted: {{ sync_summary.last_success_upserted }} · Fetched: {{ sync_summary.last_success_fetched }}
+        </div>
+      </article>
+    </div>
+    <div class="col-md-3">
+      <article class="analytics-output-stat h-100">
+        <span class="analytics-output-stat__label">Job status</span>
+        <strong class="analytics-output-stat__value" data-field="sync-status">Idle</strong>
+        <div class="supplier-mgmt-muted mt-1 small text-wrap" data-field="sync-message">Use sync buttons below. Incremental honors a checkpoint when the CCC API supports deltas.</div>
+      </article>
+    </div>
+  </section>
+
+  <section class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+      <div class="d-flex flex-column flex-xl-row supplier-mgmt-sync-row justify-content-xl-between align-items-xl-center">
+        <div>
+          <h2 class="h5 mb-1">CCC supplier synchronization</h2>
+          <p class="supplier-mgmt-muted mb-0">
+            Executes in the background. Progress is surfaced through the CTS job monitor and completes with a registry refresh.
+          </p>
+        </div>
+        <div class="d-flex flex-wrap gap-2 justify-content-xl-end">
+          <button type="button" class="btn btn-primary" data-action="sync-full">Full sync</button>
+          <button type="button" class="btn btn-outline-primary" data-action="sync-incremental">Incremental sync</button>
+          <button type="button" class="btn btn-outline-secondary" data-action="refresh-table">Reload table</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-transparent border-0 pt-4 px-4">
+      <div class="d-flex flex-column flex-lg-row gap-3 justify-content-between align-items-lg-center">
+        <h2 class="h5 mb-0">Registry explorer</h2>
+        <form class="row g-2 gy-3 align-items-end w-100" style="max-width: 940px;" id="supplierFilterForm">
+          <input type="hidden" name="page" value="1">
+          <div class="col-6 col-lg-4">
+            <label class="form-label small mb-1" for="fQ">Search</label>
+            <input class="form-control form-control-sm" id="fQ" name="filter_q" placeholder="Supplier name…" autocomplete="off">
+          </div>
+          <div class="col-6 col-lg-3">
+            <label class="form-label small mb-1" for="fCo">Country</label>
+            <select class="form-select form-select-sm" id="fCo" name="filter_country">
+              <option value="">All countries</option>
+            </select>
+          </div>
+          <div class="col-4 col-lg-2">
+            <label class="form-label small mb-1" for="fAc">Active</label>
+            <select class="form-select form-select-sm" id="fAc" name="filter_active">
+              <option value="">All</option>
+              <option value="true">Active only</option>
+              <option value="false">Inactive only</option>
+            </select>
+          </div>
+          <div class="col-4 col-lg-2">
+            <label class="form-label small mb-1" for="fSo">Sort</label>
+            <select class="form-select form-select-sm" id="fSo" name="sort_col">
+              <option value="supplier_name">Name</option>
+              <option value="last_synced_at">Last synced</option>
+              <option value="usage_count">Usage count</option>
+              <option value="country">Country</option>
+              <option value="supplier_type">Supplier type</option>
+              <option value="active">Active flag</option>
+            </select>
+          </div>
+          <div class="col-4 col-lg-1">
+            <label class="form-label small mb-1" for="fOrd">Order</label>
+            <select class="form-select form-select-sm" id="fOrd" name="sort_order">
+              <option value="asc">Asc</option>
+              <option value="desc">Desc</option>
+            </select>
+          </div>
+        </form>
+      </div>
+      <div class="d-flex justify-content-between align-items-center mt-3 mb-2">
+        <span class="supplier-mgmt-muted small" data-field="page-info">Page 1</span>
+        <div class="btn-group btn-group-sm">
+          <button type="button" class="btn btn-outline-secondary" data-action="page-prev">Previous</button>
+          <button type="button" class="btn btn-outline-secondary" data-action="page-next">Next</button>
+        </div>
+      </div>
+    </div>
+    <div class="card-body pt-0 px-0 pb-3">
+      <div class="supplier-mgmt-scroll px-3">
+        <table class="table table-sm table-hover align-middle mb-0 supplier-mgmt-table eg-table">
+          <thead class="small text-muted text-uppercase">
+            <tr>
+              <th scope="col">Supplier name · Notes preview</th>
+              <th scope="col">Source</th>
+              <th scope="col">Country</th>
+              <th scope="col">Last synced</th>
+              <th scope="col" class="text-end">Usage</th>
+              <th scope="col">Supplier type</th>
+              <th scope="col">Active</th>
+              <th scope="col">External id</th>
+            </tr>
+          </thead>
+          <tbody data-field="registry-body">
+            <tr><td colspan="8" class="text-muted px-4">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <section class="card border-0 shadow-sm">
+    <div class="card-body">
+      <h2 class="h5">Recent sync runs</h2>
+      <p class="supplier-mgmt-muted small">Operational log from <code>supplier_sync_run</code> (persisted).</p>
+      <div class="supplier-mgmt-scroll">
+        <table class="table table-sm align-middle mb-0 supplier-mgmt-runs">
+          <thead class="small text-muted text-uppercase">
+            <tr>
+              <th>Started</th>
+              <th>Mode</th>
+              <th>Status</th>
+              <th class="text-end">Fetched</th>
+              <th class="text-end">Upserted</th>
+              <th class="text-end">Skipped</th>
+            </tr>
+          </thead>
+          <tbody data-field="sync-runs-body">
+            <tr><td colspan="6" class="text-muted">Loading history…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
+<script defer src="{{ url_for('static', filename='js/supplier-mgmt-all.js') }}"></script>
+{% endblock %}

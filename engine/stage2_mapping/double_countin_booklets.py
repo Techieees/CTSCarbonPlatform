@@ -12,6 +12,9 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+_STAGE2_MAPPING_DIR = Path(__file__).resolve().parent
+if str(_STAGE2_MAPPING_DIR) not in sys.path:
+    sys.path.insert(0, str(_STAGE2_MAPPING_DIR))
 
 from config import STAGE2_OUTPUT_DIR
 
@@ -85,62 +88,8 @@ CTS_SOURCES: List[str] = [
 #Waste datasi icin yaptigimiz mappingi degistirelim.  Oncelikle weight unit kismina bakacaksin. Burada kg, litres, tn, Tonnes, tons var). Biz her zaman ton ile calisiyoruz. kg ve Litres olanlari 1000 e boleceksin. Digerleri ayni sekilde kalacak. Sonrasinda ef_value degerleriyle bunu carpacaksin. Istersen yeni bir sutun yarat Weight(tonnes) olarak ve donusturdugun degerleri buraya yaz. 
 
 
+# Internal supplier normalized tokens come from `internal_supplier_registry` (platform DB + cache).
 
-# Internal suppliers list per manual (normalized, punctuation/spacing-insensitive)
-INTERNAL_SUPPLIERS: List[str] = [
-    "Nordic EPOD",
-    "Nordicepod AS",
-    "Nordicepod",
-    "NEP Switchboards",
-    "G. T Nordics",
-    "G. T Nordics AS",
-    "G.T Nordics As",
-    "Gapit",
-    "Gapit AS",
-    "Gapit As",
-    "Gapit Nordics As",
-    "DC Piping",
-    "MC Prefab",
-    "MC Prefab Nordics AS",
-    "Mc Prefab Nordics AS",
-    "Velox Electro Nordics AS",
-    "Velox Electro Nordics OY",
-    "Mecwide Nordics Finland OY",
-    "Mecwide Nordics AS",
-    "Mecwide Nordics Denmark ApS",
-    "Mecwide Nordics`",
-    "Comissioning Services",
-    "Comissioning Services AS",
-    "Qec Nordics AS",
-    "Qec Nordics",
-    "PORVELOX Electro Europe Lda",
-    "MC Prefab Sweden AB",
-    "Nordic Crane AS",
-    "Commissioning Services Nordics AS",
-    "Mecwide Nordics Sweden AB",   
-    "CTS-VDC Services LTD",
-    "CTS NORDICS AS",
-    "Velox Electro Nordics AB",
-    "CS Nordics",
-    "Fortica Sweden AB",
-    "101",
-    "102",
-    "103",
-    "104",
-    "105",
-    "106",
-    "107",
-    "108",
-    "109",
-    "110",
-    "111",
-    "112",
-    "113",
-    "114",
-    "115",
-    "116",
-    "117",
-]
 
 # Special null rules (explicit pairs): (source_company, provider_should_be)
 SPECIAL_NULL_PAIRS: List[Tuple[str, List[str], str]] = [
@@ -217,7 +166,17 @@ def _find_latest_merged(base_dir: Path) -> Optional[Path]:
 
 def _build_internal_sets() -> Tuple[set[str], set[str], Dict[str, set[str]]]:
     cts_set = {_normalize_token(x) for x in CTS_SOURCES}
-    internal_set = {_normalize_token(x) for x in INTERNAL_SUPPLIERS}
+    try:
+        from internal_supplier_registry import load_internal_supplier_normalized_tokens
+    except Exception:
+        load_internal_supplier_normalized_tokens = None  # type: ignore[assignment,misc]
+
+    internal_set: set[str] = set()
+    if load_internal_supplier_normalized_tokens is not None:
+        try:
+            internal_set = set(load_internal_supplier_normalized_tokens())
+        except Exception:
+            internal_set = set()
     special_pairs: Dict[str, set[str]] = {}
     for src, providers, _reason in SPECIAL_NULL_PAIRS:
         key = _normalize_token(src)

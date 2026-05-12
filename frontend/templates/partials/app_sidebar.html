@@ -2,6 +2,7 @@
 {% set ep = request.endpoint %}
 {% set runs_href = url_for('admin_mapping_runs') if current_user.is_admin else url_for('mapping_runs') %}
 {% set runs_active = ep in ('mapping_runs', 'admin_mapping_runs') %}
+{% set supplier_pages_active = can_manage_supplier_registries() and ep in ('suppliers_hub_redirect', 'suppliers_all_page', 'suppliers_carbon_steel_page', 'suppliers_internal_page') %}
 {% set carbon_active = ep in ('carbon_accounting', 'scope1_detail', 'scope2_detail', 'scope3_detail') %}
 {% set data_sources_active = ep in ('data_sources_ccc_api', 'engage_waste_api_page', 'data_sources_klarakarbon', 'data_sources_employee_commuting_headcount', 'data_sources_employee_commuting_national_averages', 'data_sources_averages', 'data_sources_scenarios', 'admin') %}
 {% set data_outputs_active = ep in ('analytics_mapped_window_output', 'analytics_emissions_totals', 'analytics_share_analysis', 'data_output_travel', 'data_output_klarakarbon') %}
@@ -20,6 +21,8 @@
   {% set selected_section = 'resources' %}
 {% elif carbon_active %}
   {% set selected_section = 'carbon' %}
+{% elif supplier_pages_active %}
+  {% set selected_section = 'suppliers' %}
 {% elif data_active %}
   {% set selected_section = 'data' %}
 {% elif analytics_active %}
@@ -75,6 +78,12 @@
         <div class="icon app-sidebar__icon">{{ illu.illu_nav_data('') }}</div>
         <span class="label app-sidebar__label">Data</span>
       </button>
+      {% if can_manage_supplier_registries() %}
+      <button type="button" class="app-sidebar__rail-item nav-item {% if selected_section == 'suppliers' %}is-active active{% endif %}" data-sidebar-section-trigger data-section-id="suppliers" data-section="suppliers" aria-label="Suppliers">
+        <div class="icon app-sidebar__icon">{{ illu.illu_nav_suppliers('') }}</div>
+        <span class="label app-sidebar__label">Suppliers</span>
+      </button>
+      {% endif %}
       <button type="button" class="app-sidebar__rail-item nav-item {% if selected_section == 'analytics' %}is-active active{% endif %}" data-sidebar-section-trigger data-section-id="analytics" data-section="analytics" aria-label="Analytics">
         <div class="icon app-sidebar__icon">{{ illu.illu_nav_chart_pie('') }}</div>
         <span class="label app-sidebar__label">Analytics</span>
@@ -225,6 +234,32 @@
           </button>
         </nav>
       </div>
+
+      {% if can_manage_supplier_registries() %}
+      <div class="app-sidebar__primary-panel {% if selected_section == 'suppliers' %}is-active{% endif %}" data-sidebar-section-panel="suppliers">
+        <div class="app-sidebar__panel-header">
+          <h2>Suppliers</h2>
+        </div>
+        <nav class="app-sidebar__panel-menu">
+          <a href="{{ url_for('suppliers_all_page') }}" class="app-sidebar__menu-item {% if ep == 'suppliers_all_page' %}is-active{% endif %}" {% if ep == 'suppliers_all_page' %}aria-current="page"{% endif %}>
+            {{ illu.illu_nav_suppliers('app-sidebar__icon') }}
+            <span>All Suppliers</span>
+          </a>
+          <a href="{{ url_for('suppliers_carbon_steel_page') }}" class="app-sidebar__menu-item {% if ep == 'suppliers_carbon_steel_page' %}is-active{% endif %}" {% if ep == 'suppliers_carbon_steel_page' %}aria-current="page"{% endif %}>
+            {{ illu.illu_sidebar_scope3('app-sidebar__icon') }}
+            <span>Carbon and Steel Suppliers</span>
+          </a>
+          <a href="{{ url_for('suppliers_internal_page') }}" class="app-sidebar__menu-item {% if ep == 'suppliers_internal_page' %}is-active{% endif %}" {% if ep == 'suppliers_internal_page' %}aria-current="page"{% endif %}>
+            {{ illu.illu_sidebar_double_counting('app-sidebar__icon') }}
+            <span>Internal Suppliers</span>
+          </a>
+          <a href="{{ url_for('data_sources_ccc_api') }}" class="app-sidebar__menu-item {% if ep == 'data_sources_ccc_api' %}is-active{% endif %}" {% if ep == 'data_sources_ccc_api' %}aria-current="page"{% endif %}>
+            {{ illu.illu_sidebar_ds_ccc('app-sidebar__icon') }}
+            <span>CCC API Console</span>
+          </a>
+        </nav>
+      </div>
+      {% endif %}
 
       <div class="app-sidebar__primary-panel {% if selected_section == 'analytics' %}is-active{% endif %}" data-sidebar-section-panel="analytics">
         <div class="app-sidebar__panel-header">
@@ -394,6 +429,12 @@
             {{ illu.illu_sidebar_ds_ccc('app-sidebar__icon') }}
             <span>CCC API</span>
           </a>
+          {% if can_manage_supplier_registries() %}
+          <a href="{{ url_for('suppliers_all_page') }}" class="app-sidebar__menu-item {% if ep == 'suppliers_all_page' %}is-active{% endif %}" {% if ep == 'suppliers_all_page' %}aria-current="page"{% endif %}>
+            {{ illu.illu_nav_suppliers('app-sidebar__icon') }}
+            <span>All Suppliers (CCC registry)</span>
+          </a>
+          {% endif %}
           <a href="{{ url_for('engage_waste_api_page') }}" class="app-sidebar__menu-item {% if ep == 'engage_waste_api_page' %}is-active{% endif %}" {% if ep == 'engage_waste_api_page' %}aria-current="page"{% endif %}>
             {{ illu.illu_sidebar_ds_engage_waste('app-sidebar__icon') }}
             <span>Engage Waste API</span>

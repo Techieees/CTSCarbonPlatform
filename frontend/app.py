@@ -1030,6 +1030,11 @@ def _enforce_readonly_auditor_access():
         "governance_audit_ready_output",
         "governance_double_counting_check",
         "data_sources_ccc_api",
+        "api_ccc_supplier_sync",
+        "api_suppliers_carbon_steel_create",
+        "api_suppliers_carbon_steel_item",
+        "api_suppliers_internal_create",
+        "api_suppliers_internal_item",
     }
     if method == "GET" and endpoint in blocked_pages:
         flash("Auditor accounts have read-only access to feed, reports, and mapped outputs.", "warning")
@@ -1069,7 +1074,15 @@ def _nav_profile_context():
         except Exception:
             return None
 
-    return dict(nav_profile_photo_url=nav_profile_photo_url)
+    def can_manage_supplier_registries() -> bool:
+        try:
+            if not current_user.is_authenticated:
+                return False
+            return _user_can_manage_supplier_registries(current_user)
+        except Exception:
+            return False
+
+    return dict(nav_profile_photo_url=nav_profile_photo_url, can_manage_supplier_registries=can_manage_supplier_registries)
 
 
 # Database models
@@ -1943,6 +1956,96 @@ class GovernanceRegisterAuditLog(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
 
+class CccSupplierRegistry(db.Model):
+    """CCC API supplier master data (discovery source)."""
+
+    __tablename__ = "ccc_supplier_registry"
+    __table_args__ = (
+        db.UniqueConstraint("source_system", "external_supplier_id", name="uq_ccc_supplier_src_ext"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    external_supplier_id = db.Column(db.String(128), nullable=False, index=True)
+    supplier_name = db.Column(db.String(512), nullable=False)
+    normalized_name = db.Column(db.String(512), nullable=False, index=True)
+    source_system = db.Column(db.String(32), nullable=False, default="CCC", index=True)
+    raw_json = db.Column(db.Text, nullable=True)
+    country = db.Column(db.String(120), nullable=True)
+    currency = db.Column(db.String(32), nullable=True)
+    company_relation = db.Column(db.String(256), nullable=True)
+    supplier_type = db.Column(db.String(120), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    active = db.Column(db.Boolean, default=True, nullable=False, index=True)
+    deleted_at = db.Column(db.DateTime, nullable=True, index=True)
+    first_synced_at = db.Column(db.DateTime, nullable=True)
+    last_synced_at = db.Column(db.DateTime, nullable=True, index=True)
+    usage_count = db.Column(db.Integer, nullable=False, default=0)
+
+
+class SupplierSyncRun(db.Model):
+    """Audit trail for CCC supplier sync jobs."""
+
+    __tablename__ = "supplier_sync_run"
+    id = db.Column(db.Integer, primary_key=True)
+    sync_source = db.Column(db.String(32), nullable=False, default="CCC", index=True)
+    sync_mode = db.Column(db.String(32), nullable=False, index=True)
+    status = db.Column(db.String(32), nullable=False, index=True)
+    message = db.Column(db.Text, nullable=True)
+    rows_fetched = db.Column(db.Integer, nullable=False, default=0)
+    rows_upserted = db.Column(db.Integer, nullable=False, default=0)
+    rows_skipped = db.Column(db.Integer, nullable=False, default=0)
+    error_json = db.Column(db.Text, nullable=True)
+    triggered_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    started_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+    finished_at = db.Column(db.DateTime, nullable=True, index=True)
+
+
+class SupplierSyncCheckpoint(db.Model):
+    """Key-value checkpoints for incremental sync (best-effort)."""
+
+    __tablename__ = "supplier_sync_checkpoint"
+    id = db.Column(db.Integer, primary_key=True)
+    checkpoint_key = db.Column(db.String(96), nullable=False, unique=True, index=True)
+    checkpoint_value_json = db.Column(db.Text, nullable=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class CarbonSteelSupplier(db.Model):
+    """Manually curated carbon & steel procurement registry (factor placeholder)."""
+
+    __tablename__ = "carbon_steel_supplier_registry"
+
+    id = db.Column(db.Integer, primary_key=True)
+    supplier_name = db.Column(db.String(512), nullable=False)
+    normalized_name = db.Column(db.String(512), nullable=False, index=True)
+    supplier_category = db.Column(db.String(120), nullable=True, index=True)
+    co2e_factor = db.Column(db.Float, nullable=False, default=0.0)
+    factor_unit = db.Column(db.String(80), nullable=False, default="tCO2e")
+    country = db.Column(db.String(120), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    deleted_at = db.Column(db.DateTime, nullable=True, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class InternalSupplier(db.Model):
+    """Internal suppliers for double-counting null rules (co2e = 0 when matched)."""
+
+    __tablename__ = "internal_supplier_registry"
+
+    id = db.Column(db.Integer, primary_key=True)
+    supplier_name = db.Column(db.String(512), nullable=False)
+    normalized_name = db.Column(db.String(512), nullable=False, index=True)
+    company_group = db.Column(db.String(200), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    deleted_at = db.Column(db.DateTime, nullable=True, index=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 GOVERNANCE_ACCESS_TYPES: tuple[str, ...] = (
     "API",
     "Software",
@@ -2736,6 +2839,48 @@ def _replace_employee_commuting_national_average_rows(rows: list[dict[str, objec
     _publish_employee_commuting_files()
 
 
+def _supplier_mgmt_post_bootstrap() -> None:
+    """Seed internal DC suppliers once + export tokens for stage2 batch jobs."""
+    try:
+        from frontend.services.supplier_dc_export_service import export_internal_supplier_tokens_for_stage2
+        from frontend.services.supplier_normalize import normalize_supplier_key
+
+        seed_path = APP_DIR / "data" / "supplier_mgmt" / "internal_dc_seed.json"
+        if InternalSupplier.query.count() == 0 and seed_path.is_file():
+            blob = json.loads(seed_path.read_text(encoding="utf-8"))
+            names = blob.get("supplier_names") if isinstance(blob, dict) else None
+            if isinstance(names, list):
+                for n in names:
+                    sn = str(n or "").strip()
+                    if not sn:
+                        continue
+                    db.session.add(
+                        InternalSupplier(
+                            supplier_name=sn[:512],
+                            normalized_name=normalize_supplier_key(sn)[:512],
+                            company_group="Legacy seed",
+                            notes="Imported from internal_dc_seed.json bootstrap file.",
+                            active=True,
+                        )
+                    )
+                db.session.commit()
+        export_internal_supplier_tokens_for_stage2(db.session, InternalSupplier)
+    except Exception:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+
+
+def _export_internal_supplier_dc_tokens_safe() -> None:
+    try:
+        from frontend.services.supplier_dc_export_service import export_internal_supplier_tokens_for_stage2
+
+        export_internal_supplier_tokens_for_stage2(db.session, InternalSupplier)
+    except Exception:
+        pass
+
+
 def _ensure_db_tables() -> None:
     """
     Best-effort table creation for environments that don't run app.py directly.
@@ -2760,6 +2905,7 @@ def _ensure_db_tables() -> None:
         _ensure_governance_register_columns()
         _ensure_notification_meta_json_column()
         _migrate_profile_photos_to_storage_once()
+        _supplier_mgmt_post_bootstrap()
     except Exception:
         pass
 
@@ -6023,6 +6169,71 @@ def _user_can_run_ccc_data_entry_import(u: object | None) -> bool:
 def _user_can_run_engage_waste_import(u: object | None) -> bool:
     """Engage Waste API → Data Entry import — same privilege gate as CCC."""
     return _user_can_run_ccc_data_entry_import(u)
+
+
+def _user_can_manage_supplier_registries(u: object | None) -> bool:
+    """Supplier management pages, CCC supplier sync, registry CRUD."""
+    return normalize_user_role(getattr(u, "role", None)) in {"owner", "super_admin", "admin"}
+
+
+def _parse_supplier_page_args() -> tuple[int, int]:
+    try:
+        page = int(request.args.get("page") or 1)
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        per = int(request.args.get("page_size") or 25)
+    except (TypeError, ValueError):
+        per = 25
+    return max(1, page), max(1, min(100, per))
+
+
+def _ccc_supplier_sync_summary_for_ui() -> dict[str, object]:
+    """Lightweight CCC registry + last sync rollup for dashboard cards."""
+    base_cf = (
+        CccSupplierRegistry.source_system == "CCC",
+        CccSupplierRegistry.deleted_at.is_(None),
+    )
+    total_reg = CccSupplierRegistry.query.filter(*base_cf).count()
+    active_reg = CccSupplierRegistry.query.filter(*base_cf, CccSupplierRegistry.active.is_(True)).count()
+
+    latest_any = (
+        SupplierSyncRun.query.filter(SupplierSyncRun.sync_source == "CCC")
+        .order_by(desc(SupplierSyncRun.started_at))
+        .first()
+    )
+    latest_ok = (
+        SupplierSyncRun.query.filter(SupplierSyncRun.sync_source == "CCC", SupplierSyncRun.status == "completed")
+        .order_by(desc(SupplierSyncRun.finished_at))
+        .first()
+    )
+
+    running = SupplierSyncRun.query.filter(SupplierSyncRun.sync_source == "CCC", SupplierSyncRun.status == "running").first()
+
+    return {
+        "registry_total": int(total_reg),
+        "registry_active": int(active_reg),
+        "last_run_status": str(latest_any.status) if latest_any else None,
+        "last_run_started_at": latest_any.started_at.strftime("%Y-%m-%d %H:%M UTC") if latest_any and latest_any.started_at else None,
+        "last_success_finished_at": latest_ok.finished_at.strftime("%Y-%m-%d %H:%M UTC") if latest_ok and latest_ok.finished_at else None,
+        "last_success_fetched": int(latest_ok.rows_fetched or 0) if latest_ok else 0,
+        "last_success_upserted": int(latest_ok.rows_upserted or 0) if latest_ok else 0,
+        "sync_running_record": running is not None,
+    }
+
+
+def _carbon_steel_supplier_counts() -> dict[str, int]:
+    base = CarbonSteelSupplier.deleted_at.is_(None)
+    total = db.session.query(func.count(CarbonSteelSupplier.id)).filter(base).scalar() or 0
+    active_n = db.session.query(func.count(CarbonSteelSupplier.id)).filter(base, CarbonSteelSupplier.active.is_(True)).scalar() or 0
+    return {"total": int(total), "active": int(active_n)}
+
+
+def _internal_supplier_counts() -> dict[str, int]:
+    base = InternalSupplier.deleted_at.is_(None)
+    total = db.session.query(func.count(InternalSupplier.id)).filter(base).scalar() or 0
+    active_n = db.session.query(func.count(InternalSupplier.id)).filter(base, InternalSupplier.active.is_(True)).scalar() or 0
+    return {"total": int(total), "active": int(active_n)}
 
 
 def _string_cell_value(value: object) -> str:
@@ -14079,6 +14290,434 @@ def api_ccc_import_to_data_entry():
     return jsonify({"ok": True, "job_id": job_id})
 
 
+@app.route("/api/suppliers/ccc/sync", methods=["POST"])
+@login_required
+def api_ccc_supplier_sync():
+    """Queue background job: CCC `/supplier` → `ccc_supplier_registry` (live API, not Data Entry rows)."""
+    if not _user_can_manage_supplier_registries(current_user):
+        return jsonify({"error": "Forbidden", "detail": "Supplier registry management requires admin, super_admin, or owner role."}), 403
+    payload = request.get_json(silent=True) or {}
+    mode = str(payload.get("mode") or "incremental").strip().lower()
+    if mode not in {"full", "incremental"}:
+        return jsonify({"error": "mode must be full or incremental"}), 400
+
+    active_sync = _active_job_id_for_job_type("ccc_supplier_sync")
+    if active_sync:
+        return jsonify(
+            {
+                "error": "CCC supplier sync already running",
+                "detail": "Wait for the current job to finish.",
+                "job_id": active_sync,
+            }
+        ), 409
+
+    uid = int(getattr(current_user, "id", 0) or 0) or None
+    job_id = run_in_background(
+        "ccc_supplier_sync",
+        "CCC Suppliers",
+        _run_ccc_supplier_sync_job,
+        sync_mode=mode,
+        user_id=uid,
+        job_user_id=uid,
+        job_user_email=str(getattr(current_user, "email", "") or ""),
+    )
+    return jsonify({"ok": True, "job_id": job_id, "mode": mode})
+
+
+@app.route("/api/suppliers/ccc/registry", methods=["GET"])
+@login_required
+def api_suppliers_ccc_registry():
+    """Server-side paginated CCC supplier directory."""
+    if not _user_can_manage_supplier_registries(current_user):
+        return jsonify({"error": "Forbidden"}), 403
+    _ensure_db_tables()
+    page, per = _parse_supplier_page_args()
+
+    q = CccSupplierRegistry.query.filter(
+        CccSupplierRegistry.source_system == "CCC",
+        CccSupplierRegistry.deleted_at.is_(None),
+    )
+    active_f = str(request.args.get("active") or "").strip().lower()
+    if active_f == "true":
+        q = q.filter(CccSupplierRegistry.active.is_(True))
+    elif active_f == "false":
+        q = q.filter(CccSupplierRegistry.active.is_(False))
+
+    country = str(request.args.get("country") or "").strip()
+    if country:
+        q = q.filter(CccSupplierRegistry.country == country[:120])
+
+    search = str(request.args.get("q") or "").strip()
+    if search:
+        term = f"%{search[:200]}%"
+        q = q.filter(or_(CccSupplierRegistry.supplier_name.ilike(term), CccSupplierRegistry.normalized_name.ilike(term)))
+
+    total = q.count()
+
+    sort_col = str(request.args.get("sort") or "supplier_name").strip()
+    order = str(request.args.get("order") or "asc").strip().lower()
+    col_map = {
+        "supplier_name": CccSupplierRegistry.supplier_name,
+        "last_synced_at": CccSupplierRegistry.last_synced_at,
+        "usage_count": CccSupplierRegistry.usage_count,
+        "country": CccSupplierRegistry.country,
+        "active": CccSupplierRegistry.active,
+        "supplier_type": CccSupplierRegistry.supplier_type,
+    }
+    ob = col_map.get(sort_col, CccSupplierRegistry.supplier_name)
+    q = q.order_by(asc(ob) if order == "asc" else desc(ob))
+
+    rows = q.offset((page - 1) * per).limit(per).all()
+
+    def row_out(r: CccSupplierRegistry) -> dict[str, object]:
+        return {
+            "id": int(r.id),
+            "external_supplier_id": str(r.external_supplier_id or ""),
+            "supplier_name": str(r.supplier_name or ""),
+            "normalized_name": str(r.normalized_name or ""),
+            "source_system": str(r.source_system or ""),
+            "country": r.country,
+            "currency": r.currency,
+            "company_relation": r.company_relation,
+            "supplier_type": r.supplier_type,
+            "notes": r.notes,
+            "usage_count": int(r.usage_count or 0),
+            "active": bool(r.active),
+            "last_synced_at": r.last_synced_at.strftime("%Y-%m-%d %H:%M UTC") if r.last_synced_at else None,
+            "first_synced_at": r.first_synced_at.strftime("%Y-%m-%d %H:%M UTC") if r.first_synced_at else None,
+        }
+
+    return jsonify(
+        {
+            "ok": True,
+            "page": page,
+            "page_size": per,
+            "total": int(total),
+            "rows": [row_out(r) for r in rows],
+        }
+    )
+
+
+@app.route("/api/suppliers/ccc/sync-runs", methods=["GET"])
+@login_required
+def api_suppliers_ccc_sync_runs():
+    """Recent CCC supplier sync audit rows."""
+    if not _user_can_manage_supplier_registries(current_user):
+        return jsonify({"error": "Forbidden"}), 403
+    _ensure_db_tables()
+    try:
+        lim = int(request.args.get("limit") or 24)
+    except (TypeError, ValueError):
+        lim = 24
+    lim = max(1, min(100, lim))
+
+    runs = (
+        SupplierSyncRun.query.filter(SupplierSyncRun.sync_source == "CCC")
+        .order_by(desc(SupplierSyncRun.started_at))
+        .limit(lim)
+        .all()
+    )
+    out_l: list[dict[str, object]] = []
+    for r in runs:
+        out_l.append(
+            {
+                "id": int(r.id),
+                "sync_mode": str(r.sync_mode or ""),
+                "status": str(r.status or ""),
+                "message": r.message,
+                "rows_fetched": int(r.rows_fetched or 0),
+                "rows_upserted": int(r.rows_upserted or 0),
+                "rows_skipped": int(r.rows_skipped or 0),
+                "started_at": r.started_at.strftime("%Y-%m-%d %H:%M UTC") if r.started_at else None,
+                "finished_at": r.finished_at.strftime("%Y-%m-%d %H:%M UTC") if r.finished_at else None,
+            }
+        )
+    return jsonify({"ok": True, "runs": out_l})
+
+
+@app.route("/api/suppliers/ccc/countries", methods=["GET"])
+@login_required
+def api_suppliers_ccc_countries():
+    """Distinct country values for filter dropdowns (capped scan)."""
+    if not _user_can_manage_supplier_registries(current_user):
+        return jsonify({"error": "Forbidden"}), 403
+    _ensure_db_tables()
+    cap = 3000
+    rows = (
+        db.session.query(CccSupplierRegistry.country)
+        .filter(
+            CccSupplierRegistry.source_system == "CCC",
+            CccSupplierRegistry.deleted_at.is_(None),
+            CccSupplierRegistry.country.isnot(None),
+            CccSupplierRegistry.country != "",
+        )
+        .distinct()
+        .limit(cap)
+        .all()
+    )
+    countries = sorted({str(r[0]).strip() for r in rows if r and r[0]})
+    return jsonify({"ok": True, "countries": countries, "truncated": len(rows) >= cap})
+
+
+@app.route("/api/suppliers/carbon-steel", methods=["GET", "POST"])
+@login_required
+def api_suppliers_carbon_steel_create():
+    """List or create carbon / steel registry rows (manual)."""
+    from frontend.services.supplier_normalize import normalize_supplier_key
+
+    if not _user_can_manage_supplier_registries(current_user):
+        return jsonify({"error": "Forbidden"}), 403
+    _ensure_db_tables()
+
+    if request.method == "GET":
+        page, per = _parse_supplier_page_args()
+        q = CarbonSteelSupplier.query.filter(CarbonSteelSupplier.deleted_at.is_(None))
+        search = str(request.args.get("q") or "").strip()
+        if search:
+            term = f"%{search[:200]}%"
+            q = q.filter(or_(CarbonSteelSupplier.supplier_name.ilike(term), CarbonSteelSupplier.normalized_name.ilike(term)))
+        cat = str(request.args.get("supplier_category") or "").strip()
+        if cat:
+            q = q.filter(CarbonSteelSupplier.supplier_category == cat[:120])
+
+        active_f = str(request.args.get("active") or "").strip().lower()
+        if active_f == "true":
+            q = q.filter(CarbonSteelSupplier.active.is_(True))
+        elif active_f == "false":
+            q = q.filter(CarbonSteelSupplier.active.is_(False))
+
+        total = q.count()
+        sort_col = str(request.args.get("sort") or "supplier_name").strip()
+        order = str(request.args.get("order") or "asc").strip().lower()
+        col_map = {
+            "supplier_name": CarbonSteelSupplier.supplier_name,
+            "updated_at": CarbonSteelSupplier.updated_at,
+            "co2e_factor": CarbonSteelSupplier.co2e_factor,
+            "country": CarbonSteelSupplier.country,
+            "active": CarbonSteelSupplier.active,
+            "supplier_category": CarbonSteelSupplier.supplier_category,
+        }
+        ob = col_map.get(sort_col, CarbonSteelSupplier.supplier_name)
+        q = q.order_by(asc(ob) if order == "asc" else desc(ob))
+        rows = q.offset((page - 1) * per).limit(per).all()
+
+        def pack(r: CarbonSteelSupplier) -> dict[str, object]:
+            return {
+                "id": int(r.id),
+                "supplier_name": str(r.supplier_name or ""),
+                "supplier_category": r.supplier_category,
+                "co2e_factor": float(r.co2e_factor or 0.0),
+                "factor_unit": str(r.factor_unit or "tCO2e"),
+                "country": r.country,
+                "notes": r.notes,
+                "active": bool(r.active),
+                "created_at": r.created_at.strftime("%Y-%m-%d %H:%M UTC") if r.created_at else None,
+                "updated_at": r.updated_at.strftime("%Y-%m-%d %H:%M UTC") if r.updated_at else None,
+            }
+
+        return jsonify({"ok": True, "page": page, "page_size": per, "total": int(total), "rows": [pack(r) for r in rows]})
+
+    payload = request.get_json(silent=True) or {}
+    name = str(payload.get("supplier_name") or "").strip()
+    if not name:
+        return jsonify({"error": "supplier_name is required"}), 400
+    norm = normalize_supplier_key(name)[:512] or normalize_supplier_key(f"cs:{name}")[:512]
+    row = CarbonSteelSupplier(
+        supplier_name=name[:512],
+        normalized_name=norm,
+        supplier_category=(str(payload.get("supplier_category") or "").strip()[:120] or None),
+        co2e_factor=float(payload.get("co2e_factor") or 0.0),
+        factor_unit=str(payload.get("factor_unit") or "tCO2e").strip()[:80] or "tCO2e",
+        country=(str(payload.get("country") or "").strip()[:120] or None),
+        notes=(str(payload.get("notes") or "").strip() or None),
+        active=bool(payload.get("active")) if payload.get("active") is not None else True,
+    )
+    db.session.add(row)
+    db.session.commit()
+    return jsonify({"ok": True, "id": int(row.id)})
+
+
+@app.route("/api/suppliers/carbon-steel/<int:row_id>", methods=["GET", "PATCH", "DELETE"])
+@login_required
+def api_suppliers_carbon_steel_item(row_id: int):
+    from frontend.services.supplier_normalize import normalize_supplier_key
+
+    if not _user_can_manage_supplier_registries(current_user):
+        return jsonify({"error": "Forbidden"}), 403
+    _ensure_db_tables()
+    row = CarbonSteelSupplier.query.filter(CarbonSteelSupplier.id == row_id, CarbonSteelSupplier.deleted_at.is_(None)).first()
+    if not row:
+        return jsonify({"error": "Not found"}), 404
+
+    if request.method == "GET":
+        payload = {
+            "id": int(row.id),
+            "supplier_name": str(row.supplier_name or ""),
+            "supplier_category": row.supplier_category,
+            "co2e_factor": float(row.co2e_factor or 0.0),
+            "factor_unit": str(row.factor_unit or "tCO2e"),
+            "country": row.country,
+            "notes": row.notes,
+            "active": bool(row.active),
+            "updated_at": row.updated_at.strftime("%Y-%m-%d %H:%M UTC") if row.updated_at else None,
+        }
+        return jsonify({"ok": True, "row": payload})
+
+    if request.method == "DELETE":
+        row.deleted_at = datetime.utcnow()
+        row.active = False
+        db.session.commit()
+        return jsonify({"ok": True})
+
+    payload = request.get_json(silent=True) or {}
+    if "supplier_name" in payload:
+        sn = str(payload.get("supplier_name") or "").strip()
+        if not sn:
+            return jsonify({"error": "supplier_name cannot be empty"}), 400
+        row.supplier_name = sn[:512]
+        row.normalized_name = normalize_supplier_key(sn)[:512] or row.normalized_name
+    if "supplier_category" in payload:
+        v = payload.get("supplier_category")
+        row.supplier_category = str(v).strip()[:120] if v not in (None, "") else None
+    if "co2e_factor" in payload:
+        try:
+            row.co2e_factor = float(payload.get("co2e_factor") or 0.0)
+        except (TypeError, ValueError):
+            return jsonify({"error": "co2e_factor must be numeric"}), 400
+    if "factor_unit" in payload:
+        row.factor_unit = str(payload.get("factor_unit") or "tCO2e").strip()[:80] or "tCO2e"
+    if "country" in payload:
+        v = payload.get("country")
+        row.country = str(v).strip()[:120] if v not in (None, "") else None
+    if "notes" in payload:
+        v = payload.get("notes")
+        row.notes = str(v).strip() if v not in (None, "") else None
+    if "active" in payload:
+        row.active = bool(payload.get("active"))
+    row.updated_at = datetime.utcnow()
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/suppliers/internal", methods=["GET", "POST"])
+@login_required
+def api_suppliers_internal_create():
+    """List or create internal suppliers (double counting registry)."""
+    from frontend.services.supplier_normalize import normalize_supplier_key
+
+    if not _user_can_manage_supplier_registries(current_user):
+        return jsonify({"error": "Forbidden"}), 403
+    _ensure_db_tables()
+
+    if request.method == "GET":
+        page, per = _parse_supplier_page_args()
+        q = InternalSupplier.query.filter(InternalSupplier.deleted_at.is_(None))
+        search = str(request.args.get("q") or "").strip()
+        if search:
+            term = f"%{search[:200]}%"
+            q = q.filter(or_(InternalSupplier.supplier_name.ilike(term), InternalSupplier.normalized_name.ilike(term)))
+        active_f = str(request.args.get("active") or "").strip().lower()
+        if active_f == "true":
+            q = q.filter(InternalSupplier.active.is_(True))
+        elif active_f == "false":
+            q = q.filter(InternalSupplier.active.is_(False))
+
+        total = q.count()
+        sort_col = str(request.args.get("sort") or "supplier_name").strip()
+        order = str(request.args.get("order") or "asc").strip().lower()
+        col_map = {
+            "supplier_name": InternalSupplier.supplier_name,
+            "company_group": InternalSupplier.company_group,
+            "updated_at": InternalSupplier.updated_at,
+            "active": InternalSupplier.active,
+        }
+        ob = col_map.get(sort_col, InternalSupplier.supplier_name)
+        q = q.order_by(asc(ob) if order == "asc" else desc(ob))
+        rows = q.offset((page - 1) * per).limit(per).all()
+
+        def pack(r: InternalSupplier) -> dict[str, object]:
+            return {
+                "id": int(r.id),
+                "supplier_name": str(r.supplier_name or ""),
+                "company_group": r.company_group,
+                "notes": r.notes,
+                "active": bool(r.active),
+                "updated_at": r.updated_at.strftime("%Y-%m-%d %H:%M UTC") if r.updated_at else None,
+            }
+
+        return jsonify({"ok": True, "page": page, "page_size": per, "total": int(total), "rows": [pack(r) for r in rows]})
+
+    payload = request.get_json(silent=True) or {}
+    name = str(payload.get("supplier_name") or "").strip()
+    if not name:
+        return jsonify({"error": "supplier_name is required"}), 400
+    uid = int(getattr(current_user, "id", 0) or 0) or None
+    norm = normalize_supplier_key(name)[:512]
+    row = InternalSupplier(
+        supplier_name=name[:512],
+        normalized_name=norm,
+        company_group=(str(payload.get("company_group") or "").strip()[:200] or None),
+        notes=(str(payload.get("notes") or "").strip() or None),
+        active=bool(payload.get("active")) if payload.get("active") is not None else True,
+        created_by_user_id=uid,
+    )
+    db.session.add(row)
+    db.session.commit()
+    _export_internal_supplier_dc_tokens_safe()
+    return jsonify({"ok": True, "id": int(row.id)})
+
+
+@app.route("/api/suppliers/internal/<int:row_id>", methods=["GET", "PATCH", "DELETE"])
+@login_required
+def api_suppliers_internal_item(row_id: int):
+    from frontend.services.supplier_normalize import normalize_supplier_key
+
+    if not _user_can_manage_supplier_registries(current_user):
+        return jsonify({"error": "Forbidden"}), 403
+    _ensure_db_tables()
+    row = InternalSupplier.query.filter(InternalSupplier.id == row_id, InternalSupplier.deleted_at.is_(None)).first()
+    if not row:
+        return jsonify({"error": "Not found"}), 404
+
+    if request.method == "GET":
+        payload = {
+            "id": int(row.id),
+            "supplier_name": str(row.supplier_name or ""),
+            "company_group": row.company_group,
+            "notes": row.notes,
+            "active": bool(row.active),
+            "updated_at": row.updated_at.strftime("%Y-%m-%d %H:%M UTC") if row.updated_at else None,
+        }
+        return jsonify({"ok": True, "row": payload})
+
+    if request.method == "DELETE":
+        row.deleted_at = datetime.utcnow()
+        row.active = False
+        db.session.commit()
+        _export_internal_supplier_dc_tokens_safe()
+        return jsonify({"ok": True})
+
+    payload = request.get_json(silent=True) or {}
+    if "supplier_name" in payload:
+        sn = str(payload.get("supplier_name") or "").strip()
+        if not sn:
+            return jsonify({"error": "supplier_name cannot be empty"}), 400
+        row.supplier_name = sn[:512]
+        row.normalized_name = normalize_supplier_key(sn)[:512] or row.normalized_name
+    if "company_group" in payload:
+        v = payload.get("company_group")
+        row.company_group = str(v).strip()[:200] if v not in (None, "") else None
+    if "notes" in payload:
+        v = payload.get("notes")
+        row.notes = str(v).strip() if v not in (None, "") else None
+    if "active" in payload:
+        row.active = bool(payload.get("active"))
+    row.updated_at = datetime.utcnow()
+    db.session.commit()
+    _export_internal_supplier_dc_tokens_safe()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/engage-waste/fetch", methods=["POST"])
 @login_required
 def api_engage_waste_fetch():
@@ -15771,6 +16410,126 @@ def _run_engage_waste_import_job(
         )
     )
     return out
+
+
+def _run_ccc_supplier_sync_job(
+    *,
+    job_id: str,
+    sync_mode: str,
+    user_id: int | None = None,
+) -> dict[str, object]:
+    """Background: pull `/supplier` pages from live CCC API into `ccc_supplier_registry`."""
+    from frontend.services.supplier_sync_service import run_ccc_supplier_sync
+
+    _ensure_db_tables()
+    uid = int(user_id) if user_id is not None else None
+
+    mode_norm = str(sync_mode or "").strip().lower()
+    if mode_norm not in {"full", "incremental"}:
+        mode_norm = "full"
+
+    _update_job_progress(job_id, 2, "Recording supplier sync run…")
+    run_row = SupplierSyncRun(
+        sync_source="CCC",
+        sync_mode=mode_norm,
+        status="running",
+        triggered_by_user_id=uid,
+        started_at=datetime.utcnow(),
+    )
+    db.session.add(run_row)
+    db.session.commit()
+    run_id = int(run_row.id)
+
+    def persist_run(
+        status: str,
+        *,
+        message: str | None = None,
+        fetched: int = 0,
+        upserted: int = 0,
+        skipped: int = 0,
+        err_blob: str | None = None,
+    ) -> None:
+        try:
+            SupplierSyncRun.query.filter(SupplierSyncRun.id == run_id).update(
+                {
+                    "status": status,
+                    "message": message,
+                    "rows_fetched": fetched,
+                    "rows_upserted": upserted,
+                    "rows_skipped": skipped,
+                    "error_json": err_blob,
+                    "finished_at": datetime.utcnow(),
+                },
+                synchronize_session=False,
+            )
+            db.session.commit()
+        except Exception:
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+
+    try:
+
+        def prog(p: int, msg: str) -> None:
+            _raise_if_job_cancelled(job_id)
+            _update_job_progress(job_id, max(5, min(92, int(p))), msg)
+
+        stats = run_ccc_supplier_sync(
+            db.session,
+            CccSupplierRegistry=CccSupplierRegistry,
+            SupplierSyncCheckpoint=SupplierSyncCheckpoint,
+            mode=mode_norm,
+            user_id=uid,
+            job_progress=prog,
+            cancel_check=lambda: _raise_if_job_cancelled(job_id),
+            commit_session=True,
+        )
+        err_list = stats.get("errors") if isinstance(stats.get("errors"), list) else []
+        err_json = json.dumps(err_list[:200], ensure_ascii=True)[:12000] if err_list else None
+        persist_run(
+            "completed",
+            message="CCC supplier directory synchronized.",
+            fetched=int(stats.get("fetched") or 0),
+            upserted=int(stats.get("upserted") or 0),
+            skipped=int(stats.get("skipped") or 0),
+            err_blob=err_json,
+        )
+        _update_job_progress(job_id, 100, "CCC suppliers synchronized.")
+
+        errs_ct = len(err_list)
+        out: dict[str, object] = {
+            "ok": True,
+            "phase": "completed",
+            "sync_mode": mode_norm,
+            "supplier_sync_run_id": run_id,
+            "fetched": int(stats.get("fetched") or 0),
+            "upserted": int(stats.get("upserted") or 0),
+            "skipped": int(stats.get("skipped") or 0),
+            "errors_count": errs_ct,
+        }
+        if uid:
+            _create_user_notification(
+                int(uid),
+                title="CCC supplier sync completed",
+                message=(
+                    f"Synchronized {int(stats.get('upserted') or 0)} supplier row(s) from CCC "
+                    f"({int(stats.get('fetched') or 0)} fetched, {errs_ct} batch error(s))."
+                ),
+                notification_type="success" if errs_ct == 0 else "info",
+                link=url_for("suppliers_all_page"),
+            )
+        return out
+    except JobCancelled:
+        persist_run("cancelled", message="Supplier sync cancelled.")
+        raise
+    except Exception as exc:
+        persist_run(
+            "failed",
+            message=str(exc)[:2000],
+            err_blob=json.dumps({"detail": str(exc)[:2000]}, ensure_ascii=True),
+        )
+        raise
 
 
 def _run_mapping_job(
@@ -18443,6 +19202,78 @@ def engage_waste_api_page():
         engage_company_options=_engage_waste_company_choices(current_user),
         page_title="Engage Waste API",
         page_group="Data Sources",
+    )
+
+
+@app.route("/suppliers")
+@login_required
+def suppliers_hub_redirect():
+    if not _user_can_manage_supplier_registries(current_user):
+        abort(403)
+    return redirect(url_for("suppliers_all_page"))
+
+
+@app.route("/suppliers/all")
+@login_required
+def suppliers_all_page():
+    if not _user_can_manage_supplier_registries(current_user):
+        abort(403)
+    _ensure_db_tables()
+    sync_summary = _ccc_supplier_sync_summary_for_ui()
+    counts = {"carbon_steel": _carbon_steel_supplier_counts(), "internal": _internal_supplier_counts()}
+    return render_template(
+        "suppliers/all_suppliers.html",
+        user=current_user,
+        page_title="All Suppliers",
+        page_group="Suppliers",
+        page_summary="CCC API is the supplier discovery source. Run sync to refresh the registry; use sorting and filters for large volumes.",
+        sync_summary=sync_summary,
+        extra_counts=counts,
+        active_ccc_supplier_job_id=_active_job_id_for_job_type("ccc_supplier_sync"),
+        api_registry_url=url_for("api_suppliers_ccc_registry"),
+        api_sync_url=url_for("api_ccc_supplier_sync"),
+        api_sync_runs_url=url_for("api_suppliers_ccc_sync_runs"),
+        api_countries_url=url_for("api_suppliers_ccc_countries"),
+        data_sources_ccc_url=url_for("data_sources_ccc_api"),
+        job_status_tpl=url_for("api_job_status", job_id="__JOB_ID__"),
+    )
+
+
+@app.route("/suppliers/carbon-steel")
+@login_required
+def suppliers_carbon_steel_page():
+    if not _user_can_manage_supplier_registries(current_user):
+        abort(403)
+    _ensure_db_tables()
+    item_base_carbon = url_for("api_suppliers_carbon_steel_item", row_id=999999001).rsplit("/", 1)[0] + "/"
+    return render_template(
+        "suppliers/carbon_steel_suppliers.html",
+        user=current_user,
+        page_title="Carbon and Steel Suppliers",
+        page_group="Suppliers",
+        page_summary="Manually curated list for upcoming activity-based procurement and material factors. CO₂e factor defaults to zero until Phase 2.",
+        stats=_carbon_steel_supplier_counts(),
+        api_list_url=url_for("api_suppliers_carbon_steel_create"),
+        api_item_base=item_base_carbon,
+    )
+
+
+@app.route("/suppliers/internal")
+@login_required
+def suppliers_internal_page():
+    if not _user_can_manage_supplier_registries(current_user):
+        abort(403)
+    _ensure_db_tables()
+    item_base_internal = url_for("api_suppliers_internal_item", row_id=999999001).rsplit("/", 1)[0] + "/"
+    return render_template(
+        "suppliers/internal_suppliers.html",
+        user=current_user,
+        page_title="Internal Suppliers",
+        page_group="Suppliers",
+        page_summary="Matched internal suppliers emit zero CO₂e in double counting logic. Changes export a cached token list for offline stage-2 batches.",
+        stats=_internal_supplier_counts(),
+        api_list_url=url_for("api_suppliers_internal_create"),
+        api_item_base=item_base_internal,
     )
 
 
