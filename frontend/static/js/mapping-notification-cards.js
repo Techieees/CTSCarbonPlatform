@@ -62,7 +62,7 @@
       "<rect width='160' height='160' rx='80' fill='" +
       pair[0] +
       "'/>" +
-      "<text x='50%' y='54%' text-anchor='middle' font-family='Arial, sans-serif' font-size='56' font-weight='700' fill='" +
+      "<text x='50%' y='54%' text-anchor='middle' font-family='Overused Grotesk, system-ui, sans-serif' font-size='56' font-weight='700' fill='" +
       pair[1] +
       "'>" +
       ini +

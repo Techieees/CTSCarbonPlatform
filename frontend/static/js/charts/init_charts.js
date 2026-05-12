@@ -284,6 +284,15 @@ function bootCharts(attempt = 0) {
   try {
     ensureThemeChangeBinding();
     initAllCharts();
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        try {
+          window.dispatchEvent(new Event("resize"));
+        } catch {
+          /* ignore */
+        }
+      });
+    });
   } catch (error) {
     console.error("Chart initialization failed", error);
   }

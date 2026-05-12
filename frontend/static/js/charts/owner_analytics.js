@@ -1,4 +1,12 @@
 (function () {
+  function ctsFontStack() {
+    try {
+      var v = window.getComputedStyle(document.documentElement).getPropertyValue("--font-primary").trim();
+      return v || '"Overused Grotesk", ui-sans-serif, system-ui, sans-serif';
+    } catch (e) {
+      return '"Overused Grotesk", ui-sans-serif, system-ui, sans-serif';
+    }
+  }
   if (typeof echarts !== "undefined") {
     try {
       if (!window.__CTS_OWNER_ANALYTICS_THEME__) {
@@ -18,8 +26,7 @@
           ],
           backgroundColor: "transparent",
           textStyle: {
-            fontFamily:
-              'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif'
+            fontFamily: ctsFontStack()
           },
           grid: { top: 24, right: 20, bottom: 24, left: 20, containLabel: true },
           categoryAxis: {

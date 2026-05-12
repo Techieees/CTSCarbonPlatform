@@ -3,7 +3,7 @@
 {% set runs_href = url_for('admin_mapping_runs') if current_user.is_admin else url_for('mapping_runs') %}
 {% set runs_active = ep in ('mapping_runs', 'admin_mapping_runs') %}
 {% set supplier_pages_active = can_manage_supplier_registries() and ep in ('suppliers_hub_redirect', 'suppliers_all_page', 'suppliers_carbon_steel_page', 'suppliers_internal_page') %}
-{% set carbon_active = ep in ('carbon_accounting', 'scope1_detail', 'scope2_detail', 'scope3_detail') %}
+{% set carbon_active = ep in ('carbon_accounting', 'emissions_records_page', 'scope1_detail', 'scope2_detail', 'scope3_detail') %}
 {% set data_sources_active = ep in ('data_sources_ccc_api', 'engage_waste_api_page', 'data_sources_klarakarbon', 'data_sources_employee_commuting', 'data_sources_averages', 'data_sources_scenarios', 'admin') %}
 {% set data_outputs_active = ep in ('analytics_mapped_window_output', 'analytics_emissions_totals', 'analytics_share_analysis', 'data_output_travel', 'data_output_klarakarbon') %}
 {% set data_active = ep in ('dashboard', 'products_input_page', 'mapping_runs', 'admin_mapping_runs', 'mapping_review_page', 'mapping_previews_page', 'mapping_preview_detail') or data_sources_active or data_outputs_active %}
@@ -11,7 +11,7 @@
 {% set governance_active = ep in ('governance_audit_ready_output',) %}
 {% set esg_active = ep in ('csrd', 'csrd_policies', 'lca', 'lca_tool') %}
 {% set resources_active = ep in ('reports_page', 'report_detail', 'newsletters_page', 'newsletter_detail', 'events_page', 'event_detail', 'awards_index', 'awards_form_page', 'audit_2025_page') %}
-{% set admin_active = current_user.is_admin and ep in ('admin_users', 'admin_access_requests', 'admin_governance_register', 'owner_analytics', 'admin', 'admin_mapping_panel', 'admin_unmapped_mappings', 'admin_background_jobs', 'admin_tower_defense', 'manage_emission_factors', 'admin_report', 'awards_admin') %}
+{% set admin_active = current_user.is_admin and ep in ('admin_users', 'admin_access_requests', 'admin_governance_register', 'owner_analytics', 'admin', 'admin_mapping_panel', 'admin_unmapped_mappings', 'admin_background_jobs', 'admin_tower_defense', 'manage_emission_factors', 'admin_report', 'admin_mapping_reconciliation_page', 'awards_admin') %}
 {% set settings_active = ep in ('profile_page', 'settings_profile_page') %}
 {% set feed_active = ep == 'feed' %}
 {% set selected_section = 'dashboard' %}
@@ -169,6 +169,10 @@
           <a href="{{ url_for('carbon_accounting') }}" class="app-sidebar__menu-item {% if ep == 'carbon_accounting' %}is-active{% endif %}" {% if ep == 'carbon_accounting' %}aria-current="page"{% endif %}>
             {{ illu.illu_sidebar_carbon_overview('app-sidebar__icon') }}
             <span>Overview</span>
+          </a>
+          <a href="{{ url_for('emissions_records_page') }}" class="app-sidebar__menu-item {% if ep == 'emissions_records_page' %}is-active{% endif %}" {% if ep == 'emissions_records_page' %}aria-current="page"{% endif %}>
+            {{ illu.illu_nav_data('app-sidebar__icon') }}
+            <span>Emissions Records</span>
           </a>
           <a href="{{ url_for('scope1_detail') }}" class="app-sidebar__menu-item {% if ep == 'scope1_detail' %}is-active{% endif %}" {% if ep == 'scope1_detail' %}aria-current="page"{% endif %}>
             {{ illu.illu_sidebar_scope1('app-sidebar__icon') }}
@@ -372,6 +376,10 @@
           <a href="{{ url_for('admin_report') }}" class="app-sidebar__menu-item {% if ep == 'admin_report' %}is-active{% endif %}" {% if ep == 'admin_report' %}aria-current="page"{% endif %}>
             {{ illu.illu_sidebar_admin_report('app-sidebar__icon') }}
             <span>Admin Report</span>
+          </a>
+          <a href="{{ url_for('admin_mapping_reconciliation_page') }}" class="app-sidebar__menu-item {% if ep == 'admin_mapping_reconciliation_page' %}is-active{% endif %}" {% if ep == 'admin_mapping_reconciliation_page' %}aria-current="page"{% endif %}>
+            {{ illu.illu_nav_chart_pie('app-sidebar__icon') }}
+            <span>Mapping reconciliation</span>
           </a>
           <a href="{{ url_for('awards_admin') }}" class="app-sidebar__menu-item {% if ep == 'awards_admin' %}is-active{% endif %}" {% if ep == 'awards_admin' %}aria-current="page"{% endif %}>
             {{ illu.illu_sidebar_awards('app-sidebar__icon') }}

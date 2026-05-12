@@ -369,7 +369,7 @@
   bottom: 0;
   z-index: 1080;
   overflow: visible;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: inherit;
 }
 
 .chat-widget__collapsed-bar,

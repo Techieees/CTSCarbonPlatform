@@ -8,6 +8,7 @@
 <style>
   .mp-row--unmapped > td { background-color: #fde8ef !important; }
   .mp-unmapped-badge { font-size: 0.7rem; vertical-align: middle; }
+  .eg-chart-host { min-height: 280px; min-width: 240px; }
 </style>
 <div id="mpRoot" class="container-fluid py-4 px-3 px-md-4 eg-page eg-stack mp-root {{ 'eg-page--water' if is_water else 'eg-page--emissions' }}">
   <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
@@ -32,6 +33,21 @@
       <a class="btn btn-sm btn-ghost d-inline-flex align-items-center" href="{{ url_for('api_mapping_download', run_id=run_id) }}">{{ illu.illu_btn_download('me-1') }}Download Excel</a>
       {% endif %}
       <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('api_mapping_preview_export', run_id=run_id) }}">Export CSV snapshot</a>
+    </div>
+  </div>
+
+  <div class="alert alert-info py-2 small mb-3" role="status">
+    <div class="fw-semibold mb-1">Where this run is stored</div>
+    <ul class="mb-2 ps-3">
+      <li><strong>Mapping preview</strong> — row snapshot (this page) for audit.</li>
+      <li><strong>Normalized emissions</strong> — one row per activity in the operational table used by dashboards.</li>
+    </ul>
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-sm btn-primary" href="{{ url_for('emissions_records_page', run_id=run_id) }}">Open Emissions records</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('carbon_accounting') }}">Open Carbon accounting</a>
+      {% if current_user.is_admin %}
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin_mapping_reconciliation_page') }}">Run reconciliation check</a>
+      {% endif %}
     </div>
   </div>
 

@@ -1,0 +1,138 @@
+/**
+ * CTS Carbon Platform — global typography (single primary face).
+ * Loaded once after Bootstrap, before saas.css. Do not @import webfonts here (base.html already loads Overused Grotesk).
+ */
+
+:root {
+  --font-primary: "Overused Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+  /* Bootstrap 5.3+ tokens — keep components aligned with the same stack */
+  --bs-font-sans-serif: var(--font-primary);
+  --bs-body-font-family: var(--font-primary);
+
+  /* Enterprise scale (sizes stay close to Bootstrap defaults; rhythm + weight unified) */
+  --cts-text-xs: 0.75rem;
+  --cts-text-sm: 0.8125rem;
+  --cts-text-base: 0.9375rem;
+  --cts-text-md: 1rem;
+  --cts-leading-tight: 1.2;
+  --cts-leading-snug: 1.35;
+  --cts-leading-normal: 1.5;
+  --cts-tracking-tight: -0.02em;
+  --cts-tracking-ui: 0.01em;
+}
+
+html {
+  font-family: var(--font-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--font-primary);
+  font-size: var(--cts-text-md);
+  line-height: var(--cts-leading-normal);
+}
+
+/* Explicit inheritance for UI primitives that sometimes reset in third-party CSS */
+button,
+input,
+select,
+textarea,
+optgroup,
+.table,
+.card,
+.navbar,
+.nav,
+.dropdown-menu,
+.modal-content,
+.alert,
+.badge,
+.toast,
+.popover,
+.list-group,
+.offcanvas,
+.form-control,
+.form-select,
+.input-group,
+.nav-tabs,
+.nav-pills,
+.breadcrumb,
+.pagination,
+.tooltip {
+  font-family: inherit;
+}
+
+/* Code / IDs / fingerprints — keep monospace distinct from UI sans */
+code,
+kbd,
+pre,
+samp,
+.ec-mono {
+  font-family: var(--font-mono);
+}
+
+/* Heading hierarchy: same family, tighter tracking; preserve Bootstrap heading sizes */
+h1,
+.h1,
+h2,
+.h2,
+h3,
+.h3,
+h4,
+.h4,
+h5,
+.h5,
+h6,
+.h6 {
+  font-family: var(--font-primary);
+  font-weight: 650;
+  letter-spacing: var(--cts-tracking-tight);
+  line-height: var(--cts-leading-tight);
+}
+
+h5,
+.h5,
+h6,
+.h6 {
+  font-weight: 600;
+  letter-spacing: var(--cts-tracking-ui);
+}
+
+/* Dense data surfaces — readability without changing grid structure */
+.table {
+  font-size: var(--cts-text-base);
+  line-height: var(--cts-leading-snug);
+}
+
+.table thead th {
+  font-size: var(--cts-text-sm);
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.card-title,
+.card-header {
+  font-family: var(--font-primary);
+  letter-spacing: var(--cts-tracking-ui);
+}
+
+.form-label,
+.col-form-label {
+  font-weight: 600;
+  font-size: var(--cts-text-sm);
+  letter-spacing: var(--cts-tracking-ui);
+}
+
+small,
+.small {
+  line-height: var(--cts-leading-snug);
+}
+
+body.dark-mode {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

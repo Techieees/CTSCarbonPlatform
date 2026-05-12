@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Employee Commuting · Data Sources{% endblock %}
+{% block title %}Employee Commuting{% endblock %}
 
 {% block extra_head %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/analytics-output.css') }}">
@@ -7,218 +7,261 @@
 {% endblock %}
 
 {% block content %}
-<div class="container py-4 analytics-output-page" id="ec-page-root">
-  <section class="ec-hero mb-4">
-    <div class="text-muted small text-uppercase fw-semibold tracking-wide mb-2">Data · Data Sources · Employee Commuting</div>
-    <div class="d-flex flex-column flex-lg-row gap-3 justify-content-between align-items-lg-start">
-      <div>
-        <h1 class="h2 ec-hero__title">{{ employee_commuting_display_category }}</h1>
-        <p class="ec-hero__lead mb-0">
-          Manage monthly headcount, (for administrators) national commute mixes, and queue imports into Data Entry for
-          <strong>{{ employee_commuting_display_category }}</strong>.
-          The internal workbook template key is <code class="small">{{ employee_commuting_template_key }}</code>.
-        </p>
+<div class="container-fluid ec-page px-3 px-lg-4 py-3 py-lg-4 mb-5" id="ec-page-root">
+  <nav class="ec-breadcrumb mb-3" aria-label="breadcrumb">
+    <ol class="breadcrumb mb-0 small">
+      <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Employee commuting</li>
+    </ol>
+  </nav>
+
+  <header class="ec-hero mb-4">
+    <div class="row g-4 align-items-start">
+      <div class="col-12 col-xl-8">
+        <h1 class="ec-hero__title">Employee Commuting</h1>
+        <p class="ec-hero__subtitle mb-3">Scope 3 Category 7 emissions workflow</p>
+        <div class="d-flex flex-wrap gap-2 mb-0">
+          <span class="ec-pill">Scope 3 · Category 7</span>
+          <span class="ec-pill ec-pill--muted">Data entry</span>
+          {% if reporting_period_year_arg is not none %}
+          <span class="ec-pill ec-pill--muted">Reporting year {{ reporting_period_year_arg }}</span>
+          {% endif %}
+        </div>
       </div>
-      <div class="d-flex flex-column flex-sm-row gap-2">
-        <a class="btn btn-outline-secondary analytics-output-hero__action" href="{{ dashboard_url }}">Open Data Entry</a>
-        <a class="btn btn-ghost analytics-output-hero__action" href="{{ url_for('dashboard') }}">Mapping hub</a>
+      <div class="col-12 col-xl-4">
+        <div class="d-flex flex-column flex-sm-row flex-xl-column gap-2 ec-hero__actions">
+          <a class="btn btn-outline-primary" href="{{ dashboard_url }}">Open Data Entry</a>
+          <a class="btn btn-outline-secondary" href="{{ mapping_preview_url }}">Open Mapping Preview</a>
+        </div>
       </div>
     </div>
-  </section>
+  </header>
 
-  {% if reporting_period_year_arg is none %}
-  <p class="text-muted small mb-3">
-    Month options default to a rolling window around the current calendar year.
-    Add <code class="small">?period_year=2028</code> to this URL if you need another year’s dropdown only.
-  </p>
-  {% else %}
-  <p class="text-muted small mb-3">Showing months for reporting year <strong>{{ reporting_period_year_arg }}</strong>.</p>
-  {% endif %}
+  <div class="ec-kpi-grid mb-4">
+    <div class="ec-kpi-card">
+      <span class="ec-kpi-card__label">Companies</span>
+      <strong class="ec-kpi-card__value">{{ ec_stat_companies }}</strong>
+      <span class="ec-kpi-card__hint">With headcount rows</span>
+    </div>
+    <div class="ec-kpi-card">
+      <span class="ec-kpi-card__label">Active months</span>
+      <strong class="ec-kpi-card__value">{{ ec_stat_active_months }}</strong>
+      <span class="ec-kpi-card__hint">Distinct periods in grid</span>
+    </div>
+    <div class="ec-kpi-card">
+      <span class="ec-kpi-card__label">Generated rows</span>
+      <strong class="ec-kpi-card__value">{% if ec_stat_generated_rows is not none %}{{ ec_stat_generated_rows }}{% else %}—{% endif %}</strong>
+      <span class="ec-kpi-card__hint">{% if privileged %}Total rows saved across runs{% else %}Available in administrator view{% endif %}</span>
+    </div>
+    <div class="ec-kpi-card">
+      <span class="ec-kpi-card__label">Last generation</span>
+      <strong class="ec-kpi-card__value ec-kpi-card__value--sm">{% if privileged %}{{ ec_stat_last_generation or '—' }}{% else %}—{% endif %}</strong>
+      <span class="ec-kpi-card__hint">{% if privileged %}Most recent run{% else %}Administrator view{% endif %}</span>
+    </div>
+  </div>
 
-  <div id="ecFlash" class="alert alert-danger d-none" role="alert"></div>
-  <div id="ecNotice" class="alert alert-success d-none" role="status"></div>
+  <div id="ecFlash" class="alert alert-danger border-0 shadow-sm d-none ec-alert" role="alert"></div>
+  <div id="ecNotice" class="alert alert-success border-0 shadow-sm d-none ec-alert" role="status"></div>
 
-  <ul class="nav nav-tabs ec-subnav px-1" id="ecMainTabs" role="tablist">
-    <li class="nav-item" role="presentation">
-      <button type="button" class="nav-link active" id="ec-tab-headcount" data-bs-toggle="tab" data-bs-target="#ec-pane-headcount" role="tab" aria-controls="ec-pane-headcount" aria-selected="true">
-        Headcount
-      </button>
-    </li>
-    {% if privileged %}
-    <li class="nav-item" role="presentation">
-      <button type="button" class="nav-link" id="ec-tab-national" data-bs-toggle="tab" data-bs-target="#ec-pane-national" role="tab" aria-controls="ec-pane-national" aria-selected="false">
-        National averages
-      </button>
-    </li>
-    <li class="nav-item" role="presentation">
-      <button type="button" class="nav-link" id="ec-tab-dataset" data-bs-toggle="tab" data-bs-target="#ec-pane-dataset" role="tab" aria-controls="ec-pane-dataset" aria-selected="false">
-        Generated dataset · history
-      </button>
-    </li>
-    {% endif %}
-  </ul>
+  <div class="ec-segment-wrap mb-4" id="ecMainTabs">
+    <ul class="nav ec-segmented-nav" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button type="button" class="nav-link active" id="ec-tab-headcount" data-bs-toggle="tab" data-bs-target="#ec-pane-headcount" role="tab" aria-controls="ec-pane-headcount" aria-selected="true">Headcount</button>
+      </li>
+      {% if privileged %}
+      <li class="nav-item" role="presentation">
+        <button type="button" class="nav-link" id="ec-tab-national" data-bs-toggle="tab" data-bs-target="#ec-pane-national" role="tab" aria-controls="ec-pane-national" aria-selected="false">National averages</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button type="button" class="nav-link" id="ec-tab-generate" data-bs-toggle="tab" data-bs-target="#ec-pane-generate" role="tab" aria-controls="ec-pane-generate" aria-selected="false">Dataset generation</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button type="button" class="nav-link" id="ec-tab-history" data-bs-toggle="tab" data-bs-target="#ec-pane-history" role="tab" aria-controls="ec-pane-history" aria-selected="false">Run history</button>
+      </li>
+      {% endif %}
+    </ul>
+  </div>
 
-  <div class="tab-content pt-3" id="ecTabContent">
+  <div class="tab-content ec-tab-panels" id="ecTabContent">
     <div class="tab-pane fade show active" id="ec-pane-headcount" role="tabpanel" aria-labelledby="ec-tab-headcount" tabindex="0">
-      <article class="analytics-output-card ec-shell mb-4">
-        <div class="analytics-output-card__header flex-wrap gap-2">
-          <div class="flex-grow-1">
-            <h2 class="analytics-output-card__title mb-1 h5">Headcount (monthly)</h2>
-            <p class="analytics-output-card__meta mb-0">
-              Columns <strong>Company Name</strong>, <strong>Month</strong>, <strong>Headcount</strong>.
-              {% if not privileged %}
-              Your company name is fixed to <strong>{{ scoped_company_name or '—' }}</strong>.
-              {% endif %}
+      <section class="ec-panel mb-4">
+        <div class="ec-panel__head">
+          <div>
+            <h2 class="ec-panel__title">Monthly headcount</h2>
+            <p class="ec-panel__meta mb-0">
+              Company, reporting month, and headcount. Data drives the commuting model for each entity.
+              {% if not privileged %}Your organisation is fixed to <strong>{{ scoped_company_name or '—' }}</strong>.{% endif %}
             </p>
           </div>
-          <button type="button" class="btn btn-sm btn-primary" id="ecHeadcountAddBtn">Add row</button>
-          <button type="button" class="btn btn-sm btn-outline-primary" id="ecHeadcountSaveBtn">Save headcount</button>
+          <div class="ec-panel__actions">
+            <button type="button" class="btn btn-outline-secondary" id="ecHeadcountAddBtn">Add row</button>
+            <button type="button" class="btn btn-primary" id="ecHeadcountSaveBtn">Save headcount</button>
+          </div>
         </div>
-        <div class="analytics-output-controls px-3 pb-3">
-          <div id="ecHeadcountBusy" class="small text-muted d-none mb-2">Saving…</div>
-          <div class="ec-table-shell table-responsive border rounded">
-            <table class="table table-hover table-sm align-middle mb-0" id="ecHeadcountTable">
+        <div class="ec-panel__body">
+          <div id="ecHeadcountBusy" class="ec-busy d-none">Saving…</div>
+          <div class="ec-table-scroll">
+            <table class="table ec-data-table align-middle mb-0" id="ecHeadcountTable">
               <thead>
                 <tr>
-                  <th>Company Name</th>
-                  <th>Month</th>
-                  <th class="text-end">Headcount</th>
-                  <th class="text-end narrow">Actions</th>
+                  <th scope="col">Company</th>
+                  <th scope="col">Month</th>
+                  <th scope="col" class="text-end">Headcount</th>
+                  <th scope="col" class="text-end ec-col-actions">Actions</th>
                 </tr>
               </thead>
               <tbody id="ecHeadcountBody"></tbody>
             </table>
           </div>
         </div>
-      </article>
+      </section>
 
-      <article class="analytics-output-card ec-shell mb-4">
-        <div class="analytics-output-card__header">
-          <div>
-            <h2 class="analytics-output-card__title mb-1 h5">How this is calculated</h2>
-            <p class="analytics-output-card__meta mb-2">Short, user-facing summary of the pipeline:</p>
+      <section class="ec-panel ec-panel--compact mb-0">
+        <button class="ec-collapse-toggle collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#ecHowCollapse" aria-expanded="false" aria-controls="ecHowCollapse">
+          <span class="ec-collapse-toggle__icon" aria-hidden="true"></span>
+          How emissions are calculated
+        </button>
+        <div class="collapse" id="ecHowCollapse">
+          <div class="ec-how-grid pt-3">
+            <div class="ec-how-item">
+              <span class="ec-how-dot" aria-hidden="true"></span>
+              <p><strong>Headcount</strong> is captured each month per legal entity.</p>
+            </div>
+            <div class="ec-how-item">
+              <span class="ec-how-dot" aria-hidden="true"></span>
+              <p>Each company maps to a <strong>country</strong>. Administrators maintain <strong>national averages</strong> (typical one-way distance and mode mix).</p>
+            </div>
+            <div class="ec-how-item">
+              <span class="ec-how-dot" aria-hidden="true"></span>
+              <p>Mode shares <strong>allocate people across transport types</strong> with integer-safe rounding so totals match headcount.</p>
+            </div>
+            <div class="ec-how-item">
+              <span class="ec-how-dot" aria-hidden="true"></span>
+              <p>After rows are written to Data Entry, <strong>run mapping</strong> so emission factors apply and results flow to previews and dashboards.</p>
+            </div>
+            <div class="ec-how-item">
+              <span class="ec-how-dot" aria-hidden="true"></span>
+              <p>Imported lines are labelled with <strong>Data Source: Employee Commuting</strong> for traceability.</p>
+            </div>
           </div>
         </div>
-        <div class="px-3 pb-3">
-          <ul class="small text-muted ps-3 mb-0">
-            <li><strong>Headcount</strong> is tracked <strong>every month</strong> for each legal entity (company).</li>
-            <li>Each company is linked to a <strong>country</strong>; administrator-maintained <strong>national averages</strong> supply a typical <strong>one-way commute distance</strong> (km) and <strong>mode split</strong> (% car, bus, walking/cycling, mixed).</li>
-            <li>Those percentages <strong>allocate headcount across transport modes</strong> (integer-split so totals match headcount).</li>
-            <li>Distance rules (round-trip, ~20 commute days per month) follow the same assumptions as the CTS mapping preprocessor; <strong>mapping</strong> applies emission factors to produce <strong>tCO₂e</strong> — so you should <strong>run Map</strong> on
-              <strong>{{ employee_commuting_display_category }}</strong> after import.</li>
-            <li>Imported rows are tagged <kbd class="small">Data Source = Employee Commuting</kbd> and appear under
-              <strong>{{ employee_commuting_display_category }}</strong> in Data Entry (template key <code class="small">{{ employee_commuting_template_key }}</code>).</li>
-          </ul>
-        </div>
-      </article>
+      </section>
     </div>
 
     {% if privileged %}
     <div class="tab-pane fade" id="ec-pane-national" role="tabpanel" aria-labelledby="ec-tab-national" tabindex="0">
-      <article class="analytics-output-card ec-shell mb-4">
-        <div class="analytics-output-card__header flex-wrap gap-2">
-          <div class="flex-grow-1">
-            <h2 class="analytics-output-card__title mb-1 h5">National averages</h2>
-            <p class="analytics-output-card__meta mb-0">Admin / super_admin / owner only. One row per country; mode percentages must sum to 100%.</p>
+      <section class="ec-panel mb-4">
+        <div class="ec-panel__head">
+          <div>
+            <h2 class="ec-panel__title">National averages</h2>
+            <p class="ec-panel__meta mb-0">One row per country. Mode percentages should total 100%.</p>
           </div>
-          <button type="button" class="btn btn-sm btn-outline-primary" id="ecNationalAddBtn">Add country</button>
-          <button type="button" class="btn btn-sm btn-primary" id="ecNationalSaveBtn">Save national averages</button>
+          <div class="ec-panel__actions">
+            <button type="button" class="btn btn-outline-secondary" id="ecNationalAddBtn">Add country</button>
+            <button type="button" class="btn btn-primary" id="ecNationalSaveBtn">Save averages</button>
+          </div>
         </div>
-        <div class="analytics-output-controls px-3 pb-3">
-          <div id="ecNationalBusy" class="small text-muted d-none mb-2">Saving…</div>
-          <div class="ec-table-shell table-responsive border rounded">
-            <table class="table table-hover table-sm align-middle mb-0">
+        <div class="ec-panel__body">
+          <div id="ecNationalBusy" class="ec-busy d-none">Saving…</div>
+          <div class="ec-table-scroll">
+            <table class="table ec-data-table align-middle mb-0">
               <thead>
                 <tr>
                   {% for fld in national_fields %}
-                  <th>{{ fld.label }}</th>
+                  <th scope="col">{{ fld.label }}</th>
                   {% endfor %}
-                  <th class="text-end narrow">Actions</th>
+                  <th scope="col" class="text-end ec-col-actions">Actions</th>
                 </tr>
               </thead>
               <tbody id="ecNationalBody"></tbody>
             </table>
           </div>
+          <p class="ec-footnote mb-0 mt-3">Reference workbook on disk: <span class="ec-mono">{{ published_workbook_name }}</span></p>
         </div>
-        <div class="px-3 pb-3 small text-muted">
-          Published preprocessing workbook: <code class="small">{{ published_workbook_name }}</code>
-        </div>
-      </article>
+      </section>
     </div>
 
-    <div class="tab-pane fade" id="ec-pane-dataset" role="tabpanel" aria-labelledby="ec-tab-dataset" tabindex="0">
-      <article class="analytics-output-card ec-shell mb-4">
-        <div class="analytics-output-card__header flex-wrap gap-2">
-          <div class="flex-grow-1">
-            <h2 class="analytics-output-card__title mb-1 h5">Create dataset</h2>
-            <p class="analytics-output-card__meta mb-0">
-              Writes rows into Data Entry for <strong>{{ employee_commuting_display_category }}</strong>, then queues the same
-              <strong>background mapping jobs</strong> used after CCC import so <strong>Mapping Preview Archive</strong> and dashboards stay in sync once mapping completes.
+    <div class="tab-pane fade" id="ec-pane-generate" role="tabpanel" aria-labelledby="ec-tab-generate" tabindex="0">
+      <section class="ec-panel mb-4">
+        <div class="ec-panel__head">
+          <div>
+            <h2 class="ec-panel__title">Generate dataset</h2>
+            <p class="ec-panel__meta mb-0">
+              Writes commuting activity rows into Data Entry, then starts a controlled mapping batch so previews stay aligned with the rest of the platform.
             </p>
           </div>
         </div>
-        <div class="analytics-output-controls px-3 pb-3">
-          <div class="row g-3 align-items-end mb-3">
-            <div class="col-md-6 col-lg-4">
-              <label class="form-label" for="ecTemplateModeSelect">Template mode</label>
-              <select id="ecTemplateModeSelect" class="form-select form-select-sm">
+        <div class="ec-panel__body">
+          <div class="row g-4 align-items-end mb-4">
+            <div class="col-12 col-md-6 col-xl-4">
+              <label class="form-label ec-label" for="ecTemplateModeSelect">Template mode</label>
+              <select id="ecTemplateModeSelect" class="form-select">
                 {% for m in template_mode_options %}
                 <option value="{{ m }}" {% if m == template_mode_current %}selected{% endif %}>{{ m }}</option>
                 {% endfor %}
               </select>
             </div>
-            <div class="col-md-6 col-lg-8 d-flex gap-2 flex-wrap align-items-center">
-              <button type="button" class="btn btn-primary btn-sm" id="ecGenerateBtn">
-                Create Employee Commuting Data Set
-              </button>
-              <span class="small text-muted" id="ecGenerateJobLabel"></span>
+            <div class="col-12 col-md-6 col-xl-8 d-flex flex-wrap align-items-center gap-3">
+              <button type="button" class="btn btn-primary btn-lg px-4" id="ecGenerateBtn">Generate Employee Commuting Dataset</button>
+              <span class="ec-job-label text-muted small" id="ecGenerateJobLabel"></span>
             </div>
           </div>
 
-          <div class="progress my-3 d-none" id="ecJobProgressWrap" style="height: 0.5rem;">
-            <div class="progress-bar" id="ecJobProgressBar" role="progressbar" style="width: 0;"></div>
+          <div class="progress ec-progress d-none mb-2" id="ecJobProgressWrap" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+            <div class="progress-bar" id="ecJobProgressBar" style="width: 0%;"></div>
           </div>
-          <div class="small text-muted mb-3" id="ecJobProgressMessage"></div>
+          <p class="ec-job-message small text-muted mb-0" id="ecJobProgressMessage"></p>
+        </div>
+      </section>
+    </div>
 
-          <h3 class="h6 fw-semibold">Recent runs</h3>
-          <div class="ec-table-shell table-responsive border rounded">
-            <table class="table table-sm table-hover mb-0 align-middle">
+    <div class="tab-pane fade" id="ec-pane-history" role="tabpanel" aria-labelledby="ec-tab-history" tabindex="0">
+      <section class="ec-panel mb-0">
+        <div class="ec-panel__head">
+          <div>
+            <h2 class="ec-panel__title">Generation history</h2>
+            <p class="ec-panel__meta mb-0">Recent imports and mapping queue outcomes.</p>
+          </div>
+        </div>
+        <div class="ec-panel__body">
+          <div class="ec-table-scroll">
+            <table class="table ec-data-table align-middle mb-0">
               <thead>
                 <tr>
-                  <th>#</th>
-                  <th>Job</th>
-                  <th>Status</th>
-                  <th class="text-end">Saved rows</th>
-                  <th class="text-end">Dup. skipped</th>
-                  <th class="text-end">Maps queued</th>
-                  <th>Created</th>
-                  <th>Completed</th>
+                  <th scope="col">Run</th>
+                  <th scope="col">Job</th>
+                  <th scope="col">Status</th>
+                  <th scope="col" class="text-end">Rows saved</th>
+                  <th scope="col" class="text-end">Dup. skipped</th>
+                  <th scope="col" class="text-end">Mapping</th>
+                  <th scope="col">Created</th>
+                  <th scope="col">Completed</th>
                 </tr>
               </thead>
               <tbody id="ecRunsBody"></tbody>
             </table>
           </div>
         </div>
-      </article>
+      </section>
     </div>
     {% endif %}
   </div>
 
   <template id="ecHeadcountPrivilegedRowTpl">
     <tr>
-      <td><select class="form-select form-select-sm ec-company-select" aria-label="Company Name"></select></td>
-      <td><select class="form-select form-select-sm ec-month-select" aria-label="Month"></select></td>
-      <td class="text-end"><input type="number" class="form-control form-control-sm ec-hc-num text-end" min="0" step="1" aria-label="Headcount" /></td>
-      <td class="text-end narrow"><button type="button" class="btn btn-sm btn-outline-danger ec-row-del" title="Remove row">&times;</button></td>
+      <td><select class="form-select ec-select ec-company-select" aria-label="Company"></select></td>
+      <td><select class="form-select ec-select ec-month-select" aria-label="Month"></select></td>
+      <td class="text-end"><input type="number" class="form-control ec-input ec-hc-num text-end" min="0" step="1" aria-label="Headcount" /></td>
+      <td class="text-end ec-col-actions"><button type="button" class="btn btn-sm btn-outline-danger ec-row-del" title="Remove row">Remove</button></td>
     </tr>
   </template>
 
   <template id="ecHeadcountUserRowTpl">
     <tr>
-      <td><span class="form-control-plaintext ec-comp-readonly fw-medium py-1 small text-body-secondary wrap-text"></span></td>
-      <td><select class="form-select form-select-sm ec-month-select" aria-label="Month"></select></td>
-      <td class="text-end"><input type="number" class="form-control form-control-sm ec-hc-num text-end" min="0" step="1" aria-label="Headcount" /></td>
-      <td class="text-end narrow"><button type="button" class="btn btn-sm btn-outline-danger ec-row-del" title="Remove row">&times;</button></td>
+      <td><span class="ec-readonly ec-comp-readonly"></span></td>
+      <td><select class="form-select ec-select ec-month-select" aria-label="Month"></select></td>
+      <td class="text-end"><input type="number" class="form-control ec-input ec-hc-num text-end" min="0" step="1" aria-label="Headcount" /></td>
+      <td class="text-end ec-col-actions"><button type="button" class="btn btn-sm btn-outline-danger ec-row-del" title="Remove row">Remove</button></td>
     </tr>
   </template>
 
@@ -226,12 +269,12 @@
     <tr>
       {% for fld in national_fields %}
       {% if fld.input_type == 'number' %}
-      <td><input type="number" class="form-control form-control-sm ec-na-{{ fld.key }}" step="any" aria-label="{{ fld.label }}" /></td>
+      <td><input type="number" class="form-control ec-input ec-na-{{ fld.key }}" step="any" aria-label="{{ fld.label }}" /></td>
       {% else %}
-      <td><input type="text" class="form-control form-control-sm ec-na-{{ fld.key }}" aria-label="{{ fld.label }}" /></td>
+      <td><input type="text" class="form-control ec-input ec-na-{{ fld.key }}" aria-label="{{ fld.label }}" /></td>
       {% endif %}
       {% endfor %}
-      <td class="text-end narrow"><button type="button" class="btn btn-sm btn-outline-danger ec-row-del" title="Remove row">&times;</button></td>
+      <td class="text-end ec-col-actions"><button type="button" class="btn btn-sm btn-outline-danger ec-row-del" title="Remove row">Remove</button></td>
     </tr>
   </template>
 </div>
@@ -240,6 +283,8 @@
   'privileged': privileged,
   'scoped_company_name': scoped_company_name or '',
   'display_category': employee_commuting_display_category,
+  'page_title': 'Employee Commuting',
+  'mapping_preview_url': mapping_preview_url,
   'reporting_months': reporting_periods or [],
   'company_options': company_options or [],
   'api_headcount': api_headcount,

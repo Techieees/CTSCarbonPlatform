@@ -156,7 +156,7 @@ html.theme-preload-dark:not(.theme-ready) body {
 
 html { scroll-behavior: smooth; }
 body{
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+  font-family: var(--font-primary);
   background: var(--bg);
   color: var(--ink);
   text-rendering: geometricPrecision;
@@ -1909,11 +1909,6 @@ body.dark-mode{
   --input-bg: #121212;
   --surface-elevated: #111111;
   --footer-bg: #0e0e0e;
-}
-
-body{
-  font-family: 'Overused Grotesk', sans-serif;
-  color: var(--ink);
 }
 
 body:not(.dark-mode) .text-muted,

@@ -48,7 +48,7 @@
             <span class="badge bg-light text-dark">tCO₂e</span>
           </div>
           <div class="mt-3 chart-surface">
-            <div id="scopeChart" class="chart-host chart-host--sm"></div>
+            <div id="scopeChart" class="chart-host chart-host--sm" style="min-height:280px;min-width:220px;"></div>
           </div>
         </div>
       </div>
@@ -285,7 +285,7 @@
             </table>
           </div>
           {% else %}
-          <div class="text-muted">No mapping results yet.</div>
+          <div class="text-muted">No mapped records found for this filter. Run mapping or open Emissions records to verify persisted totals.</div>
           {% endif %}
         </div>
       </div>
@@ -323,7 +323,7 @@
             </table>
           </div>
           {% else %}
-          <div class="text-muted">No mapping results yet. Go to Dashboard and run “Map now”.</div>
+          <div class="text-muted">No mapped records found for this filter. Run mapping or adjust filters to populate this chart.</div>
           {% endif %}
         </div>
       </div>

@@ -10,7 +10,7 @@
   background: var(--feed-bg);
   min-height: calc(100vh - 56px);
   padding: 24px 16px 56px;
-  font-family: system-ui, "Segoe UI", Roboto, Arial, sans-serif;
+  font-family: inherit;
 }
 
 body.dark-mode .feed-page {

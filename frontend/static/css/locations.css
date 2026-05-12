@@ -1,7 +1,3 @@
-.locations-page {
-  font-family: 'Overused Grotesk', sans-serif;
-}
-
 .locations-page .container {
   max-width: min(99vw, 2200px);
 }
@@ -82,7 +78,7 @@
 }
 
 .locations-map .mapboxgl-control-container {
-  font-family: 'Overused Grotesk', sans-serif;
+  font-family: var(--font-primary);
 }
 
 .locations-map .mapboxgl-ctrl-top-left {
@@ -102,14 +98,14 @@
   max-width: none;
   border-radius: 999px;
   box-shadow: 0 14px 34px rgba(15, 23, 42, 0.18);
-  font-family: 'Overused Grotesk', sans-serif;
+  font-family: var(--font-primary);
 }
 
 .locations-map .mapboxgl-ctrl-geocoder--input {
   height: 48px;
   padding-left: 46px;
   color: #0f172a;
-  font-family: 'Overused Grotesk', sans-serif;
+  font-family: var(--font-primary);
   font-size: 15px;
 }
 
@@ -137,7 +133,7 @@
 .locations-map .mapboxgl-popup-content {
   padding: 12px 14px;
   border-radius: 10px;
-  font-family: 'Overused Grotesk', sans-serif;
+  font-family: var(--font-primary);
   color: #000;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
 }

@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Mapping reconciliation{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4 px-3 px-md-4 eg-stack">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
+    <div>
+      <h2 class="mb-1">Mapping reconciliation</h2>
+      <p class="text-muted mb-0 small">
+        Compares recent mapping runs: normalized emissions table vs persisted <code>mapping_run_summary</code> vs Mapping Preview archive JSON totals. Flags appear when differences exceed a small tolerance.
+      </p>
+    </div>
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('emissions_records_page') }}">Emissions records</a>
+  </div>
+
+  <div class="card shadow-sm border-secondary-subtle eg-card">
+    <div class="card-body p-0">
+      {% if rows %}
+      <div class="eg-scroll eg-scroll--fit">
+        <table class="table table-sm table-hover align-middle mb-0 eg-table">
+          <thead class="small text-muted">
+            <tr>
+              <th>Run</th>
+              <th>Company</th>
+              <th>Sheet</th>
+              <th class="text-end">Rows (NER)</th>
+              <th class="text-end">Mapped</th>
+              <th class="text-end">Unmapped</th>
+              <th class="text-end">tCO₂e NER</th>
+              <th class="text-end">tCO₂e summary</th>
+              <th class="text-end">tCO₂e archive</th>
+              <th>Flags</th>
+            </tr>
+          </thead>
+          <tbody class="small">
+            {% for r in rows %}
+            <tr class="{% if r.mismatch_flags %}table-warning{% endif %}">
+              <td class="font-monospace"><a href="{{ url_for('mapping_preview_detail', run_id=r.run_id) }}">{{ r.run_id }}</a></td>
+              <td>{{ r.company }}</td>
+              <td class="text-muted">{{ r.sheet }}</td>
+              <td class="text-end">{{ r.row_count_normalized }}</td>
+              <td class="text-end">{{ r.mapped_row_count }}</td>
+              <td class="text-end">{{ r.unmapped_row_count }}</td>
+              <td class="text-end fw-semibold">{{ r.total_emissions_tco2e_normalized }}</td>
+              <td class="text-end">{{ r.total_emissions_tco2e_summary }}</td>
+              <td class="text-end">{{ r.total_emissions_tco2e_archive }}</td>
+              <td>
+                {% if r.mismatch_flags %}
+                  {% for f in r.mismatch_flags %}
+                  <span class="badge bg-danger me-1">{{ f }}</span>
+                  {% endfor %}
+                {% else %}
+                  <span class="badge bg-secondary">OK</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center py-5 px-3 text-muted">No mapping runs to compare.</div>
+      {% endif %}
+    </div>
+  </div>
+  <p class="text-muted small mt-2 mb-0">JSON API: <code>/api/admin/mapping-reconciliation</code></p>
+</div>
+{% endblock %}

@@ -9,6 +9,7 @@ import {
   getTooltipBase,
   initChart,
   makeGradient,
+  readChartFontStack,
   withOpacity,
   companyPairGradient
 } from "./echarts_theme.js";
@@ -206,7 +207,9 @@ function renderDonutCategoryChart(config) {
         style: {
           text: totalLabel,
           fill: "#94a3b8",
-          font: "600 12px Inter, sans-serif"
+          fontFamily: readChartFontStack(),
+          fontSize: 12,
+          fontWeight: 600
         }
       },
       {
@@ -217,7 +220,9 @@ function renderDonutCategoryChart(config) {
         style: {
           text: formatCompact(values.reduce((sum, value) => sum + Number(value || 0), 0)),
           fill: "#0f172a",
-          font: "700 22px Inter, sans-serif"
+          fontFamily: readChartFontStack(),
+          fontSize: 22,
+          fontWeight: 700
         }
       }
     ]

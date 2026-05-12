@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+{% block title %}Emissions records{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4 px-3 px-md-4 eg-stack">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
+    <div>
+      <h2 class="mb-1">Emissions records</h2>
+      <p class="text-muted mb-0 small">
+        Canonical mapped emissions (normalized storage). Dashboards, carbon accounting, and admin reports aggregate from the same underlying mapping outputs as this table.
+      </p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('carbon_accounting') }}">Carbon accounting</a>
+      {% if current_user.is_admin %}
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin_mapping_reconciliation_page') }}">Reconciliation</a>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if mismatch_any %}
+  <div class="alert alert-warning py-2 small mb-3" role="status">
+    Some mapping runs show a mismatch between normalized totals and archive or summary totals. Open <strong>Mapping reconciliation</strong> for details.
+  </div>
+  {% endif %}
+
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-md-4 col-lg-2">
+      <div class="card shadow-sm border-secondary-subtle h-100">
+        <div class="card-body py-3">
+          <div class="text-muted small">Total tCO₂e</div>
+          <div class="fs-5 fw-semibold">{{ "{:,.3f}".format(kpis.total_tco2e or 0) }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+      <div class="card shadow-sm border-secondary-subtle h-100">
+        <div class="card-body py-3">
+          <div class="text-muted small">Rows</div>
+          <div class="fs-5 fw-semibold">{{ kpis.total_rows }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+      <div class="card shadow-sm border-secondary-subtle h-100">
+        <div class="card-body py-3">
+          <div class="text-muted small">Mapped / Unmapped</div>
+          <div class="fs-6 fw-semibold">{{ kpis.mapped_rows }} / {{ kpis.unmapped_rows }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+      <div class="card shadow-sm border-secondary-subtle h-100">
+        <div class="card-body py-3">
+          <div class="text-muted small">S1 / S2 / S3</div>
+          <div class="small fw-semibold">{{ kpis.scope1 }} · {{ kpis.scope2 }} · {{ kpis.scope3 }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+      <div class="card shadow-sm border-secondary-subtle h-100">
+        <div class="card-body py-3">
+          <div class="text-muted small">Top company</div>
+          <div class="small fw-semibold text-truncate" title="{{ kpis.top_company }}">{{ kpis.top_company or "—" }}</div>
+          <div class="text-muted small">{{ "{:,.3f}".format(kpis.top_company_tco2e or 0) }} tCO₂e</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+      <div class="card shadow-sm border-secondary-subtle h-100">
+        <div class="card-body py-3">
+          <div class="text-muted small">Latest mapped at</div>
+          <div class="small fw-semibold">{{ kpis.latest_mapped_at or "—" }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm border-secondary-subtle mb-3">
+    <div class="card-body">
+      <form class="row g-2 align-items-end" method="get" action="{{ url_for('emissions_records_page') }}">
+        {% if filters.run_id %}
+        <input type="hidden" name="run_id" value="{{ filters.run_id }}">
+        {% endif %}
+        <div class="col-6 col-md-3 col-lg-2">
+          <label class="form-label small text-muted mb-0">Company</label>
+          <select class="form-select form-select-sm" name="company">
+            <option value="">All</option>
+            {% for c in company_list %}
+            <option value="{{ c }}" {% if filters.company == c %}selected{% endif %}>{{ c }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-2 col-lg-1">
+          <label class="form-label small text-muted mb-0">Scope</label>
+          <select class="form-select form-select-sm" name="scope">
+            <option value="">All</option>
+            <option value="1" {% if filters.scope == '1' %}selected{% endif %}>1</option>
+            <option value="2" {% if filters.scope == '2' %}selected{% endif %}>2</option>
+            <option value="3" {% if filters.scope == '3' %}selected{% endif %}>3</option>
+          </select>
+        </div>
+        <div class="col-12 col-md-3 col-lg-2">
+          <label class="form-label small text-muted mb-0">Category / sheet contains</label>
+          <input class="form-control form-control-sm" name="category" value="{{ filters.category }}" placeholder="Substring…">
+        </div>
+        <div class="col-6 col-md-2 col-lg-2">
+          <label class="form-label small text-muted mb-0">Reporting period</label>
+          <select class="form-select form-select-sm" name="period">
+            <option value="">All</option>
+            {% for p in period_list %}
+            <option value="{{ p }}" {% if filters.period == p %}selected{% endif %}>{{ p }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-2 col-lg-1">
+          <label class="form-label small text-muted mb-0">Mapped</label>
+          <select class="form-select form-select-sm" name="mapped">
+            <option value="" {% if not filters.mapped %}selected{% endif %}>All</option>
+            <option value="mapped" {% if filters.mapped == 'mapped' %}selected{% endif %}>Mapped</option>
+            <option value="unmapped" {% if filters.mapped == 'unmapped' %}selected{% endif %}>Unmapped</option>
+          </select>
+        </div>
+        <div class="col-12 col-md-3 col-lg-2">
+          <label class="form-label small text-muted mb-0">EF source contains</label>
+          <input class="form-control form-control-sm" name="ef_source" value="{{ filters.ef_source }}" placeholder="Substring…">
+        </div>
+        <div class="col-6 col-md-2 col-lg-1">
+          <label class="form-label small text-muted mb-0">Mapped from</label>
+          <input type="date" class="form-control form-control-sm" name="from" value="{{ filters.from }}">
+        </div>
+        <div class="col-6 col-md-2 col-lg-1">
+          <label class="form-label small text-muted mb-0">Mapped to</label>
+          <input type="date" class="form-control form-control-sm" name="to" value="{{ filters.to }}">
+        </div>
+        <div class="col-12 col-md-4 col-lg-2">
+          <label class="form-label small text-muted mb-0">Search</label>
+          <input class="form-control form-control-sm" name="q" value="{{ filters.q }}" placeholder="Description, EF, sheet…">
+        </div>
+        <div class="col-12 col-md-auto d-flex gap-2">
+          <button type="submit" class="btn btn-sm btn-primary">Apply</button>
+          <a class="btn btn-sm btn-ghost" href="{{ url_for('emissions_records_page') }}">Reset</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card shadow-sm border-secondary-subtle eg-card">
+    <div class="card-body p-0">
+      {% if rows %}
+      <div class="eg-grid-shell border-0 rounded-0 shadow-none">
+        <div class="eg-scroll eg-scroll--fit">
+          <table class="table table-hover table-sm align-middle mb-0 eg-table">
+            <thead class="small text-muted">
+              <tr>
+                <th>Company</th>
+                <th>Scope</th>
+                <th>Sheet</th>
+                <th>Period</th>
+                <th>Description</th>
+                <th>Activity</th>
+                <th>EF ID</th>
+                <th>EF name</th>
+                <th>EF source</th>
+                <th>EF value</th>
+                <th>Match</th>
+                <th class="text-end">tCO₂e</th>
+                <th>Status</th>
+                <th>File</th>
+                <th>Mapped at</th>
+                <th>Run</th>
+              </tr>
+            </thead>
+            <tbody class="small">
+              {% for r in rows %}
+              <tr class="{% if not r.is_mapped %}table-warning{% endif %}">
+                <td>{{ r.company_name }}</td>
+                <td>{{ r.scope or '' }}</td>
+                <td class="text-muted">{{ r.sheet_name }}</td>
+                <td class="text-muted">{{ r.reporting_period_key or '' }}</td>
+                <td class="text-truncate" style="max-width: 200px;" title="{{ r.description or '' }}">{{ (r.description or '')[:120] }}</td>
+                <td class="text-truncate" style="max-width: 140px;" title="{{ r.activity_summary or '' }}">{{ r.activity_summary or '' }}</td>
+                <td class="font-monospace small">{{ r.ef_id or '' }}</td>
+                <td class="text-truncate" style="max-width: 160px;" title="{{ r.ef_name or '' }}">{{ (r.ef_name or '')[:80] }}</td>
+                <td class="text-truncate" style="max-width: 120px;">{{ r.ef_source or '' }}</td>
+                <td>{{ r.ef_value or '' }}</td>
+                <td class="text-truncate" style="max-width: 120px;">{{ r.match_method or '' }}</td>
+                <td class="text-end fw-semibold">{{ "{:,.6f}".format(r.emissions_tco2e or 0) }}</td>
+                <td>
+                  {% if r.is_mapped %}
+                  <span class="badge bg-success">Mapped</span>
+                  {% else %}
+                  <span class="badge bg-warning text-dark">Unmapped</span>
+                  {% endif %}
+                  <span class="d-block text-muted" style="font-size:0.7rem;">{{ (r.mapping_status or '')[:40] }}</span>
+                </td>
+                <td class="text-truncate font-monospace" style="max-width: 140px;" title="{{ r.source_workbook_path or '' }}">{{ ((r.source_workbook_path or '') | replace('\\', '/'))[:48] }}{% if r.source_workbook_path and r.source_workbook_path|length > 48 %}…{% endif %}</td>
+                <td class="text-muted">{{ r.mapped_at.strftime('%Y-%m-%d %H:%M') if r.mapped_at else '' }}</td>
+                <td class="font-monospace small"><a href="{{ url_for('mapping_preview_detail', run_id=r.mapping_run_id) }}">{{ r.mapping_run_id }}</a></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="d-flex flex-wrap justify-content-between align-items-center px-3 py-2 border-top small text-muted">
+        <div>{{ total_count }} row(s) · page {{ page }} / {{ pages }}</div>
+        <div class="d-flex gap-2">
+          {% if page > 1 %}
+          <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('emissions_records_page') }}?{{ pagination_prev_qs }}">Previous</a>
+          {% endif %}
+          {% if page < pages %}
+          <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('emissions_records_page') }}?{{ pagination_next_qs }}">Next</a>
+          {% endif %}
+        </div>
+      </div>
+      {% else %}
+      <div class="text-center py-5 px-3">
+        <p class="text-muted mb-1">No mapped records found for this filter.</p>
+        <p class="text-muted small mb-0">Run mapping or adjust filters to populate this view.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -3,6 +3,10 @@ const CHART_HEIGHT_SCALE = 2;
 let themeRegistered = false;
 let resizeBindingReady = false;
 
+/** Matches CSS --font-primary (see static/css/core/typography.css). */
+export const CTS_CHART_FONT_FALLBACK =
+  '"Overused Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+
 const chartRegistry = new Set();
 const resizeObservers = new WeakMap();
 
@@ -27,7 +31,7 @@ const themeDefinition = {
   ],
   backgroundColor: "transparent",
   textStyle: {
-    fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif'
+    fontFamily: CTS_CHART_FONT_FALLBACK
   },
   grid: {
     top: 24,
@@ -63,6 +67,10 @@ const palettes = [
   ["#1e3a5f", "#06b6d4"],
   ["#64748b", "#334155"]
 ];
+
+export function readChartFontStack() {
+  return getCssVar("--font-primary", CTS_CHART_FONT_FALLBACK);
+}
 
 export function formatCompact(value) {
   return new Intl.NumberFormat("en", {
@@ -185,6 +193,7 @@ export function getAxisLabel(formatter) {
     color: getCssVar("--chart-axis-color", "#0f172a"),
     fontSize: 12,
     fontWeight: 700,
+    fontFamily: getCssVar("--font-primary", CTS_CHART_FONT_FALLBACK),
     formatter
   };
 }
@@ -203,7 +212,8 @@ export function getTooltipBase(customFormatter) {
     textStyle: {
       color: getCssVar("--chart-tooltip-text", "#f8fafc"),
       fontSize: 12,
-      fontWeight: 500
+      fontWeight: 500,
+      fontFamily: getCssVar("--font-primary", CTS_CHART_FONT_FALLBACK)
     },
     padding: [12, 14],
     extraCssText: "border-radius:14px;box-shadow:0 18px 42px rgba(2,6,23,.28);backdrop-filter:blur(14px);",
@@ -227,12 +237,14 @@ export function getLegend(show, itemCount = 0) {
         pageTextStyle: {
           color: getCssVar("--muted", "#64748b"),
           fontSize: 11,
-          fontWeight: 600
+          fontWeight: 600,
+          fontFamily: getCssVar("--font-primary", CTS_CHART_FONT_FALLBACK)
         },
         textStyle: {
           color: getCssVar("--muted", "#64748b"),
           fontSize: 12,
-          fontWeight: 600
+          fontWeight: 600,
+          fontFamily: getCssVar("--font-primary", CTS_CHART_FONT_FALLBACK)
         },
         tooltip: {
           show: true
@@ -315,7 +327,37 @@ export function ensureTheme() {
     return;
   }
 
-  window.echarts.registerTheme(THEME_NAME, themeDefinition);
+  const fontStack = readChartFontStack();
+  const registered = {
+    ...themeDefinition,
+    textStyle: {
+      ...themeDefinition.textStyle,
+      fontFamily: fontStack
+    },
+    categoryAxis: {
+      ...themeDefinition.categoryAxis,
+      axisLabel: {
+        ...themeDefinition.categoryAxis.axisLabel,
+        fontFamily: fontStack
+      }
+    },
+    valueAxis: {
+      ...themeDefinition.valueAxis,
+      axisLabel: {
+        ...themeDefinition.valueAxis.axisLabel,
+        fontFamily: fontStack
+      }
+    },
+    legend: {
+      ...themeDefinition.legend,
+      textStyle: {
+        ...themeDefinition.legend.textStyle,
+        fontFamily: fontStack
+      }
+    }
+  };
+
+  window.echarts.registerTheme(THEME_NAME, registered);
   themeRegistered = true;
 }
 

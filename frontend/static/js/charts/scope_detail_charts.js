@@ -314,7 +314,7 @@ function initScopeAdmin(scopeNum, payload) {
   }
 
   if (!companyRows.length) {
-    whenVisible(document.getElementById("scopeDetailMonthly"), (el) => showEmptyState(el, "Company-level time series requires user portfolio mapping rows."));
+    whenVisible(document.getElementById("scopeDetailMonthly"), (el) => showEmptyState(el, "No mapped records found for this portfolio view. Run mapping for more companies or open Emissions records."));
     if (scopeNum === 3) {
       initEmployeeCommutingScopeCharts(payload.reporting_rows || []);
     }
@@ -367,13 +367,13 @@ function initScopeAdmin(scopeNum, payload) {
 
   const stackEl = document.getElementById("scopeDetailStackMonth");
   if (stackEl) {
-    whenVisible(stackEl, (el) => showEmptyState(el, "Stacked monthly categories need dated sheet rows (user view)."));
+    whenVisible(stackEl, (el) => showEmptyState(el, "This chart requires reporting period and emissions values. Run mapping or adjust filters."));
   }
 
   ["scopeDetailMini1", "scopeDetailMini2", "scopeDetailMini3"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) {
-      whenVisible(el, (node) => showEmptyState(node, "Keyword split available when category sheets are mapped."));
+      whenVisible(el, (node) => showEmptyState(node, "Run mapping or adjust filters to populate this chart."));
     }
   });
   if (scopeNum === 3) {
@@ -408,7 +408,7 @@ function initScopeUser(scopeNum, payload) {
     ].forEach((id) => {
       const el = document.getElementById(id);
       if (el) {
-        whenVisible(el, (node) => showEmptyState(node, "No mapped categories for this scope yet."));
+        whenVisible(el, (node) => showEmptyState(node, "No mapped records found for this scope."));
       }
     });
     return;
@@ -430,7 +430,7 @@ function initScopeUser(scopeNum, payload) {
     if (!monthRowsRaw.length) {
       showEmptyState(
         el,
-        "No time series from mapped files. Ensure “Reporting period (month, year)” or “Purchase Date” has values in the mapped workbook, or re-run mapping after saving data."
+        "No mapped records found for this filter with a usable reporting period. This chart requires reporting period and emissions values."
       );
       return;
     }
@@ -472,12 +472,12 @@ function initScopeUser(scopeNum, payload) {
   const stackRows = reportingRowsToChartRows(reportingRows, scopeNum);
   whenVisible(document.getElementById("scopeDetailStackMonth"), (el) => {
     if (!stackRows.length) {
-      showEmptyState(el, "Stacked monthly trend needs reporting-period rows per category in mapped files.");
+      showEmptyState(el, "This chart requires reporting period and emissions values. Run mapping or adjust filters.");
       return;
     }
     const { labels, series } = monthlyTopCategoryStack(stackRows, 6);
     if (!labels.length) {
-      showEmptyState(el, "Not enough monthly category points for a stacked trend.");
+      showEmptyState(el, "Not enough monthly category points for a stacked trend. If limiting results, charts show Top 6 categories only.");
       return;
     }
     mountCategoryContributionChart(el, { labels, series, height: 360 });
@@ -498,7 +498,7 @@ function initScopeUser(scopeNum, payload) {
       }
       whenVisible(el, (node) => {
         if (val <= 0) {
-          showEmptyState(node, "No sheets matched this keyword group.");
+          showEmptyState(node, "No mapped records in this keyword group (Top 3 split).");
           return;
         }
         mountMiniDonut(node, title, val, t3, 260);

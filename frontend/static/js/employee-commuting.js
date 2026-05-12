@@ -16,7 +16,9 @@
 
   var privileged = !!CFG.privileged;
   var scopedCompany = String(CFG.scoped_company_name || "");
-  var displayCategory = String(CFG.display_category || "Scope 3 Category 7 Employee Commuting");
+  var displayCategory = String(
+    CFG.page_title || CFG.display_category || "Employee Commuting"
+  );
   var months = Array.isArray(CFG.reporting_months) ? CFG.reporting_months : [];
   var companies = Array.isArray(CFG.company_options) ? CFG.company_options : [];
   var apiNational = String(CFG.api_national || "").trim();
@@ -71,7 +73,13 @@
 
   function activateTabFromHash() {
     var h = (location.hash || "").replace(/^#/, "").toLowerCase();
-    var map = { headcount: "ec-tab-headcount", national: "ec-tab-national", dataset: "ec-tab-dataset" };
+    var map = {
+      headcount: "ec-tab-headcount",
+      national: "ec-tab-national",
+      generate: "ec-tab-generate",
+      dataset: "ec-tab-generate",
+      history: "ec-tab-history",
+    };
     var btnId = map[h];
     if (!btnId) {
       return;
@@ -398,15 +406,16 @@
       var tr = document.createElement("tr");
       var st = r.stats || {};
       tr.innerHTML =
-        "<td>" +
+        '<td class="ec-mono text-body-secondary">' +
         String(r.id || "") +
         "</td>" +
-        '<td><code class="small">' +
+        '<td><span class="ec-mono ec-mono--job">' +
         String(r.job_id || "") +
-        "</code></td>" +
-        "<td>" +
+        "</span></td>" +
+        '<td><span class="ec-status">' +
         String(r.status || "") +
-        '</td><td class="text-end">' +
+        "</span></td>" +
+        '<td class="text-end fw-medium">' +
         fmtStatNum(st, "saved_rows_count") +
         '</td><td class="text-end">' +
         fmtStatNum(st, "duplicates_skipped") +
@@ -444,7 +453,7 @@
       if (["completed", "failed", "cancelled"].indexOf(st) >= 0) {
         var lab = qs("ecGenerateJobLabel");
         if (lab) {
-          lab.textContent = st === "completed" ? "Import finished successfully." : "Job " + st + ".";
+          lab.textContent = st === "completed" ? "Generation finished." : "Job " + st + ".";
         }
         if (st !== "completed" && msg) {
           msg.textContent += job.error ? " — ".concat(job.error) : "";
