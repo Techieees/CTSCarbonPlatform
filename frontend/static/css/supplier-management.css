@@ -35,6 +35,14 @@ body.dark-mode .supplier-mgmt-page .table.supplier-mgmt-table thead th {
   color: rgba(100, 116, 139, 0.95);
 }
 
+.supplier-mgmt-page tr.supplier-mgmt-builtin-row > td {
+  background: rgba(13, 110, 253, 0.06);
+}
+
+body.dark-mode .supplier-mgmt-page tr.supplier-mgmt-builtin-row > td {
+  background: rgba(13, 110, 253, 0.14);
+}
+
 body.dark-mode .supplier-mgmt-page .supplier-mgmt-muted {
   color: rgba(148, 163, 184, 0.95);
 }

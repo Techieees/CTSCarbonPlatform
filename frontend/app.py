@@ -6468,7 +6468,41 @@ def _internal_supplier_counts() -> dict[str, int]:
     base = InternalSupplier.deleted_at.is_(None)
     total = db.session.query(func.count(InternalSupplier.id)).filter(base).scalar() or 0
     active_n = db.session.query(func.count(InternalSupplier.id)).filter(base, InternalSupplier.active.is_(True)).scalar() or 0
-    return {"total": int(total), "active": int(active_n)}
+    try:
+        from engine.stage2_mapping.builtin_internal_supplier_aliases import BUILTIN_INTERNAL_SUPPLIER_ALIASES
+
+        builtin_n = len(BUILTIN_INTERNAL_SUPPLIER_ALIASES)
+    except Exception:
+        builtin_n = 0
+    return {"total": int(total), "active": int(active_n), "builtin_aliases": int(builtin_n)}
+
+
+def _builtin_internal_alias_api_rows(*, search: str, active_filter: str) -> tuple[list[dict[str, object]], int]:
+    """Read-only rows for Internal Suppliers UI (canonical baseline aliases)."""
+    from engine.stage2_mapping.builtin_internal_supplier_aliases import BUILTIN_INTERNAL_SUPPLIER_ALIASES
+
+    q = (search or "").strip().lower()
+    act = (active_filter or "").strip().lower()
+    if act == "false":
+        return [], int(len(BUILTIN_INTERNAL_SUPPLIER_ALIASES))
+    out: list[dict[str, object]] = []
+    for name in BUILTIN_INTERNAL_SUPPLIER_ALIASES:
+        raw = str(name or "")
+        if q and q not in raw.lower():
+            continue
+        out.append(
+            {
+                "id": None,
+                "supplier_name": raw,
+                "company_group": "Platform built-in",
+                "notes": "Canonical Rule 1 baseline alias (always active). Not stored as a database row.",
+                "active": True,
+                "updated_at": None,
+                "source": "built_in",
+                "read_only": True,
+            }
+        )
+    return out, int(len(BUILTIN_INTERNAL_SUPPLIER_ALIASES))
 
 
 def _string_cell_value(value: object) -> str:
@@ -15122,12 +15156,14 @@ def api_suppliers_internal_create():
 
     if request.method == "GET":
         page, per = _parse_supplier_page_args()
-        q = InternalSupplier.query.filter(InternalSupplier.deleted_at.is_(None))
         search = str(request.args.get("q") or "").strip()
+        active_f = str(request.args.get("active") or "").strip().lower()
+        builtin_rows, builtin_definitions_total = _builtin_internal_alias_api_rows(search=search, active_filter=active_f)
+
+        q = InternalSupplier.query.filter(InternalSupplier.deleted_at.is_(None))
         if search:
             term = f"%{search[:200]}%"
             q = q.filter(or_(InternalSupplier.supplier_name.ilike(term), InternalSupplier.normalized_name.ilike(term)))
-        active_f = str(request.args.get("active") or "").strip().lower()
         if active_f == "true":
             q = q.filter(InternalSupplier.active.is_(True))
         elif active_f == "false":
@@ -15154,9 +15190,22 @@ def api_suppliers_internal_create():
                 "notes": r.notes,
                 "active": bool(r.active),
                 "updated_at": r.updated_at.strftime("%Y-%m-%d %H:%M UTC") if r.updated_at else None,
+                "source": "database",
+                "read_only": False,
             }
 
-        return jsonify({"ok": True, "page": page, "page_size": per, "total": int(total), "rows": [pack(r) for r in rows]})
+        return jsonify(
+            {
+                "ok": True,
+                "page": page,
+                "page_size": per,
+                "total": int(total),
+                "rows": [pack(r) for r in rows],
+                "builtin_aliases": builtin_rows,
+                "builtin_count": len(builtin_rows),
+                "builtin_definitions_total": builtin_definitions_total,
+            }
+        )
 
     payload = request.get_json(silent=True) or {}
     name = str(payload.get("supplier_name") or "").strip()

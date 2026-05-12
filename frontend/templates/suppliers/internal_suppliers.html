@@ -26,18 +26,20 @@
   <section class="row g-3 my-4">
     <div class="col-md-4">
       <article class="analytics-output-stat h-100">
-        <span class="analytics-output-stat__label">Total registry rows</span>
-        <strong class="analytics-output-stat__value">{{ stats.total }}</strong>
+        <span class="analytics-output-stat__label">Built-in baseline aliases</span>
+        <strong class="analytics-output-stat__value">{{ stats.builtin_aliases }}</strong>
+        <div class="supplier-mgmt-muted small mt-1">Always active for Rule 1 (code-defined)</div>
       </article>
     </div>
     <div class="col-md-4">
       <article class="analytics-output-stat h-100">
-        <span class="analytics-output-stat__label">Active markers</span>
-        <strong class="analytics-output-stat__value">{{ stats.active }}</strong>
+        <span class="analytics-output-stat__label">Database rows</span>
+        <strong class="analytics-output-stat__value">{{ stats.total }}</strong>
+        <div class="supplier-mgmt-muted small mt-1">Active in DB: {{ stats.active }}</div>
       </article>
     </div>
     <div class="col-md-4 d-flex align-items-stretch justify-content-lg-end pt-3 pt-lg-0">
-      <button type="button" class="btn btn-primary align-self-center" id="btnAddOpenInternal">Add internal supplier</button>
+      <button type="button" class="btn btn-primary align-self-center" id="btnAddOpenInternal">Add database supplier</button>
     </div>
   </section>
 
@@ -151,9 +153,21 @@
     tbody.innerHTML = '<tr><td colspan="5" class="text-muted">Loading…</td></tr>';
     try {
       var d = await aj(API_LIST+'?'+qp());
-      var rows=d.rows||[], total=+d.total||0, pg=+d.page||1, per=+d.page_size||25;
-      document.getElementById('intPageInfo').textContent = 'Page '+pg+' · '+total+' row(s)';
-      tbody.innerHTML = rows.map(function(r){
+      var rows = d.rows || [], total = +d.total || 0, pg = +d.page || 1, per = +d.page_size || 25;
+      document.getElementById('intPageInfo').textContent =
+        'Built-in ' + (d.builtin_count || 0) + ' / ' + (d.builtin_definitions_total || 0) +
+        ' · DB page ' + pg + ' · ' + total + ' row(s)';
+      var bio = d.builtin_aliases || [];
+      var bioHtml = bio.map(function(r){
+        var badge = '<span class="badge text-bg-primary supplier-mgmt-badge">Built-in</span>';
+        var cg = r.company_group ? ('<div class="supplier-mgmt-muted small">'+esc(r.company_group)+'</div>') : '';
+        return '<tr class="supplier-mgmt-builtin-row">'+
+          '<td><strong>'+esc(r.supplier_name||'')+'</strong>'+cg+'</td>'+
+          '<td class="supplier-mgmt-muted small">'+esc((r.notes||'').slice(0,160))+'</td>'+
+          '<td class="small supplier-mgmt-muted">—</td><td>'+badge+'</td>'+
+          '<td class="text-end"><span class="supplier-mgmt-muted small">Read-only</span></td></tr>';
+      }).join('');
+      var rowsHtml = rows.map(function(r){
         var act=r.active?'<span class="badge bg-success supplier-mgmt-badge">Active</span>':'<span class="badge bg-secondary supplier-mgmt-badge">Archived</span>';
         var cg = r.company_group ? ('<div class="supplier-mgmt-muted small">'+esc(r.company_group)+'</div>') : '';
         return '<tr><td><strong>'+esc(r.supplier_name||'')+'</strong>'+cg+'</td>'+
@@ -163,7 +177,8 @@
           '<button type="button" class="btn btn-sm btn-outline-primary me-1" data-act="ie" data-id="'+esc(r.id)+'">Edit</button>'+
           '<button type="button" class="btn btn-sm btn-outline-danger" data-act="id" data-id="'+esc(r.id)+'">Remove</button>'+
           '</td></tr>';
-      }).join('')||'<tr><td colspan="5" class="text-muted">No rows.</td></tr>';
+      }).join('');
+      tbody.innerHTML = (bioHtml + rowsHtml) || '<tr><td colspan="5" class="text-muted">No rows.</td></tr>';
 
       tbody.querySelectorAll('[data-act="ie"]').forEach(function(b){
         b.onclick=function(){ openEdit(b.getAttribute('data-id')); };

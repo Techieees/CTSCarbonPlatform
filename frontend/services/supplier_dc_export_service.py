@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from engine.stage2_mapping.builtin_internal_supplier_aliases import BUILTIN_INTERNAL_SUPPLIER_ALIASES
+
 from frontend.services.supplier_normalize import normalize_supplier_key
 
 
@@ -21,7 +23,7 @@ def internal_dc_cache_path() -> Path:
 
 
 def export_internal_supplier_tokens_for_stage2(db_session, InternalSupplierModel) -> Path:
-    """Persist normalized tokens for batch double-counting runs."""
+    """Persist normalized tokens for batch double-counting runs (DB ∪ built-in baseline)."""
     rows = (
         db_session.query(InternalSupplierModel)
         .filter(
@@ -35,9 +37,17 @@ def export_internal_supplier_tokens_for_stage2(db_session, InternalSupplierModel
         t = normalize_supplier_key(getattr(r, "supplier_name", None) or "")
         if t:
             tokens.add(t)
+    for name in BUILTIN_INTERNAL_SUPPLIER_ALIASES:
+        t = normalize_supplier_key(str(name or ""))
+        if t:
+            tokens.add(t)
     path = internal_dc_cache_path()
     path.write_text(
-        json.dumps({"normalized_tokens": sorted(tokens), "source": "platform_db"}, indent=2, ensure_ascii=True),
+        json.dumps(
+            {"normalized_tokens": sorted(tokens), "source": "platform_db_union_builtin"},
+            indent=2,
+            ensure_ascii=True,
+        ),
         encoding="utf-8",
     )
     return path
