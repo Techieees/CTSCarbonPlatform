@@ -18,6 +18,8 @@ if str(_STAGE2_MAPPING_DIR) not in sys.path:
 
 from config import STAGE2_OUTPUT_DIR
 
+from builtin_internal_supplier_aliases import BUILTIN_INTERNAL_SUPPLIER_ALIASES
+
 
 # Purpose
 # Apply manual double-counting null rules ONLY to the following sheets/columns:
@@ -88,7 +90,9 @@ CTS_SOURCES: List[str] = [
 #Waste datasi icin yaptigimiz mappingi degistirelim.  Oncelikle weight unit kismina bakacaksin. Burada kg, litres, tn, Tonnes, tons var). Biz her zaman ton ile calisiyoruz. kg ve Litres olanlari 1000 e boleceksin. Digerleri ayni sekilde kalacak. Sonrasinda ef_value degerleriyle bunu carpacaksin. Istersen yeni bir sutun yarat Weight(tonnes) olarak ve donusturdugun degerleri buraya yaz. 
 
 
-# Internal supplier normalized tokens come from `internal_supplier_registry` (platform DB + cache).
+# Built-in internal supplier aliases (historical INTERNAL_SUPPLIERS): permanent baseline for Rule 1.
+# Merged at runtime with DB / cache / seed via internal_supplier_registry.load_internal_supplier_normalized_tokens().
+# Independent of CCC supplier discovery or sync.
 
 
 # Special null rules (explicit pairs): (source_company, provider_should_be)
@@ -166,17 +170,20 @@ def _find_latest_merged(base_dir: Path) -> Optional[Path]:
 
 def _build_internal_sets() -> Tuple[set[str], set[str], Dict[str, set[str]]]:
     cts_set = {_normalize_token(x) for x in CTS_SOURCES}
+    builtin_set = {_normalize_token(x) for x in BUILTIN_INTERNAL_SUPPLIER_ALIASES if str(x or "").strip()}
+    dynamic_set: set[str] = set()
     try:
         from internal_supplier_registry import load_internal_supplier_normalized_tokens
     except Exception:
         load_internal_supplier_normalized_tokens = None  # type: ignore[assignment,misc]
 
-    internal_set: set[str] = set()
     if load_internal_supplier_normalized_tokens is not None:
         try:
-            internal_set = set(load_internal_supplier_normalized_tokens())
+            dynamic_set = set(load_internal_supplier_normalized_tokens())
         except Exception:
-            internal_set = set()
+            dynamic_set = set()
+    # FINAL_INTERNAL_SET = built-in ∪ DB ∪ cache ∪ seed (dynamic loader performs the union of the latter three).
+    internal_set = builtin_set | dynamic_set
     special_pairs: Dict[str, set[str]] = {}
     for src, providers, _reason in SPECIAL_NULL_PAIRS:
         key = _normalize_token(src)

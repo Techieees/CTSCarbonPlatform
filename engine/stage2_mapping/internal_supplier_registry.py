@@ -1,11 +1,15 @@
 """
-Resolve internal supplier normalized tokens for double counting.
+Dynamic internal supplier tokens for double-counting Rule 1 (non-built-in layer).
 
-Priority:
-1. SQLite `internal_supplier_registry` rows (PLATFORM_GHG_DB_PATH, default frontend/instance/ghg_data.db)
-2. Cache JSON (`engine/stage2_mapping/cache/internal_dc_tokens.json`) from the Flask export job
-3. Legacy seed file (`frontend/data/supplier_mgmt/internal_dc_seed.json`) — same supplier_names as bootstrap; keeps batch/offline parity when DB/cache are empty
-4. Empty set (Rule 1 no-ops until data exists)
+Returns the UNION of all available runtime sources (never "first wins"):
+- SQLite `internal_supplier_registry` active rows (PLATFORM_GHG_DB_PATH, default frontend/instance/ghg_data.db)
+- Cache JSON (`engine/stage2_mapping/cache/internal_dc_tokens.json`) from the Flask export job
+- Seed JSON (`frontend/data/supplier_mgmt/internal_dc_seed.json`) optional extra aliases
+
+Built-in canonical aliases live in `builtin_internal_supplier_aliases.py` and are merged in
+`double_countin_booklets._build_internal_sets()` — not here — so CCC / supplier sync stays decoupled.
+
+This module MUST NOT import Flask or pandas.
 """
 
 from __future__ import annotations
@@ -103,13 +107,18 @@ def _load_tokens_from_cache_file() -> set[str] | None:
 
 def load_internal_supplier_normalized_tokens() -> set[str]:
     """
-    Tokens used by Rule 1 supplier matching (CTS source + internal provider).
+    Union of dynamic sources (DB ∪ cache ∪ seed). Empty components are skipped.
+
+    Built-in baseline aliases are merged separately in double_countin_booklets._build_internal_sets.
     """
+    combined: set[str] = set()
     from_db = _load_tokens_from_sqlite(resolve_default_db_path())
-    if from_db is not None and len(from_db) > 0:
-        return from_db
+    if from_db is not None:
+        combined |= from_db
     cached = _load_tokens_from_cache_file()
-    if cached is not None and len(cached) > 0:
-        return cached
+    if cached is not None:
+        combined |= cached
     seeded = _load_tokens_from_seed_json()
-    return seeded if seeded is not None else set()
+    if seeded is not None:
+        combined |= seeded
+    return combined
