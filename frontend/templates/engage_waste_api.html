@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/analytics-output.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container py-4 analytics-output-page">
+  <section class="analytics-output-hero">
+    <div class="analytics-output-hero__eyebrow">{{ page_group }}</div>
+    <div class="d-flex flex-column flex-lg-row gap-3 justify-content-between align-items-lg-start">
+      <div>
+        <h1 class="analytics-output-hero__title">{{ page_title }}</h1>
+        <p class="analytics-output-hero__lead mb-0">
+          Pull waste rows from Norsk Gjenvinning Engage Waste API and import them into Data Entry as
+          <strong>{{ engage_target_sheet }}</strong>. Scope&nbsp;3 Category&nbsp;5 mapping stays on the existing platform pipeline.
+        </p>
+      </div>
+      <a class="btn btn-outline-secondary analytics-output-hero__action" href="{{ dashboard_url }}">Open Data Entry</a>
+    </div>
+  </section>
+
+  <section class="analytics-output-controls mt-4">
+    <div class="analytics-output-ccc-status row g-3 mb-4">
+      <div class="col-md-4">
+        <article class="analytics-output-stat">
+          <span class="analytics-output-stat__label">Configuration</span>
+          <strong class="analytics-output-stat__value">
+            <span class="analytics-output-status analytics-output-status--{{ engage_connection_status.tone }}">{{ engage_connection_status.label }}</span>
+          </strong>
+          <div class="analytics-output-card__meta mt-2 small">{{ engage_connection_status.message }}</div>
+        </article>
+      </div>
+      <div class="col-md-4">
+        <article class="analytics-output-stat">
+          <span class="analytics-output-stat__label">Last fetch</span>
+          <strong class="analytics-output-stat__value">{{ engage_meta.get('last_fetch_at') or '—' }}</strong>
+        </article>
+      </div>
+      <div class="col-md-4">
+        <article class="analytics-output-stat">
+          <span class="analytics-output-stat__label">Last import</span>
+          <strong class="analytics-output-stat__value">{{ engage_meta.get('last_import_job_at') or '—' }}</strong>
+          {% if engage_meta.get('last_import_rows_inserted') is not none %}
+          <div class="analytics-output-card__meta mt-2 small">Inserted {{ engage_meta.get('last_import_rows_inserted') }} rows</div>
+          {% endif %}
+        </article>
+      </div>
+    </div>
+
+    <div id="engageWasteFlash" class="alert alert-danger d-none" role="alert"></div>
+    <div id="engageTruncNotice" class="alert alert-info py-2 small d-none" role="status">
+      Preview shows the first rows only. <strong>Import</strong> applies to <strong>all</strong> ready rows from this fetch (not only the visible preview table).
+    </div>
+
+    <article class="analytics-output-card mb-4">
+      <div class="analytics-output-card__header flex-wrap gap-2">
+        <div class="flex-grow-1">
+          <h3 class="analytics-output-card__title mb-1">Fetch &amp; preview</h3>
+          <p class="analytics-output-card__meta mb-0">
+            Uses header <code class="small">Ocp-Apim-Subscription-Key</code> from <code class="small">ENGAGE_WASTE_SUBSCRIPTION_KEY</code>.
+            Only the <strong>Waste Stream</strong> text is translated to English.
+          </p>
+        </div>
+      </div>
+      <div class="px-3 pb-3 pt-0">
+        <div class="row g-3 align-items-end">
+          <div class="col-md-5">
+            <label class="form-label" for="engageWasteCompany">Target company (Data Entry)</label>
+            <select id="engageWasteCompany" class="form-select" {% if not engage_company_options %}disabled{% endif %}>
+              {% for co in engage_company_options %}
+              <option value="{{ co|e }}">{{ co }}</option>
+              {% else %}
+              <option value="">No companies available</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" for="engagePeriodFallback">Reporting period fallback (optional)</label>
+            <input id="engagePeriodFallback" class="form-control" placeholder="e.g. Apr-2026 if API dates missing">
+          </div>
+          <div class="col-md-3">
+            {% if can_engage_waste_import %}
+            <button type="button" class="btn btn-primary w-100" id="engageWasteFetchBtn">Fetch latest data</button>
+            {% else %}
+            <button type="button" class="btn btn-outline-secondary w-100" disabled title="Admin / owner role required">Fetch latest data</button>
+            {% endif %}
+          </div>
+        </div>
+        <div class="analytics-output-loading-message mt-3 js-analytics-loading-message d-none" id="engageWasteFetchLoading">
+          Fetching Engage Waste API…
+        </div>
+      </div>
+    </article>
+
+    <div class="row g-3 mb-4">
+      <div class="col-md-4">
+        <article class="analytics-output-stat">
+          <span class="analytics-output-stat__label">Raw rows fetched</span>
+          <strong class="analytics-output-stat__value" id="ewStatRaw">—</strong>
+        </article>
+      </div>
+      <div class="col-md-4">
+        <article class="analytics-output-stat">
+          <span class="analytics-output-stat__label">Ready to import</span>
+          <strong class="analytics-output-stat__value" id="ewStatReady">—</strong>
+        </article>
+      </div>
+      <div class="col-md-4">
+        <article class="analytics-output-stat">
+          <span class="analytics-output-stat__label">Unmapped site tags</span>
+          <strong class="analytics-output-stat__value" id="ewStatUnmapped">—</strong>
+        </article>
+      </div>
+    </div>
+
+    {% if can_engage_waste_import %}
+    <article class="analytics-output-card mb-4">
+      <div class="analytics-output-card__header flex-wrap gap-2">
+        <div class="flex-grow-1">
+          <h3 class="analytics-output-card__title mb-1">Preview</h3>
+          <p class="analytics-output-card__meta mb-0">
+            When the preview is not truncated you can tick individual rows; otherwise import runs for every ready row in the bundle.
+            Duplicate-safe keys use the same hidden-column approach as CCC imports (<code class="small">engage_waste_import_dedup</code>).
+          </p>
+        </div>
+        <span class="badge rounded-pill text-bg-secondary align-self-start d-none" id="engageWasteImportRunningBadge">Import running</span>
+      </div>
+      <div class="px-3 pb-3 pt-0">
+        <div class="small text-muted mb-2">
+          Preview ID: <span class="font-monospace" id="engagePreviewId">—</span>
+          <span id="engagePreviewTrunc" class="d-none text-warning ms-2">(table truncated — full set imports)</span>
+        </div>
+        <div class="table-responsive border rounded">
+          <table class="table table-sm table-striped mb-0" id="engageWastePreviewTable">
+            <thead class="table-light">
+              <tr>
+                <th scope="col" class="text-center"><input type="checkbox" id="engageSelectAll" checked aria-label="Select all rows"></th>
+                <th>Reporting period</th>
+                <th>Waste Stream</th>
+                <th class="text-end">Weight</th>
+                <th>Site Tag</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody id="engageWastePreviewBody">
+              <tr><td colspan="6" class="text-muted small p-3 mb-0">Run fetch to load preview rows.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="analytics-output-stat mt-3 mb-0 py-2 px-2 rounded d-none" id="engageWasteImportProgress" aria-live="polite">
+          <div class="small text-muted mb-1">Import progress</div>
+          <div class="progress mb-2" style="height: 8px;">
+            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" id="engageWasteImportProgressBar" style="width: 0%;"></div>
+          </div>
+          <div class="small font-monospace" id="engageWasteImportProgressMessage">—</div>
+          <dl class="row small mb-0 mt-2 g-1">
+            <dt class="col-6 text-muted">Inserted</dt><dd class="col-6 mb-0 text-end" id="ewImpInserted">—</dd>
+            <dt class="col-6 text-muted">Duplicates skipped</dt><dd class="col-6 mb-0 text-end" id="ewImpDup">—</dd>
+            <dt class="col-6 text-muted">Fingerprint duplicates</dt><dd class="col-6 mb-0 text-end" id="ewImpFpDup">—</dd>
+            <dt class="col-6 text-muted">Validation skipped</dt><dd class="col-6 mb-0 text-end" id="ewImpValSkip">—</dd>
+            <dt class="col-6 text-muted">Errors</dt><dd class="col-6 mb-0 text-end" id="ewImpErr">—</dd>
+          </dl>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 mt-3">
+          <button type="button" class="btn btn-primary" id="engageWasteImportBtn" disabled>Import to Data Entry</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm align-self-center" id="engageWasteRefreshStatusBtn">Refresh status</button>
+        </div>
+      </div>
+    </article>
+    {% else %}
+    <article class="analytics-output-card mb-4">
+      <div class="px-3 py-3">
+        <p class="text-muted mb-0">Import and fetch actions require <strong>admin</strong>, <strong>super_admin</strong>, or <strong>owner</strong> role.</p>
+      </div>
+    </article>
+    {% endif %}
+  </section>
+</div>
+
+<script type="application/json" id="engage-waste-boot">{{ {
+  'fetchUrl': engage_fetch_url,
+  'importUrl': engage_import_url,
+  'statusUrl': engage_status_url,
+  'dashboardUrl': dashboard_url,
+  'targetSheet': engage_target_sheet,
+  'canImport': can_engage_waste_import,
+}|tojson }}</script>
+<script src="{{ url_for('static', filename='js/engage_waste_api.js') }}" defer></script>
+{% endblock %}

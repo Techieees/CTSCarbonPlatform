@@ -31,6 +31,13 @@ CCC_USERNAME = os.getenv("CCC_USERNAME")
 CCC_PASSWORD = os.getenv("CCC_PASSWORD")
 CCC_API_PAGE_SIZE = int(os.getenv("CCC_API_PAGE_SIZE", 200))
 
+# Norsk Gjenvinning Engage Waste API (API Management subscription key header).
+ENGAGE_WASTE_SUBSCRIPTION_KEY = os.getenv("ENGAGE_WASTE_SUBSCRIPTION_KEY", "").strip()
+ENGAGE_WASTE_BASE_URL = os.getenv(
+    "ENGAGE_WASTE_BASE_URL",
+    "https://prod.apim.ngn.no/engage-waste",
+).strip().rstrip("/")
+
 CCC_GET_ENDPOINTS_PATH = BASE_DIR / "ccc_get_endpoints.json"
 CCC_SHEET_MAPPING_PATH = BASE_DIR / "ccc_sheet_mapping.json"
 

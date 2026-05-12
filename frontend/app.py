@@ -61,6 +61,7 @@ from config import (
     CCC_PASSWORD,
     CCC_SHEET_MAPPING_PATH,
     CCC_USERNAME,
+    ENGAGE_WASTE_SUBSCRIPTION_KEY,
     DATA_DIR,
     FRONTEND_DB_PATH,
     FRONTEND_INSTANCE_DIR,
@@ -77,6 +78,7 @@ from config import (
     PROJECT_ROOT,
     PUBLIC_APP_BASE_URL,
     SECRET_KEY,
+    STORAGE_ROOT,
     STAGE1_INPUT_BACKUP_DIR,
     STAGE1_INPUT_DIR,
     STAGE1_KLARAKARBON_OUTPUT_DIR,
@@ -6018,6 +6020,11 @@ def _user_can_run_ccc_data_entry_import(u: object | None) -> bool:
     return normalize_user_role(getattr(u, "role", None)) in {"owner", "super_admin", "admin"}
 
 
+def _user_can_run_engage_waste_import(u: object | None) -> bool:
+    """Engage Waste API → Data Entry import — same privilege gate as CCC."""
+    return _user_can_run_ccc_data_entry_import(u)
+
+
 def _string_cell_value(value: object) -> str:
     try:
         if pd.isna(value):
@@ -6081,6 +6088,8 @@ def _data_entry_non_metadata_cell_columns(cells: dict[str, str]) -> bool:
         if ck in _DATA_ENTRY_MAPPING_METADATA_COLUMNS:
             continue
         if ck == "ccc_import_dedup":
+            continue
+        if ck == "engage_waste_import_dedup":
             continue
         if str(raw or "").strip():
             return True
@@ -11121,6 +11130,17 @@ def _run_pipeline_background(run_id: int) -> None:
 # Registration dropdown: canonical company names only
 COMPANIES = sorted(_COMPANY_COUNTRY_CANONICAL.keys())
 
+
+def _engage_waste_company_choices(user: object) -> list[str]:
+    """Companies selectable on Engage Waste page (admins see all registered templates)."""
+    role = normalize_user_role(getattr(user, "role", None))
+    if role in {"owner", "super_admin", "admin"}:
+        return list(COMPANIES)
+    rc = _resolve_template_company_name(getattr(user, "company_name", "") or "") or str(
+        getattr(user, "company_name", "") or ""
+    ).strip()
+    return [rc] if rc else []
+
 # Utility: Calculate emissions from excel data (loads factors from the database)
 def calculate_emissions_from_excel(file_path, template_name):
     from sqlalchemy import and_
@@ -14059,6 +14079,240 @@ def api_ccc_import_to_data_entry():
     return jsonify({"ok": True, "job_id": job_id})
 
 
+@app.route("/api/engage-waste/fetch", methods=["POST"])
+@login_required
+def api_engage_waste_fetch():
+    """Pull Engage Waste API pages, archive JSON, normalize + translate Waste Stream → preview bundle."""
+    from frontend.services import engage_waste_service as ews
+
+    if not _user_can_run_engage_waste_import(current_user):
+        return (
+            jsonify(
+                {
+                    "error": "Forbidden",
+                    "detail": "Engage Waste import requires admin, super_admin, or owner role.",
+                }
+            ),
+            403,
+        )
+
+    payload = request.get_json(silent=True) or {}
+    company_raw = str(payload.get("company_name") or "").strip()
+    if not company_raw:
+        return jsonify({"error": "company_name is required"}), 400
+
+    resolved_company = _resolve_template_company_name(company_raw) or company_raw
+    if not _user_can_access_company(resolved_company):
+        return jsonify({"error": "Access denied", "detail": "You cannot fetch/import for this company."}), 403
+
+    tm = _current_template_mode()
+    resolved_sheet = (
+        _resolve_template_sheet_name_with_mode(resolved_company, ews.ENGAGE_TARGET_SHEET, template_mode=tm)
+        or ews.ENGAGE_TARGET_SHEET
+    )
+    headers = _get_template_sheet_headers_with_mode(resolved_company, resolved_sheet, template_mode=tm)
+    if not headers:
+        return (
+            jsonify(
+                {
+                    "error": "Target sheet not available",
+                    "company": resolved_company,
+                    "sheet": resolved_sheet,
+                }
+            ),
+            400,
+        )
+
+    if not str(ENGAGE_WASTE_SUBSCRIPTION_KEY or "").strip():
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": "configuration",
+                    "detail": "ENGAGE_WASTE_SUBSCRIPTION_KEY is not set on the server.",
+                }
+            ),
+            400,
+        )
+
+    limit_per_page = int(payload.get("limit_per_page") or 1000)
+    max_pages = int(payload.get("max_pages") or 50)
+    reporting_period_fallback = str(payload.get("reporting_period_fallback") or "").strip()
+    extra_params: dict[str, object] | None = None
+    eq = payload.get("extra_query")
+    if isinstance(eq, dict):
+        extra_params = {str(k): v for k, v in eq.items() if str(k).strip()}
+
+    try:
+        raw_items, summaries = ews.fetch_all_waste_data(
+            limit_per_page=max(1, min(limit_per_page, 5000)),
+            max_pages=max(1, min(max_pages, 200)),
+            extra_params=extra_params,
+        )
+    except Exception as exc:
+        return jsonify({"ok": False, "error": "fetch_failed", "detail": str(exc)}), 502
+
+    archive_rel = None
+    try:
+        archive_container = {"pagination_summaries": summaries, "items": raw_items}
+        apath = ews.archive_raw_response(archive_container)
+        try:
+            archive_rel = str(apath.relative_to(STORAGE_ROOT))
+        except ValueError:
+            archive_rel = str(apath)
+    except Exception:
+        archive_rel = None
+
+    translator_cache: dict[str, str] = {}
+    normalized = ews.normalize_engage_waste_rows(raw_items)
+    built_rows, bstats = ews.build_scope3_cat5_data_entry_rows(
+        normalized,
+        headers,
+        reporting_period_fallback=reporting_period_fallback,
+        translator_cache=translator_cache,
+    )
+
+    preview_id = uuid.uuid4().hex
+    preview_path = STORAGE_ROOT / "engage_waste" / "previews" / f"{preview_id}.json"
+    bundle = {
+        "preview_id": preview_id,
+        "user_id": int(current_user.id),
+        "created_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
+        "resolved_company": resolved_company,
+        "resolved_sheet": resolved_sheet,
+        "template_mode": tm,
+        "headers": headers,
+        "rows": built_rows,
+        "stats_builder": bstats,
+        "archive_relative": archive_rel,
+    }
+    ews.write_preview_bundle(preview_path, bundle)
+
+    preview_cap = 500
+    preview_slice = built_rows[:preview_cap]
+
+    try:
+        ews.update_status_file(
+            {
+                "last_fetch_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
+                "last_fetch_raw_rows": len(raw_items),
+                "last_fetch_ready_rows": int(bstats.get("ready_rows") or 0),
+                "last_fetch_company": resolved_company,
+                "last_preview_id": preview_id,
+            }
+        )
+    except Exception:
+        pass
+
+    return jsonify(
+        {
+            "ok": True,
+            "preview_id": preview_id,
+            "resolved_company": resolved_company,
+            "resolved_sheet": resolved_sheet,
+            "headers": headers,
+            "counts": {
+                "raw_rows": len(raw_items),
+                "ready_rows": int(bstats.get("ready_rows") or 0),
+                "skipped_missing_weight": int(bstats.get("skipped_missing_weight") or 0),
+                "input_rows": int(bstats.get("input_rows") or 0),
+                "unmapped_site_tags": int(bstats.get("unmapped_site_tags") or 0),
+            },
+            "preview_rows": preview_slice,
+            "preview_truncated": len(built_rows) > preview_cap,
+            "archive_relative": archive_rel,
+            "pagination_summaries": summaries,
+        }
+    )
+
+
+@app.route("/api/engage-waste/import", methods=["POST"])
+@login_required
+def api_engage_waste_import():
+    """Queue Engage Waste preview → Data Entry (Scope 3 Category 5 Waste)."""
+    from frontend.services import engage_waste_service as ews
+
+    if not _user_can_run_engage_waste_import(current_user):
+        return (
+            jsonify(
+                {
+                    "error": "Forbidden",
+                    "detail": "Engage Waste import requires admin, super_admin, or owner role.",
+                }
+            ),
+            403,
+        )
+
+    payload = request.get_json(silent=True) or {}
+    preview_id = str(payload.get("preview_id") or "").strip()
+    if not preview_id:
+        return jsonify({"error": "preview_id is required"}), 400
+
+    ppath = _engage_waste_preview_bundle_path(preview_id)
+    if ppath is None or not ppath.is_file():
+        return jsonify({"error": "preview_not_found", "detail": "Run Fetch again to regenerate preview."}), 404
+
+    bundle = ews.read_preview_bundle(ppath)
+    if int(bundle.get("user_id") or 0) != int(current_user.id):
+        return jsonify({"error": "Forbidden", "detail": "Preview belongs to another user session."}), 403
+
+    resolved_company = str(bundle.get("resolved_company") or "").strip()
+    if not _user_can_access_company(resolved_company):
+        return jsonify({"error": "Access denied"}), 403
+
+    active_e = _active_job_id_for_job_type("engage_waste_import")
+    if active_e:
+        return (
+            jsonify(
+                {
+                    "error": "Engage Waste import already running",
+                    "detail": "Wait for the current job to finish before starting another.",
+                    "job_id": active_e,
+                }
+            ),
+            409,
+        )
+
+    sel_raw = payload.get("row_indices")
+    selected_indices = sel_raw if isinstance(sel_raw, list) else None
+
+    tm = str(bundle.get("template_mode") or _current_template_mode())
+
+    job_id = run_in_background(
+        "engage_waste_import",
+        "Engage Waste API",
+        _run_engage_waste_import_job,
+        preview_id=preview_id,
+        selected_indices=selected_indices,
+        template_mode=tm,
+        user_id=int(getattr(current_user, "id", 0) or 0) or None,
+        job_user_id=int(getattr(current_user, "id", 0) or 0) or None,
+        job_user_email=str(getattr(current_user, "email", "") or ""),
+        mapper_email=str(getattr(current_user, "email", "") or ""),
+    )
+    return jsonify({"ok": True, "job_id": job_id})
+
+
+@app.route("/api/engage-waste/status", methods=["GET"])
+@login_required
+def api_engage_waste_status():
+    from frontend.services import engage_waste_service as ews
+
+    status_path = STORAGE_ROOT / "engage_waste" / "status.json"
+    payload: dict[str, object] = {}
+    if status_path.exists():
+        try:
+            loaded = json.loads(status_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                payload = loaded
+        except Exception:
+            payload = {}
+    payload["subscription_configured"] = bool(str(ENGAGE_WASTE_SUBSCRIPTION_KEY or "").strip())
+    payload["can_import"] = _user_can_run_engage_waste_import(current_user)
+    payload["engage_target_sheet"] = ews.ENGAGE_TARGET_SHEET
+    return jsonify({"ok": True, "status": payload})
+
+
 @app.route("/api/evidence/row-summary", methods=["GET"])
 @login_required
 def api_evidence_row_summary():
@@ -15230,6 +15484,292 @@ def _run_ccc_import_job(
             notification_type="info",
             link="/",
         )
+    return out
+
+
+def _engage_waste_preview_bundle_path(preview_id: str) -> Path | None:
+    pid = str(preview_id or "").strip().lower()
+    if not pid or len(pid) > 80:
+        return None
+    if any(ch not in "0123456789abcdef" for ch in pid):
+        return None
+    return STORAGE_ROOT / "engage_waste" / "previews" / f"{pid}.json"
+
+
+def _run_engage_waste_import_job(
+    *,
+    job_id: str,
+    preview_id: str,
+    selected_indices: list[int] | None,
+    template_mode: str = TEMPLATE_MODE_LEGACY,
+    user_id: int | None = None,
+    mapper_email: str = "",
+) -> dict[str, object]:
+    """Persist preview rows created by /api/engage-waste/fetch into Scope 3 Category 5 Waste."""
+    from frontend.services import engage_waste_service as ews
+
+    stats: dict[str, object] = {
+        "rows_total_preview": 0,
+        "rows_selected": 0,
+        "rows_fetched": 0,
+        "rows_inserted": 0,
+        "duplicates_skipped": 0,
+        "fingerprint_duplicates_skipped": 0,
+        "validation_skipped": 0,
+        "unmapped_site_tags": 0,
+        "errors": [],
+    }
+    uid = int(user_id or 0) or None
+
+    path = _engage_waste_preview_bundle_path(preview_id)
+    if path is None or not path.is_file():
+        raise RuntimeError("Preview expired or invalid preview_id. Run Fetch again.")
+
+    bundle = ews.read_preview_bundle(path)
+    owner_uid = int(bundle.get("user_id") or 0)
+    if uid and owner_uid and owner_uid != uid:
+        raise RuntimeError("Preview bundle does not belong to this user.")
+
+    resolved_company = str(bundle.get("resolved_company") or "").strip()
+    if not resolved_company:
+        raise RuntimeError("Preview bundle missing resolved_company.")
+
+    rows_in: list[dict[str, object]] = [r for r in (bundle.get("rows") or []) if isinstance(r, dict)]
+    stats["rows_total_preview"] = len(rows_in)
+    stats["rows_fetched"] = len(rows_in)
+
+    rows_use = rows_in
+    if isinstance(selected_indices, list) and selected_indices:
+        pick: set[int] = set()
+        for raw_i in selected_indices:
+            try:
+                pick.add(int(raw_i))
+            except (TypeError, ValueError):
+                continue
+        if pick:
+            rows_use = []
+            for r in rows_in:
+                try:
+                    bix = int(r.get("bundle_row_index"))
+                except (TypeError, ValueError):
+                    continue
+                if bix in pick:
+                    rows_use.append(r)
+
+    stats["rows_selected"] = len(rows_use)
+    stats["unmapped_site_tags"] = sum(
+        1
+        for r in rows_use
+        if isinstance(r.get("preview"), dict) and bool((r.get("preview") or {}).get("unmapped_site_tag"))
+    )
+
+    resolved_sheet = (
+        _resolve_template_sheet_name_with_mode(resolved_company, ews.ENGAGE_TARGET_SHEET, template_mode=template_mode)
+        or ews.ENGAGE_TARGET_SHEET
+    )
+    headers = _get_template_sheet_headers_with_mode(resolved_company, resolved_sheet, template_mode=template_mode)
+    if not headers:
+        raise RuntimeError(f"No template headers for {resolved_company} / {resolved_sheet}")
+
+    log_imp = lambda m: print(f"[ENGAGE_WASTE_IMPORT] {str(m).replace(chr(10), ' ')[:160]}")
+    log_imp(f"starting preview={preview_id} selected={len(rows_use)} company={resolved_company}")
+    _update_job_progress(job_id, 5, "Loading preview rows…")
+
+    existing_keys = _existing_ccc_import_dedup_keys(resolved_company, resolved_sheet, ews.ENGAGE_IMPORT_DEDUP_COLUMN)
+    batches_needing_mapping: set[tuple[str, str, str]] = set()
+
+    total = max(1, len(rows_use))
+    for idx, row in enumerate(rows_use):
+        _raise_if_job_cancelled(job_id)
+        pct = int((idx / total) * 70)
+        _update_job_progress(job_id, 10 + pct, "Saving Data Entry rows…")
+
+        pk = str(row.get("dedup_key") or "").strip()
+        cells = row.get("cells")
+        if not pk or not isinstance(cells, list):
+            stats["validation_skipped"] = int(stats["validation_skipped"]) + 1
+            continue
+
+        if pk.lower() in existing_keys:
+            stats["duplicates_skipped"] = int(stats["duplicates_skipped"]) + 1
+            continue
+
+        payload_row = {
+            "cells": cells,
+            "is_persisted": False,
+            "row_index": 0,
+            "entry_group": "",
+            "created_at": "",
+        }
+        normalized_rows, verr = _normalize_data_entry_rows(headers, [payload_row])
+        if verr:
+            stats["validation_skipped"] = int(stats["validation_skipped"]) + 1
+            log_imp(f"normalize skip: {verr[0]}")
+            continue
+        if not normalized_rows:
+            stats["validation_skipped"] = int(stats["validation_skipped"]) + 1
+            continue
+
+        req_err = _validate_data_entry_row_requirements(headers, normalized_rows)
+        if req_err:
+            stats["validation_skipped"] = int(stats["validation_skipped"]) + 1
+            log_imp(f"requirements skip: {req_err[0]}")
+            continue
+
+        try:
+            result = _upsert_data_entries(
+                resolved_company, resolved_sheet, headers, normalized_rows, uploaded_by_user_id=uid
+            )
+            db.session.flush()
+        except Exception as exc:
+            db.session.rollback()
+            errs = stats["errors"] if isinstance(stats["errors"], list) else []
+            errs.append(str(exc))
+            stats["errors"] = errs
+            log_imp(f"save failed: {exc}")
+            continue
+
+        saved = int(result.get("saved_rows_count") or 0)
+        fp_dup = int(result.get("duplicate_rows_count") or 0)
+        saved_groups = list(result.get("saved_entry_groups") or [])
+
+        if saved > 0 and saved_groups:
+            eg = saved_groups[-1]
+            leader = (
+                DataEntry.query.filter_by(
+                    company_name=resolved_company,
+                    sheet_name=resolved_sheet,
+                    entry_group=eg,
+                )
+                .order_by(DataEntry.id.asc())
+                .first()
+            )
+            row_index_used = int(leader.row_index) if leader else 0
+            _upsert_data_entry_cell(
+                company_name=resolved_company,
+                sheet_name=resolved_sheet,
+                entry_group=eg,
+                row_index=row_index_used,
+                column_name=ews.ENGAGE_IMPORT_DEDUP_COLUMN,
+                value=pk,
+                uploaded_by_user_id=uid,
+            )
+            db.session.commit()
+            existing_keys.add(pk.lower())
+            stats["rows_inserted"] = int(stats["rows_inserted"]) + 1
+            batches_needing_mapping.add((resolved_company, resolved_sheet, str(eg or "").strip()))
+            _update_job(job_id, rows=int(stats["rows_inserted"]))
+            if idx % 25 == 0:
+                errs_ct = len(stats["errors"]) if isinstance(stats["errors"], list) else 0
+                _update_job(
+                    job_id,
+                    result={
+                        "phase": "running",
+                        "rows_inserted": int(stats["rows_inserted"]),
+                        "duplicates_skipped": int(stats["duplicates_skipped"]),
+                        "validation_skipped": int(stats["validation_skipped"]),
+                        "fingerprint_duplicates_skipped": int(stats["fingerprint_duplicates_skipped"]),
+                        "errors_count": errs_ct,
+                    },
+                )
+        else:
+            db.session.rollback()
+            if fp_dup:
+                stats["fingerprint_duplicates_skipped"] = int(stats["fingerprint_duplicates_skipped"]) + 1
+
+    _update_job_progress(job_id, 88, "Queueing mapping jobs…")
+
+    queued_after = 0
+    if uid and int(stats.get("rows_inserted") or 0) > 0 and batches_needing_mapping:
+        me = str(mapper_email or "").strip()
+        for co, sh, eg in sorted(batches_needing_mapping):
+            headers_m = _get_template_sheet_headers_with_mode(co, sh, template_mode=template_mode)
+            if not headers_m:
+                continue
+            eg_arg = eg or ""
+            try:
+                run_in_background(
+                    "mapping",
+                    co,
+                    _run_mapping_job,
+                    user_id=int(uid),
+                    user_email=me,
+                    resolved_company=co,
+                    resolved_sheet=sh,
+                    headers=headers_m,
+                    template_mode=template_mode,
+                    entry_group_filter=eg_arg,
+                    job_user_id=int(uid),
+                    job_user_email=me,
+                )
+                queued_after += 1
+            except Exception as exc:
+                print(f"[ENGAGE_WASTE_MAPPING_SKIP] company={co!r} sheet={sh!r} exc={exc!r}")
+
+    _update_job_progress(
+        job_id,
+        100,
+        (
+            "Completed Engage Waste import • inserted "
+            + str(stats["rows_inserted"])
+            + ", skipped duplicates "
+            + str(stats["duplicates_skipped"])
+        ),
+    )
+
+    try:
+        ews.update_status_file(
+            {
+                "last_import_job_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
+                "last_import_preview_id": preview_id,
+                "last_import_company": resolved_company,
+                "last_import_rows_inserted": int(stats.get("rows_inserted") or 0),
+                "last_import_duplicates_skipped": int(stats.get("duplicates_skipped") or 0),
+            }
+        )
+    except Exception:
+        pass
+
+    if uid:
+        _create_user_notification(
+            int(uid),
+            title="Engage Waste import completed",
+            message=(
+                f"Inserted {int(stats.get('rows_inserted') or 0)} row(s) into Data Entry ({resolved_sheet}). "
+                + (
+                    "Background mapping jobs were queued for new batches."
+                    if queued_after > 0
+                    else "Use Map from Batch Mapping when you want emission factors written for these rows."
+                )
+            ),
+            notification_type="info",
+            link="/",
+        )
+
+    try:
+        path.unlink(missing_ok=True)
+    except Exception:
+        try:
+            if path.exists():
+                path.unlink()
+        except Exception:
+            pass
+
+    out = dict(stats)
+    out["ok"] = True
+    out["phase"] = "completed"
+    out["mapping_jobs_queued_after_import"] = int(queued_after)
+    errs_final = stats["errors"] if isinstance(stats["errors"], list) else []
+    out["errors_count"] = len(errs_final)
+    log_imp(
+        "summary inserted=%s dedup_skip=%s fp_dup=%s val_skip=%s"
+        % (
+            stats["rows_inserted"],
+            stats["duplicates_skipped"],
+            stats["fingerprint_duplicates_skipped"],
+            stats["validation_skipped"],
+        )
+    )
     return out
 
 
@@ -17862,6 +18402,48 @@ def data_sources_employee_commuting_national_averages():
         rows=_serialize_employee_commuting_national_average_rows(),
     )
     return render_template("data_source_table.html", user=current_user, **context)
+
+
+@app.route("/engage-waste-api")
+@login_required
+def engage_waste_api_page():
+    from frontend.services import engage_waste_service as ews
+
+    status_path = STORAGE_ROOT / "engage_waste" / "status.json"
+    engage_meta: dict[str, object] = {}
+    if status_path.exists():
+        try:
+            loaded = json.loads(status_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                engage_meta = loaded
+        except Exception:
+            engage_meta = {}
+
+    key_ok = bool(str(ENGAGE_WASTE_SUBSCRIPTION_KEY or "").strip())
+    engage_connection_status = _ccc_connection_status_payload(
+        state="configured" if key_ok else "missing",
+        message=(
+            "ENGAGE_WASTE_SUBSCRIPTION_KEY is configured."
+            if key_ok
+            else "Set ENGAGE_WASTE_SUBSCRIPTION_KEY in the server environment."
+        ),
+    )
+
+    return render_template(
+        "engage_waste_api.html",
+        user=current_user,
+        engage_connection_status=engage_connection_status,
+        engage_meta=engage_meta,
+        engage_fetch_url=url_for("api_engage_waste_fetch"),
+        engage_import_url=url_for("api_engage_waste_import"),
+        engage_status_url=url_for("api_engage_waste_status"),
+        dashboard_url=url_for("dashboard"),
+        engage_target_sheet=ews.ENGAGE_TARGET_SHEET,
+        can_engage_waste_import=_user_can_run_engage_waste_import(current_user),
+        engage_company_options=_engage_waste_company_choices(current_user),
+        page_title="Engage Waste API",
+        page_group="Data Sources",
+    )
 
 
 @app.route("/data-sources/ccc-api", methods=["GET", "POST"])
