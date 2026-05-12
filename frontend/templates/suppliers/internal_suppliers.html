@@ -26,9 +26,9 @@
   <section class="row g-3 my-4">
     <div class="col-md-4">
       <article class="analytics-output-stat h-100">
-        <span class="analytics-output-stat__label">Built-in baseline aliases</span>
+        <span class="analytics-output-stat__label">Standard name aliases</span>
         <strong class="analytics-output-stat__value">{{ stats.builtin_aliases }}</strong>
-        <div class="supplier-mgmt-muted small mt-1">Always active for Rule 1 (code-defined)</div>
+        <div class="supplier-mgmt-muted small mt-1">Applied automatically for double counting checks</div>
       </article>
     </div>
     <div class="col-md-4">
@@ -39,7 +39,7 @@
       </article>
     </div>
     <div class="col-md-4 d-flex align-items-stretch justify-content-lg-end pt-3 pt-lg-0">
-      <button type="button" class="btn btn-primary align-self-center" id="btnAddOpenInternal">Add database supplier</button>
+      <button type="button" class="btn btn-primary align-self-center" id="btnAddOpenInternal">Add supplier</button>
     </div>
   </section>
 
@@ -91,7 +91,7 @@
   <div class="modal-dialog modal-dialog-centered modal-lg">
     <div class="modal-content border-0 shadow">
       <div class="modal-header border-0">
-        <h2 class="modal-title h5" id="intModalTitle">Internal supplier</h2>
+        <h2 class="modal-title h5" id="intModalTitle">Supplier</h2>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body pt-0">
@@ -155,11 +155,11 @@
       var d = await aj(API_LIST+'?'+qp());
       var rows = d.rows || [], total = +d.total || 0, pg = +d.page || 1, per = +d.page_size || 25;
       document.getElementById('intPageInfo').textContent =
-        'Built-in ' + (d.builtin_count || 0) + ' / ' + (d.builtin_definitions_total || 0) +
-        ' · DB page ' + pg + ' · ' + total + ' row(s)';
+        'Standard aliases ' + (d.builtin_count || 0) + ' of ' + (d.builtin_definitions_total || 0) +
+        ' · Page ' + pg + ' · ' + total + ' saved row(s)';
       var bio = d.builtin_aliases || [];
       var bioHtml = bio.map(function(r){
-        var badge = '<span class="badge text-bg-primary supplier-mgmt-badge">Built-in</span>';
+        var badge = '<span class="badge text-bg-primary supplier-mgmt-badge">Standard</span>';
         var cg = r.company_group ? ('<div class="supplier-mgmt-muted small">'+esc(r.company_group)+'</div>') : '';
         return '<tr class="supplier-mgmt-builtin-row">'+
           '<td><strong>'+esc(r.supplier_name||'')+'</strong>'+cg+'</td>'+
@@ -186,7 +186,7 @@
       tbody.querySelectorAll('[data-act="id"]').forEach(function(b){
         b.onclick=function(){
           var id=b.getAttribute('data-id');
-          if(!confirm('Soft-delete this internal supplier marker? Mapping jobs use the regenerated token export.')) return;
+          if(!confirm('Remove this internal supplier? Mapping exports will use the updated list on the next run.')) return;
           aj(itemUrl(id),{method:'DELETE'}).then(load).catch(function(e){alert(e.message);});
         };
       });
@@ -198,7 +198,7 @@
   function sErr(m){ var e=document.getElementById('intFormErr'); e.textContent=m; e.classList.remove('d-none'); }
   async function openEdit(id){
     cErr();
-    document.getElementById('intModalTitle').textContent='Edit internal supplier';
+    document.getElementById('intModalTitle').textContent='Edit supplier';
     var data = await aj(itemUrl(id), {method:'GET'});
     var r=data.row;
     document.getElementById('if_id').value=id;
@@ -210,7 +210,7 @@
   }
   document.getElementById('btnAddOpenInternal').onclick=function(){
     cErr();
-    document.getElementById('intModalTitle').textContent='Add internal supplier';
+    document.getElementById('intModalTitle').textContent='Add supplier';
     document.getElementById('if_id').value='';
     document.getElementById('if_name').value='';
     document.getElementById('if_grp').value='';

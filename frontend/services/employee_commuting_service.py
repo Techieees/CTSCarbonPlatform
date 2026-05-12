@@ -26,6 +26,9 @@ EMPLOYEE_COMMUTING_DEDUP_COLUMN = "employee_commuting_import_dedup"
 # Enterprise guardrail: reject absurd payloads (still allows large national enterprises).
 EMPLOYEE_COMMUTING_MAX_HEADCOUNT = 1_500_000
 
+# SQLite: cap sequential mapping targets per generation (umbrella job); excess is skipped with warning.
+EMPLOYEE_COMMUTING_MAX_MAPPING_JOBS = 10
+
 ENTRY_ROW_KEYS_IN_ORDER: tuple[str, ...] = (
     "Source_File",
     "Country",

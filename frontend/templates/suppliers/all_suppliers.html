@@ -27,13 +27,13 @@
         <p class="analytics-output-hero__lead mb-0">{{ page_summary }}</p>
         {% if active_ccc_supplier_job_id %}
         <p class="supplier-mgmt-muted mb-0 mt-2">
-          Background job active: <code>{{ active_ccc_supplier_job_id }}</code>. Open Dashboard to monitor cancellation if needed.
+          A sync is already running (<code>{{ active_ccc_supplier_job_id }}</code>). You can follow progress on the Dashboard and cancel there if required.
         </p>
         {% endif %}
       </div>
       <div class="d-flex flex-wrap gap-2">
         <a class="btn btn-outline-secondary btn-sm" href="{{ data_sources_ccc_url }}">{{ illu.illu_sidebar_ds_ccc('me-2') }}CCC API Console</a>
-        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('suppliers_carbon_steel_page') }}">{{ illu.illu_sidebar_scope3('me-2') }}Carbon / Steel registry</a>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('suppliers_carbon_steel_page') }}">{{ illu.illu_sidebar_scope3('me-2') }}Carbon and steel</a>
         <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('suppliers_internal_page') }}">{{ illu.illu_sidebar_double_counting('me-2') }}Internal suppliers</a>
       </div>
     </div>
@@ -44,14 +44,14 @@
       <article class="analytics-output-stat h-100">
         <span class="analytics-output-stat__label">Registry total</span>
         <strong class="analytics-output-stat__value">{{ sync_summary.registry_total }}</strong>
-        <div class="supplier-mgmt-muted mt-1">CCC source rows (not deleted)</div>
+        <div class="supplier-mgmt-muted mt-1">Rows from CCC (excluding deleted)</div>
       </article>
     </div>
     <div class="col-md-3">
       <article class="analytics-output-stat h-100">
         <span class="analytics-output-stat__label">Active suppliers</span>
         <strong class="analytics-output-stat__value">{{ sync_summary.registry_active }}</strong>
-        <div class="supplier-mgmt-muted mt-1">Carbon / steel curated: {{ extra_counts.carbon_steel.total }} · Internal registry: {{ extra_counts.internal.total }}</div>
+        <div class="supplier-mgmt-muted mt-1">Carbon and steel list: {{ extra_counts.carbon_steel.total }} · Internal list: {{ extra_counts.internal.total }}</div>
       </article>
     </div>
     <div class="col-md-3">
@@ -67,7 +67,7 @@
       <article class="analytics-output-stat h-100">
         <span class="analytics-output-stat__label">Job status</span>
         <strong class="analytics-output-stat__value" data-field="sync-status">Idle</strong>
-        <div class="supplier-mgmt-muted mt-1 small text-wrap" data-field="sync-message">Use sync buttons below. Incremental honors a checkpoint when the CCC API supports deltas.</div>
+        <div class="supplier-mgmt-muted mt-1 small text-wrap" data-field="sync-message">Run a sync below. Incremental sync uses the last checkpoint when the API supports it.</div>
       </article>
     </div>
   </section>
@@ -76,9 +76,9 @@
     <div class="card-body">
       <div class="d-flex flex-column flex-xl-row supplier-mgmt-sync-row justify-content-xl-between align-items-xl-center">
         <div>
-          <h2 class="h5 mb-1">CCC supplier synchronization</h2>
+          <h2 class="h5 mb-1">Sync from CCC</h2>
           <p class="supplier-mgmt-muted mb-0">
-            Executes in the background. Progress is surfaced through the CTS job monitor and completes with a registry refresh.
+            Runs in the background. Progress appears in the job monitor; the table below refreshes when the run finishes.
           </p>
         </div>
         <div class="d-flex flex-wrap gap-2 justify-content-xl-end">
@@ -168,7 +168,7 @@
   <section class="card border-0 shadow-sm">
     <div class="card-body">
       <h2 class="h5">Recent sync runs</h2>
-      <p class="supplier-mgmt-muted small">Operational log from <code>supplier_sync_run</code> (persisted).</p>
+      <p class="supplier-mgmt-muted small">History of sync runs (stored for audit and troubleshooting).</p>
       <div class="supplier-mgmt-scroll">
         <table class="table table-sm align-middle mb-0 supplier-mgmt-runs">
           <thead class="small text-muted text-uppercase">

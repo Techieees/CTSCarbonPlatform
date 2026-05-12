@@ -488,27 +488,33 @@
               typeof rslt.duplicates_skipped === "number" ? String(rslt.duplicates_skipped) : "—";
             var valSkip =
               typeof rslt.validation_skipped === "number" ? String(rslt.validation_skipped) : "—";
-            var maps =
-              typeof rslt.mapping_jobs_queued === "number" ? String(rslt.mapping_jobs_queued) : "—";
-            flashOk(
-              [
-                displayCategory +
-                  ": created " +
-                  saved +
-                  " new Data Entry row(s).",
-                typeof rslt.duplicates_skipped === "number"
-                  ? "Duplicates skipped (existing dedup keys): " + dups + "."
-                  : "",
-                typeof rslt.validation_skipped === "number"
-                  ? "Rows skipped during validation/persist: " + valSkip + "."
-                  : "",
-                typeof rslt.mapping_jobs_queued === "number"
-                  ? "Background mapping job(s) queued for Mapping Preview Archive: " + maps + "."
-                  : "",
-              ]
-                .filter(Boolean)
-                .join(" ")
-            );
+            var sched =
+              rslt.mapping_targets_scheduled != null
+                ? String(rslt.mapping_targets_scheduled)
+                : typeof rslt.mapping_jobs_queued === "number"
+                  ? String(rslt.mapping_jobs_queued)
+                  : "—";
+            var parts = [
+              displayCategory + ": created " + saved + " new Data Entry row(s).",
+              typeof rslt.duplicates_skipped === "number"
+                ? "Duplicates skipped (existing dedup keys): " + dups + "."
+                : "",
+              typeof rslt.validation_skipped === "number"
+                ? "Rows skipped during validation/persist: " + valSkip + "."
+                : "",
+              (typeof rslt.mapping_targets_scheduled === "number" ||
+                typeof rslt.mapping_jobs_queued === "number")
+                ? "Sequential mapping batch queued for " + sched + " company/sheet target(s)."
+                : "",
+            ];
+            if (rslt.user_mapping_notice) {
+              parts.push(String(rslt.user_mapping_notice));
+            } else if (rslt.mapping_queue_partial) {
+              parts.push(
+                "Dataset generated successfully. Some mapping jobs were skipped or delayed."
+              );
+            }
+            flashOk(parts.filter(Boolean).join(" "));
           } else if (job.error) {
             flashErr(String(job.error || "Generation failed."));
           }

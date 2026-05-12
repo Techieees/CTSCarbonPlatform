@@ -60,7 +60,7 @@
 
   async function pollJob(jobId) {
     const u = jobStatusUrl(jobId);
-    if (!u) return;
+    if (!u) return null;
     let delay = 600;
     for (let i = 0; i < 240; i += 1) {
       await new Promise((r) => setTimeout(r, delay));
@@ -71,14 +71,20 @@
         const p = Number(j.progress || 0);
         const msg = j.message || j.status || '';
         if (elMsg) elMsg.textContent = `${p}% — ${msg}`;
-        if (String(j.status || '') === 'completed' || String(j.status || '') === 'failed' || String(j.status || '') === 'cancelled') {
-          return;
+        const status = String(j.status || '');
+        if (status === 'completed' || status === 'failed' || status === 'cancelled') {
+          return {
+            status,
+            message: String(j.message || ''),
+            error: j.error != null ? String(j.error) : '',
+          };
         }
       } catch (e) {
         if (elMsg) elMsg.textContent = String(e.message || e);
-        return;
+        return { status: 'failed', message: '', error: String(e.message || e) };
       }
     }
+    return { status: 'failed', message: '', error: 'Timed out waiting for job status.' };
   }
 
   async function startSync(mode) {
@@ -92,11 +98,23 @@
       });
       const jobId = data.job_id;
       if (elStatus) elStatus.textContent = 'Running';
-      if (elMsg) elMsg.textContent = 'Job started — tracking progress…';
-      if (jobId) await pollJob(jobId);
+      if (elMsg) elMsg.textContent = 'Job started; tracking progress…';
+      let terminal = null;
+      if (jobId) terminal = await pollJob(jobId);
       await loadRuns();
       await loadRegistry();
-      if (elStatus) elStatus.textContent = 'Idle';
+      if (terminal && terminal.status === 'completed') {
+        if (elStatus) elStatus.textContent = 'Completed';
+        if (elMsg) elMsg.textContent = terminal.message || 'Sync finished successfully.';
+      } else if (terminal && terminal.status === 'cancelled') {
+        if (elStatus) elStatus.textContent = 'Cancelled';
+        if (elMsg) elMsg.textContent = terminal.message || 'Sync was cancelled.';
+      } else if (terminal && terminal.status === 'failed') {
+        if (elStatus) elStatus.textContent = 'Error';
+        if (elMsg) elMsg.textContent = terminal.error || terminal.message || 'Sync failed.';
+      } else if (elStatus) {
+        elStatus.textContent = 'Idle';
+      }
     } catch (e) {
       if (elMsg) elMsg.textContent = String(e.message || e);
       if (elStatus) elStatus.textContent = 'Error';

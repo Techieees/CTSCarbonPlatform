@@ -432,7 +432,7 @@
           {% if can_manage_supplier_registries() %}
           <a href="{{ url_for('suppliers_all_page') }}" class="app-sidebar__menu-item {% if ep == 'suppliers_all_page' %}is-active{% endif %}" {% if ep == 'suppliers_all_page' %}aria-current="page"{% endif %}>
             {{ illu.illu_nav_suppliers('app-sidebar__icon') }}
-            <span>All Suppliers (CCC registry)</span>
+            <span>All suppliers (CCC)</span>
           </a>
           {% endif %}
           <a href="{{ url_for('engage_waste_api_page') }}" class="app-sidebar__menu-item {% if ep == 'engage_waste_api_page' %}is-active{% endif %}" {% if ep == 'engage_waste_api_page' %}aria-current="page"{% endif %}>

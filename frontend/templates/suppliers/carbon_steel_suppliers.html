@@ -195,7 +195,7 @@
       tbody.querySelectorAll('[data-act="del"]').forEach(function(btn){
         btn.addEventListener('click',function(){
           var id=btn.getAttribute('data-id');
-          if(!confirm('Soft-delete this supplier record?')) return;
+          if(!confirm('Remove this supplier record?')) return;
           aj(itemUrl(id), {method:'DELETE'}).then(load).catch(function(e){alert(e.message);});
         });
       });

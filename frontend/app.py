@@ -5,7 +5,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from sqlalchemy import and_, asc, case, desc, exists, func, or_, tuple_, update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -6494,8 +6494,8 @@ def _builtin_internal_alias_api_rows(*, search: str, active_filter: str) -> tupl
             {
                 "id": None,
                 "supplier_name": raw,
-                "company_group": "Platform built-in",
-                "notes": "Canonical Rule 1 baseline alias (always active). Not stored as a database row.",
+                "company_group": "System default",
+                "notes": "Standard alias applied automatically. Not stored as a separate database record.",
                 "active": True,
                 "updated_at": None,
                 "source": "built_in",
@@ -16361,6 +16361,41 @@ def _existing_data_entry_scalar_keys_for_column(company_name: str, sheet_name: s
     return {str(v or "").strip().lower() for (v,) in rows_q.all() if str(v or "").strip()}
 
 
+def _is_sqlite_database_uri() -> bool:
+    try:
+        return str(db.engine.url).lower().startswith("sqlite")
+    except Exception:
+        return False
+
+
+def _sqlite_locked_retry(callable_fn, *, attempts: int = 8, base_sleep: float = 0.06, label: str = "") -> object:
+    """
+    Retry wrapper for SQLite 'database is locked' / busy under light write contention.
+    Rolls back the SQLAlchemy session before each retry.
+    """
+    last: Exception | None = None
+    n = max(1, int(attempts))
+    for i in range(n):
+        try:
+            return callable_fn()
+        except OperationalError as e:
+            last = e
+            orig = getattr(e, "orig", None)
+            msg = f"{e} {orig or ''}".lower()
+            if not _is_sqlite_database_uri() or ("locked" not in msg and "busy" not in msg):
+                raise
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            print(f"[EMPLOYEE_COMMUTING] sqlite_lock_retry=true label={label!r} attempt={i + 1}")
+            if i >= n - 1:
+                raise
+            time.sleep(float(base_sleep) * (1.65**i))
+    assert last is not None
+    raise last
+
+
 def _inject_employee_commuting_audit_template_cells(
     headers: list[str],
     cells: list[str],
@@ -16617,42 +16652,86 @@ def _run_employee_commuting_data_entry_job_impl(
     db.session.commit()
     _update_job_progress(job_id, 98, "Finalizing commute import…")
 
-    # Auto-mapping is best-effort: generation success is defined by Data Entry inserts above.
-    # Queue at most one mapping job per (company, sheet) per generation; failures here must not roll back saves.
+    # Mapping: single umbrella background job runs targets sequentially (SQLite-safe). CCC / manual
+    # mapping still enqueue `type=mapping` jobs unchanged.
     mapping_jobs_queued = 0
     mapping_header_cache: dict[tuple[str, str], list[str]] = {}
+    mapping_targets_requested = 0
+    mapping_targets_scheduled = 0
+    mapping_targets_skipped_cap = 0
+    mapping_targets_skipped_header = 0
+    mapping_umbrella_job_id = ""
+    mapping_enqueue_error = ""
+    mapping_queue_partial = False
+    user_mapping_notice: str | None = None
+
+    prepared_pairs: list[tuple[str, str]] = []
     if acting_user_id and totals_saved > 0 and companies_to_map:
+        for rc, rs in sorted(companies_to_map, key=lambda t: (t[0].lower(), t[1].lower())):
+            ck = (str(rc).strip().lower(), str(rs).strip().lower())
+            headers_m = mapping_header_cache.get(ck)
+            if headers_m is None:
+                headers_m = _get_template_sheet_headers_with_mode(rc, rs, template_mode=tm)
+                if headers_m:
+                    mapping_header_cache[ck] = headers_m
+            if not headers_m:
+                mapping_targets_skipped_header += 1
+                errs.append(f"mapping_queue_no_headers::{rc}")
+                continue
+            prepared_pairs.append((str(rc).strip(), str(rs).strip()))
+
+        mapping_targets_requested = len(prepared_pairs)
+        cap = int(ecs.EMPLOYEE_COMMUTING_MAX_MAPPING_JOBS)
+        if mapping_targets_requested > cap:
+            mapping_targets_skipped_cap = mapping_targets_requested - cap
+            print(
+                f"[EMPLOYEE_COMMUTING] mapping_cap_warning=true "
+                f"requested={mapping_targets_requested} cap={cap} skipped={mapping_targets_skipped_cap}"
+            )
+        pairs_limited = prepared_pairs[:cap]
+
         uid = int(acting_user_id)
         mapper = db.session.get(User, uid)
         me = str(getattr(mapper, "email", "") or "").strip() if mapper else ""
-        for rc, rs in sorted(companies_to_map, key=lambda t: (t[0].lower(), t[1].lower())):
+        if pairs_limited:
             try:
-                ck = (str(rc).strip().lower(), str(rs).strip().lower())
-                headers_m = mapping_header_cache.get(ck)
-                if headers_m is None:
-                    headers_m = _get_template_sheet_headers_with_mode(rc, rs, template_mode=tm)
-                    if headers_m:
-                        mapping_header_cache[ck] = headers_m
-                if not headers_m:
-                    errs.append(f"mapping_queue_no_headers::{rc}")
-                    continue
-                run_in_background(
-                    "mapping",
-                    rc,
-                    _run_mapping_job,
+                mapping_umbrella_job_id = run_in_background(
+                    "employee_commuting_mapping",
+                    "Employee Commuting (mapping)",
+                    _run_employee_commuting_mapping_umbrella_job,
+                    pairs=list(pairs_limited),
                     user_id=uid,
                     user_email=me,
-                    resolved_company=rc,
-                    resolved_sheet=rs,
-                    headers=headers_m,
                     template_mode=tm,
-                    entry_group_filter="",
                     job_user_id=uid,
                     job_user_email=me,
                 )
-                mapping_jobs_queued += 1
+                mapping_targets_scheduled = len(pairs_limited)
+                mapping_jobs_queued = len(pairs_limited)
             except Exception as exc_map:
-                errs.append(f"mapping_queue_exc::{exc_map!s}")
+                mapping_enqueue_error = str(exc_map)
+                errs.append(f"mapping_umbrella_enqueue::{exc_map!s}")
+                mapping_queue_partial = True
+                user_mapping_notice = (
+                    "Dataset generated successfully. Some mapping jobs were skipped or delayed."
+                )
+
+        if mapping_targets_skipped_cap > 0 or mapping_targets_skipped_header > 0 or mapping_enqueue_error:
+            mapping_queue_partial = True
+            user_mapping_notice = (
+                "Dataset generated successfully. Some mapping jobs were skipped or delayed."
+            )
+
+    gen_ok = totals_saved > 0 or totals_dup > 0
+    print(f"[EMPLOYEE_COMMUTING] generation_success={str(gen_ok).lower()} saved_rows={totals_saved}")
+    print(f"[EMPLOYEE_COMMUTING] mapping_jobs_requested={mapping_targets_requested}")
+    print(f"[EMPLOYEE_COMMUTING] mapping_jobs_queued={mapping_jobs_queued}")
+    print(
+        f"[EMPLOYEE_COMMUTING] mapping_jobs_skipped="
+        f"{mapping_targets_skipped_cap + mapping_targets_skipped_header}"
+    )
+    if mapping_enqueue_error:
+        print("[EMPLOYEE_COMMUTING] mapping_umbrella_enqueue_failed=true")
 
     result_payload = {
         "ok": True,
@@ -16664,6 +16743,15 @@ def _run_employee_commuting_data_entry_job_impl(
         "sheet": ecs.EMPLOYEE_COMMUTING_TARGET_SHEET,
         "display_category": ecs.EMPLOYEE_COMMUTING_DISPLAY_CATEGORY_NAME,
         "mapping_jobs_queued": int(mapping_jobs_queued),
+        "mapping_umbrella_job_id": str(mapping_umbrella_job_id or ""),
+        "mapping_targets_requested": int(mapping_targets_requested),
+        "mapping_targets_scheduled": int(mapping_targets_scheduled),
+        "mapping_targets_skipped_cap": int(mapping_targets_skipped_cap),
+        "mapping_targets_skipped_header": int(mapping_targets_skipped_header),
+        "mapping_enqueue_error": str(mapping_enqueue_error or ""),
+        "mapping_queue_partial": bool(mapping_queue_partial),
+        "user_mapping_notice": user_mapping_notice,
+        "generation_success": bool(gen_ok),
         "template_mode": tm,
     }
 
@@ -17396,15 +17484,19 @@ def _run_ccc_supplier_sync_job(
             "errors_count": errs_ct,
         }
         if uid:
+            up = int(stats.get("upserted") or 0)
+            fe = int(stats.get("fetched") or 0)
+            msg = (
+                f"{up} suppliers updated from CCC ({fe} retrieved)."
+                if errs_ct == 0
+                else f"{up} suppliers updated from CCC ({fe} retrieved; {errs_ct} row-level warnings in the run log)."
+            )
             _create_user_notification(
                 int(uid),
                 title="CCC supplier sync completed",
-                message=(
-                    f"Synchronized {int(stats.get('upserted') or 0)} supplier row(s) from CCC "
-                    f"({int(stats.get('fetched') or 0)} fetched, {errs_ct} batch error(s))."
-                ),
+                message=msg,
                 notification_type="success" if errs_ct == 0 else "info",
-                link=url_for("suppliers_all_page"),
+                link="/suppliers/all",
             )
         return out
     except JobCancelled:
@@ -17631,6 +17723,84 @@ def _run_mapping_job(
     if entry_group_filter:
         resp["entry_group"] = entry_group_filter
     return resp
+
+
+def _run_employee_commuting_mapping_umbrella_job(
+    *,
+    job_id: str,
+    pairs: list[tuple[str, str]],
+    user_id: int,
+    user_email: str,
+    template_mode: str,
+) -> dict[str, object]:
+    """
+    One background job runs mapping for each (company, sheet) in order — avoids SQLite write
+    contention from many parallel `type=mapping` workers. Standard CCC / manual mapping unchanged.
+    """
+    hdr_cache: dict[tuple[str, str], list[str]] = {}
+    n = max(1, len(pairs))
+    results: list[dict[str, object]] = []
+    ok_n = 0
+    fail_n = 0
+    for idx, (rc, rs) in enumerate(pairs):
+        _raise_if_job_cancelled(job_id)
+        pct = int(8 + (82 * idx) // n)
+        _update_job_progress(job_id, pct, f"Mapping {rc} — {idx + 1}/{len(pairs)}…")
+        ck = (str(rc).strip().lower(), str(rs).strip().lower())
+        headers_m = hdr_cache.get(ck)
+        if headers_m is None:
+            headers_m = _get_template_sheet_headers_with_mode(rc, rs, template_mode=template_mode)
+            if headers_m:
+                hdr_cache[ck] = headers_m
+        if not headers_m:
+            fail_n += 1
+            results.append({"company": rc, "sheet": rs, "ok": False, "error": "no_headers"})
+            continue
+        innerjid = f"{job_id}-ecm{idx}"
+
+        def _one_map(
+            *,
+            rc_: str = str(rc),
+            rs_: str = str(rs),
+            h_: list[str] = list(headers_m),
+            ij: str = innerjid,
+        ) -> dict[str, object]:
+            return _run_mapping_job(
+                job_id=ij,
+                user_id=int(user_id),
+                user_email=str(user_email or ""),
+                resolved_company=rc_,
+                resolved_sheet=rs_,
+                headers=h_,
+                template_mode=str(template_mode),
+                entry_group_filter="",
+            )
+
+        try:
+            if _is_sqlite_database_uri():
+                _sqlite_locked_retry(_one_map, attempts=8, label=f"ec_map::{str(rc)}")
+            else:
+                _one_map()
+            ok_n += 1
+            results.append({"company": rc, "sheet": rs, "ok": True})
+        except JobCancelled:
+            raise
+        except Exception as exc:
+            fail_n += 1
+            results.append({"company": rc, "sheet": rs, "ok": False, "error": str(exc)[:800]})
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+        if _is_sqlite_database_uri():
+            time.sleep(0.22)
+    _update_job_progress(job_id, 100, f"Employee commuting mapping batch done ({ok_n} ok, {fail_n} failed).")
+    return {
+        "ok": True,
+        "pairs": results,
+        "mapping_targets_succeeded": ok_n,
+        "mapping_targets_failed": fail_n,
+    }
 
 
 @app.route("/run-mapping", methods=["POST"])
@@ -20072,7 +20242,7 @@ def suppliers_all_page():
         user=current_user,
         page_title="All Suppliers",
         page_group="Suppliers",
-        page_summary="CCC API is the supplier discovery source. Run sync to refresh the registry; use sorting and filters for large volumes.",
+        page_summary="Suppliers are loaded from the live CCC API. Sync to refresh the directory, then use search and filters to work with large lists.",
         sync_summary=sync_summary,
         extra_counts=counts,
         active_ccc_supplier_job_id=_active_job_id_for_job_type("ccc_supplier_sync"),
@@ -20097,7 +20267,7 @@ def suppliers_carbon_steel_page():
         user=current_user,
         page_title="Carbon and Steel Suppliers",
         page_group="Suppliers",
-        page_summary="Manually curated list for upcoming activity-based procurement and material factors. CO₂e factor defaults to zero until Phase 2.",
+        page_summary="Curated list for procurement and material factors. CO₂e factors stay at zero until you assign values.",
         stats=_carbon_steel_supplier_counts(),
         api_list_url=url_for("api_suppliers_carbon_steel_create"),
         api_item_base=item_base_carbon,
@@ -20116,7 +20286,7 @@ def suppliers_internal_page():
         user=current_user,
         page_title="Internal Suppliers",
         page_group="Suppliers",
-        page_summary="Matched internal suppliers emit zero CO₂e in double counting logic. Changes export a cached token list for offline stage-2 batches.",
+        page_summary="When mapping matches an internal supplier, emissions are treated as zero to avoid double counting. Saving changes refreshes the token list used by mapping exports.",
         stats=_internal_supplier_counts(),
         api_list_url=url_for("api_suppliers_internal_create"),
         api_item_base=item_base_internal,
