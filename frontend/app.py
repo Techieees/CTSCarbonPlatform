@@ -11060,7 +11060,7 @@ def _parse_period_value(value) -> datetime | None:
         return datetime(int(m.group(1)), 1, 1)
 
     try:
-        dt = pd.to_datetime([s], errors="coerce", dayfirst=False)[0]
+        dt = pd.to_datetime([s], errors="coerce", dayfirst=True)[0]
         if pd.isna(dt):
             return None
         return datetime(int(dt.year), int(dt.month), 1)
@@ -11549,7 +11549,7 @@ def _normalize_date_like(value: str) -> str | None:
     if not s:
         return ""
     try:
-        dt = pd.to_datetime([s], errors="coerce", dayfirst=False)[0]
+        dt = pd.to_datetime([s], errors="coerce", dayfirst=True)[0]
         if pd.isna(dt):
             return None
         return dt.strftime("%Y-%m-%d")
