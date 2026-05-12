@@ -734,7 +734,7 @@ def _employee_commuting_fail_stale_db_runs() -> None:
     db.session.commit()
 
 
-def _employee_commuting_blocking_db_run():
+def _employee_commuting_blocking_db_run(): 
     """Recent non-terminal DB run row (blocks a new generation until complete or stale-failed)."""
     fresh_cut = datetime.utcnow() - timedelta(minutes=_EMPLOYEE_COMMUTING_DB_RUN_AUTO_FAIL_MINUTES)
     return (
