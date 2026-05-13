@@ -1,7 +1,7 @@
 /**
  * Centralized Lottie initialization for .lottie-icon[data-animation].
- * Instances are created lazily, play only while visible, and are destroyed when
- * their DOM node is removed.
+ * Icons render their first frame immediately and animate once on interaction.
+ * Decorative runtime cleanup remains in place for dynamically removed nodes.
  */
 (function () {
   'use strict';
@@ -81,9 +81,7 @@
   }
 
   function shouldAutoPlay(el) {
-    if (!el || document.hidden || prefersReducedMotion()) return false;
-    if (String(el.getAttribute('data-lottie-autoplay') || '').trim() === 'false') return false;
-    return !isSidebarIcon(el);
+    return false;
   }
 
   function getEntry(el) {
@@ -140,14 +138,11 @@
       return entry;
     }
 
-    var loopAttr = el.getAttribute('data-loop');
-    var loop = loopAttr !== 'false';
-
     try {
       entry.anim = L.loadAnimation({
         container: el,
         renderer: 'svg',
-        loop: loop,
+        loop: false,
         autoplay: false,
         path: path,
         rendererSettings: {
@@ -158,6 +153,11 @@
       });
       entry.isLoaded = true;
       el.setAttribute('data-lottie-ready', '1');
+      try {
+        entry.anim.addEventListener('complete', function () {
+          pauseEntry(entry);
+        });
+      } catch (e0) {}
     } catch (e) {
       return entry;
     }
@@ -172,9 +172,7 @@
       }
     }
 
-    if (prefersReducedMotion() || isSidebarIcon(el)) {
-      stopEntry(entry);
-    }
+    stopEntry(entry);
 
     return entry;
   }
@@ -183,9 +181,6 @@
     var entry = getEntry(el);
     if (!entry.isVisible) {
       pauseEntry(entry);
-      return;
-    }
-    if (isSidebarIcon(el) && !entry.isLoaded) {
       return;
     }
     entry = ensureAnimation(el);
@@ -228,7 +223,9 @@
 
   function observe(el) {
     if (!el || el.nodeType !== 1 || registry.has(el)) return;
-    getEntry(el);
+    var entry = getEntry(el);
+    ensureAnimation(el);
+    stopEntry(entry);
     if (io) {
       io.observe(el);
     } else {
@@ -257,6 +254,20 @@
     } else {
       scanTimer = window.setTimeout(run, 50);
     }
+  }
+
+  function scanNow(root) {
+    if (scanTimer) {
+      try {
+        if (window.cancelIdleCallback) {
+          window.cancelIdleCallback(scanTimer);
+        } else {
+          window.clearTimeout(scanTimer);
+        }
+      } catch (e) {}
+      scanTimer = 0;
+    }
+    scan(root || document);
   }
 
   function collectLottieRoots(node, out) {
@@ -305,28 +316,27 @@
     }
   }
 
-  function playSidebarIcon(el) {
-    if (!el || !isSidebarIcon(el) || document.hidden || prefersReducedMotion()) return;
+  function playIcon(el) {
+    if (!el || document.hidden || prefersReducedMotion()) return;
     var entry = ensureAnimation(el);
     if (!entry.anim) {
       loadLottie().then(function () {
-        playSidebarIcon(el);
+        playIcon(el);
       }).catch(function () {});
       return;
     }
-    if (!entry.isVisible) return;
     try {
-      entry.anim.play();
+      entry.anim.goToAndPlay(0, true);
     } catch (e) {}
   }
 
-  function stopSidebarIcon(el) {
-    if (!el || !isSidebarIcon(el)) return;
+  function resetIcon(el) {
+    if (!el) return;
     stopEntry(registry.get(el));
   }
 
-  function sidebarIconFromEvent(event) {
-    return event.target && event.target.closest ? event.target.closest('.app-sidebar ' + SELECTOR) : null;
+  function iconFromEvent(event) {
+    return event.target && event.target.closest ? event.target.closest(SELECTOR) : null;
   }
 
   function boot() {
@@ -335,29 +345,32 @@
     var started = window.performance && typeof window.performance.now === 'function'
       ? window.performance.now()
       : 0;
-    queueScan(document);
+    scanNow(document);
     if (mo) {
       mo.observe(document.documentElement, { childList: true, subtree: true });
     }
     document.addEventListener('visibilitychange', syncAllPlayback);
     document.addEventListener('pointerenter', function (event) {
-      playSidebarIcon(sidebarIconFromEvent(event));
+      playIcon(iconFromEvent(event));
     }, true);
     document.addEventListener('pointerleave', function (event) {
-      stopSidebarIcon(sidebarIconFromEvent(event));
+      resetIcon(iconFromEvent(event));
     }, true);
     document.addEventListener('focusin', function (event) {
-      playSidebarIcon(sidebarIconFromEvent(event));
+      playIcon(iconFromEvent(event));
     });
     document.addEventListener('focusout', function (event) {
-      stopSidebarIcon(sidebarIconFromEvent(event));
+      resetIcon(iconFromEvent(event));
+    });
+    document.addEventListener('click', function (event) {
+      playIcon(iconFromEvent(event));
     });
     if (reducedMotionQuery && typeof reducedMotionQuery.addEventListener === 'function') {
       reducedMotionQuery.addEventListener('change', syncAllPlayback);
     }
     window.CtsLottie = {
       scan: function (root) {
-        queueScan(root || document);
+        scanNow(root || document);
       },
       sync: syncAllPlayback,
     };
