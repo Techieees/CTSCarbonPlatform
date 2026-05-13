@@ -281,7 +281,7 @@
         </div>
         <div class="col-lg-4">
           <label class="form-label" for="cccApiProjectId">Project</label>
-          <select id="cccApiProjectId" class="form-select" name="project_id" onchange="window.location='{{ url_for('data_sources_ccc_api') }}?project_id=' + encodeURIComponent(this.value)">
+          <select id="cccApiProjectId" class="form-select" name="project_id" onchange="window.location='{{ url_for('data_sources_ccc_api') }}?project_id=' + encodeURIComponent(this.value) + '&year_filter=' + encodeURIComponent((document.getElementById('cccApiYearFilter') || {}).value || '2026')">
             {% for project in ccc_available_projects or [] %}
             <option value="{{ project.id }}" {% if form_state.project_id == project.id %}selected{% endif %}>{{ project.label }}</option>
             {% endfor %}
@@ -295,6 +295,14 @@
           <select id="cccApiEndpointName" class="form-select" name="endpoint_name">
             {% for endpoint_name, endpoint_path in ccc_get_endpoints.items() %}
             <option value="{{ endpoint_name }}" {% if form_state.endpoint_name == endpoint_name %}selected{% endif %}>{{ endpoint_name }} · {{ endpoint_path }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-lg-2 col-md-4">
+          <label class="form-label" for="cccApiYearFilter">Year filter</label>
+          <select id="cccApiYearFilter" class="form-select" name="year_filter" data-ccc-year-filter>
+            {% for option in ccc_year_filter_options or ['2026', '2025', 'all'] %}
+            <option value="{{ option }}" {% if form_state.year_filter == option %}selected{% endif %}>{{ option|title }}</option>
             {% endfor %}
           </select>
         </div>
@@ -329,10 +337,14 @@
             <span class="js-analytics-run-label">Sync selected endpoint</span>
             <span class="analytics-output-spinner" aria-hidden="true"></span>
           </button>
+          <button class="btn btn-outline-secondary js-analytics-run-button" id="cccRunAllApisButton" type="submit" name="action" value="run_all" data-loading-message="Starting all CCC APIs..." {% if ccc_run_all_job_id %}disabled{% endif %}>
+            <span class="js-analytics-run-label">Run All APIs</span>
+            <span class="analytics-output-spinner" aria-hidden="true"></span>
+          </button>
         </div>
       </div>
       <p class="analytics-output-inline-note mb-0 mt-3">
-        Purchase orders are cached per project under `data/external/ccc/{projectId}_purchase_orders.csv`. Legacy parquet files are still tolerated when reading older cache data. Other CCC GET endpoints continue to save tabular outputs under `data/stage1_preprocess/input/`.
+        Purchase orders are cached per project under `data/external/ccc/{projectId}_purchase_orders.csv`. The selected year filter applies before CCC rows are cached or written to workbook outputs. Other CCC GET endpoints continue to save tabular outputs under `data/stage1_preprocess/input/`.
       </p>
       {% if ccc_connection_status.message %}
       <p class="analytics-output-inline-note mb-0 mt-2">{{ ccc_connection_status.message }}</p>
@@ -340,7 +352,30 @@
       <div class="analytics-output-loading-message mt-3 js-analytics-loading-message" hidden>
         Syncing selected endpoint...
       </div>
+      <div
+        class="analytics-output-stat mt-3 mb-0 py-2 px-2 rounded {% if not ccc_run_all_job_id %}d-none{% endif %}"
+        id="cccRunAllProgress"
+        data-job-id="{{ ccc_run_all_job_id or '' }}"
+        aria-live="polite"
+      >
+        <div class="d-flex flex-wrap justify-content-between gap-2 small text-muted mb-1">
+          <span>Run All APIs progress</span>
+          <span id="cccRunAllProgressMeta">Sequential job</span>
+        </div>
+        <div class="progress mb-2" style="height: 8px;">
+          <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" id="cccRunAllProgressBar" style="width: 0%;"></div>
+        </div>
+        <div class="small font-monospace" id="cccRunAllProgressMessage">Waiting for job status…</div>
+      </div>
     </form>
+    <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1090;">
+      <div id="cccApiToast" class="toast border-0 text-bg-success" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+          <div class="toast-body fw-semibold" id="cccApiToastBody">CCC API job completed</div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+      </div>
+    </div>
     {% if ccc_mapping_rules %}
     <div class="analytics-output-card mt-4">
       <div class="analytics-output-card__header">
@@ -849,6 +884,89 @@
     });
   })();
 </script>
+{% if page_key == 'ccc_api_source' %}
+<script>
+(function () {
+  var runAllProgress = document.getElementById('cccRunAllProgress');
+  var runAllButton = document.getElementById('cccRunAllApisButton');
+  var runAllBar = document.getElementById('cccRunAllProgressBar');
+  var runAllMsg = document.getElementById('cccRunAllProgressMessage');
+  var runAllMeta = document.getElementById('cccRunAllProgressMeta');
+  var toastEl = document.getElementById('cccApiToast');
+  var toastBody = document.getElementById('cccApiToastBody');
+
+  function terminal(status) {
+    return ['completed', 'failed', 'cancelled', 'not_found'].indexOf(String(status || '')) !== -1;
+  }
+
+  function showToast(message, isError) {
+    if (!toastEl || !toastBody) return;
+    toastBody.textContent = message;
+    toastEl.classList.toggle('text-bg-success', !isError);
+    toastEl.classList.toggle('text-bg-danger', !!isError);
+    if (window.bootstrap && window.bootstrap.Toast) {
+      window.bootstrap.Toast.getOrCreateInstance(toastEl, { delay: 5200 }).show();
+    }
+  }
+
+  function applyRunAllJob(job) {
+    var progress = Math.max(0, Math.min(100, Number(job.progress || 0)));
+    var result = job.result || {};
+    if (runAllBar) runAllBar.style.width = progress + '%';
+    if (runAllMsg) runAllMsg.textContent = job.message || job.status || 'Running';
+    if (runAllMeta) {
+      var completed = result.endpoints_completed;
+      var total = result.endpoints_total;
+      var records = result.records_imported;
+      runAllMeta.textContent = (completed !== undefined && total !== undefined)
+        ? completed + '/' + total + ' endpoints · ' + (records || 0) + ' records'
+        : 'Sequential job';
+    }
+  }
+
+  function pollRunAll(jobId) {
+    if (!jobId) return;
+    if (runAllProgress) runAllProgress.classList.remove('d-none');
+    if (runAllButton) {
+      runAllButton.disabled = true;
+      runAllButton.classList.add('is-loading');
+    }
+    fetch('/job-status/' + encodeURIComponent(jobId), { headers: { 'Accept': 'application/json' } })
+      .then(function (response) { return response.json(); })
+      .then(function (job) {
+        applyRunAllJob(job || {});
+        if (!terminal(job.status)) {
+          window.setTimeout(function () { pollRunAll(jobId); }, 1800);
+          return;
+        }
+        if (runAllButton) {
+          runAllButton.disabled = false;
+          runAllButton.classList.remove('is-loading');
+        }
+        var result = job.result || {};
+        if (job.status === 'completed') {
+          var errors = Number(result.errors_count || 0);
+          showToast(errors ? ('Run All APIs completed with ' + errors + ' endpoint error(s).') : 'Run All APIs completed successfully.', !!errors);
+        } else {
+          showToast('Run All APIs did not complete: ' + (job.error || job.message || job.status || 'Unknown error'), true);
+        }
+      })
+      .catch(function (err) {
+        if (runAllButton) {
+          runAllButton.disabled = false;
+          runAllButton.classList.remove('is-loading');
+        }
+        if (runAllMsg) runAllMsg.textContent = 'Error: ' + (err.message || err);
+        showToast('Run All APIs status check failed.', true);
+      });
+  }
+
+  if (runAllProgress && runAllProgress.dataset.jobId) {
+    pollRunAll(runAllProgress.dataset.jobId);
+  }
+})();
+</script>
+{% endif %}
 {% if page_key == 'ccc_api_source' and can_ccc_data_entry_import|default(false) %}
 <script>
 (function () {
@@ -860,6 +978,10 @@
   var LS_LAST = 'cts_ccc_de_import_last_summary';
 
   function qs(id) { return document.getElementById(id); }
+  function selectedYearFilter() {
+    var el = qs('cccApiYearFilter');
+    return el && el.value ? el.value : '2026';
+  }
 
   function fmt(n) {
     if (n === undefined || n === null || n === '') return '—';
@@ -1066,7 +1188,7 @@
       var started = await fetchJson(CFG.apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projects: labels }),
+        body: JSON.stringify({ projects: labels, year_filter: selectedYearFilter() }),
       });
       var jobId = started.job_id;
       if (!jobId) throw new Error('No job_id returned');

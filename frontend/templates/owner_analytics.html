@@ -251,9 +251,9 @@
     <div class="owner-analytics-panel__header">
       <h2>User last seen</h2>
     </div>
-    <div class="table-responsive">
+    <div class="table-responsive owner-analytics-user-last-seen-scroll">
       <table class="table table-sm align-middle mb-0">
-        <thead><tr><th>User</th><th>Company</th><th>First seen</th><th>Last seen</th><th>Visits</th><th>Last page</th><th>Last location/device</th></tr></thead>
+        <thead><tr><th>User</th><th>Company</th><th>First seen</th><th>Last seen</th><th>Visits</th><th>Last page</th><th>Last location/device</th><th>Real Page Visits</th><th>Unique Pages</th><th>Sessions</th><th>Most Used Page</th><th>Last Active</th><th>Browser</th></tr></thead>
         <tbody>
           {% for seen in metrics.user_last_seen %}
           <tr>
@@ -264,9 +264,15 @@
             <td class="font-monospace">{{ seen.visits }}</td>
             <td class="small">{{ seen.last_page }}</td>
             <td class="small">{{ seen.location }} / {{ seen.device }}</td>
+            <td class="font-monospace">{{ seen.real_page_visits }}</td>
+            <td class="font-monospace">{{ seen.unique_pages }}</td>
+            <td class="font-monospace">{{ seen.sessions }}</td>
+            <td class="small">{{ seen.most_used_page or 'None yet' }}</td>
+            <td class="text-muted text-nowrap">{{ seen.last_active }}</td>
+            <td class="small text-nowrap">{{ seen.browser }}</td>
           </tr>
           {% else %}
-          <tr><td colspan="7" class="text-center text-muted py-4">No user activity logged yet.</td></tr>
+          <tr><td colspan="13" class="text-center text-muted py-4">No user activity logged yet.</td></tr>
           {% endfor %}
         </tbody>
       </table>

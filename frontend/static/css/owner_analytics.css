@@ -138,6 +138,14 @@
   vertical-align: top;
 }
 
+.owner-analytics-user-last-seen-scroll {
+  overflow-x: auto;
+}
+
+.owner-analytics-user-last-seen-scroll table {
+  min-width: 82rem;
+}
+
 .owner-analytics-chart {
   width: 100%;
   min-height: 34rem;

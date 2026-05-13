@@ -44,6 +44,22 @@ PURCHASE_ORDER_SORTING = "D"
 PURCHASE_ORDER_PAGE_SIZE = 200
 CCC_EXTERNAL_DIR = DATA_DIR / "external" / "ccc"
 PROJECTS_CACHE_PATH = CCC_EXTERNAL_DIR / "projects.json"
+CCC_YEAR_FILTER_DEFAULT = "2026"
+CCC_YEAR_DATE_FIELDS = (
+    "createdOn",
+    "createdAt",
+    "purchaseDate",
+    "orderDate",
+    "documentDate",
+    "invoiceDate",
+    "date",
+    "updatedOn",
+    "year",
+    "orderYear",
+    "reportingYear",
+    "createdYear",
+    "invoiceYear",
+)
 PURCHASE_ORDER_OUTPUT_COLUMNS = [
     "Project Code",
     "Purchase Order",
@@ -222,6 +238,57 @@ def _parse_query_params(value: dict[str, Any] | None) -> dict[str, Any]:
         for key, val in value.items()
         if val is not None and _strip(val) != ""
     }
+
+
+def _coerce_year_filter(year_filter: Any) -> str:
+    raw = _strip(year_filter or CCC_YEAR_FILTER_DEFAULT).lower()
+    if raw == "all":
+        return "all"
+    try:
+        year = int(raw)
+    except Exception:
+        return CCC_YEAR_FILTER_DEFAULT
+    return str(year) if 1900 <= year <= 2200 else CCC_YEAR_FILTER_DEFAULT
+
+
+def _query_params_with_year_filter(query_params: dict[str, Any] | None, year_filter: Any) -> dict[str, Any]:
+    params = _parse_query_params(query_params)
+    selected_year = _coerce_year_filter(year_filter)
+    if selected_year != "all":
+        params["year"] = selected_year
+    return params
+
+
+def _extract_year_token(value: Any) -> str:
+    raw = _strip(value)
+    if not raw:
+        return ""
+    if raw.isdigit() and len(raw) == 4:
+        return raw
+    normalized = _normalize_date(raw)
+    return normalized[:4] if len(normalized) >= 4 and normalized[:4].isdigit() else ""
+
+
+def _item_matches_year_filter(item: dict[str, Any], year_filter: Any) -> bool:
+    selected_year = _coerce_year_filter(year_filter)
+    if selected_year == "all":
+        return True
+    saw_year_field = False
+    for field in CCC_YEAR_DATE_FIELDS:
+        value = _get_nested(item, field)
+        if value in (None, ""):
+            continue
+        saw_year_field = True
+        if _extract_year_token(value) == selected_year:
+            return True
+    return not saw_year_field
+
+
+def filter_items_by_year(items: list[dict[str, Any]], year_filter: Any = CCC_YEAR_FILTER_DEFAULT) -> list[dict[str, Any]]:
+    selected_year = _coerce_year_filter(year_filter)
+    if selected_year == "all":
+        return list(items)
+    return [item for item in items if _item_matches_year_filter(item, selected_year)]
 
 
 def _first_present(payload: dict[str, Any], *keys: str) -> Any:
@@ -439,11 +506,15 @@ def fetch_purchase_orders(
     sorting: str = PURCHASE_ORDER_SORTING,
     page_size: int = PURCHASE_ORDER_PAGE_SIZE,
     query_params: dict[str, Any] | None = None,
+    year_filter: Any = CCC_YEAR_FILTER_DEFAULT,
 ) -> list[dict[str, Any]]:
     page = 1
     rows: list[dict[str, Any]] = []
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
-    extra_query_params = _parse_query_params(query_params)
+    base_query_params = _parse_query_params(query_params)
+    extra_query_params = _query_params_with_year_filter(query_params, year_filter)
+    selected_year = _coerce_year_filter(year_filter)
+    using_api_year_filter = selected_year != "all"
     while True:
         params = dict(extra_query_params)
         params.update(
@@ -456,7 +527,16 @@ def fetch_purchase_orders(
         )
         print("CCC request params:", params)
         qs = parse.urlencode(params)
-        data = _request_json("GET", f"{_build_api_url(base_url, '/purchase_order')}?{qs}", headers=headers)
+        try:
+            data = _request_json("GET", f"{_build_api_url(base_url, '/purchase_order')}?{qs}", headers=headers)
+        except RuntimeError:
+            if not using_api_year_filter:
+                raise
+            extra_query_params = base_query_params
+            using_api_year_filter = False
+            page = 1
+            rows = []
+            continue
         items = (
             [row for row in data.get("result", []) if isinstance(row, dict)]
             if isinstance(data, dict) and isinstance(data.get("result"), list)
@@ -476,7 +556,7 @@ def fetch_purchase_orders(
         elif len(items) < max(1, int(page_size)):
             break
         page += 1
-    return rows
+    return filter_items_by_year(rows, year_filter)
 
 
 def normalize_purchase_orders_for_cache(items: list[dict[str, Any]]) -> pd.DataFrame:
@@ -673,6 +753,7 @@ def sync_purchase_orders_cache(
     project_id: Any = PURCHASE_ORDER_PROJECT_ID,
     query_params: dict[str, Any] | None = None,
     output_path: Path | None = None,
+    year_filter: Any = CCC_YEAR_FILTER_DEFAULT,
 ) -> dict[str, Any]:
     resolved_project_id = _coerce_project_id(project_id)
     runtime = resolve_runtime_config(
@@ -695,6 +776,7 @@ def sync_purchase_orders_cache(
         sorting=PURCHASE_ORDER_SORTING,
         page_size=PURCHASE_ORDER_PAGE_SIZE,
         query_params=query_params,
+        year_filter=year_filter,
     )
     normalized = normalize_purchase_orders_for_cache(items)
     target_path = save_purchase_orders_cache(
@@ -709,6 +791,7 @@ def sync_purchase_orders_cache(
         "page_size": PURCHASE_ORDER_PAGE_SIZE,
         "sorting": PURCHASE_ORDER_SORTING,
         "records_imported": int(len(normalized.index)),
+        "year_filter": _coerce_year_filter(year_filter),
         "total_amount": float(summary.get("total_amount") or 0.0),
         "supplier_count": int(summary.get("supplier_count") or 0),
         "output_path": target_path,

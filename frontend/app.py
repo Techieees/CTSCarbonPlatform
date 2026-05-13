@@ -37,6 +37,7 @@ import ipaddress
 import secrets
 import smtplib
 import ssl
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from urllib import error as urllib_error
 from urllib import request as urllib_request
@@ -124,6 +125,16 @@ app.config['UPLOAD_FOLDER'] = str(FRONTEND_UPLOAD_DIR)
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
 
 app.logger.info("[PROFILE_PHOTO_STORAGE] Using storage path: %s", PROFILE_PHOTOS_STORAGE_DIR)
+
+_ANALYTICS_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="analytics")
+
+
+def _submit_analytics_task_silent(fn, *args) -> None:
+    try:
+        _ANALYTICS_EXECUTOR.submit(fn, *args)
+    except Exception:
+        pass
+
 
 TEMPLATES_2026_PATH = APP_DIR / "data" / "templates2026.json"
 PRODUCTS_TEMPLATE_PATH = APP_DIR / "data" / "templates_products.json"
@@ -1179,7 +1190,9 @@ def _log_authenticated_activity(response: Response):
             return response
         if request.environ.get("skip_activity_log"):
             return response
-        _write_activity_log_for_user(current_user, action=_classify_activity_action())
+        payload = _write_activity_log_for_user(current_user, action=_classify_activity_action())
+        if payload and _is_real_frontend_page_response(response):
+            _write_page_visit_event_for_payload(payload)
         _touch_user_last_seen_throttled(current_user)
     except Exception:
         pass
@@ -1460,6 +1473,13 @@ def _touch_user_last_seen_throttled(user: "User") -> None:
         uid = int(user.id)
         now = datetime.utcnow()
         cutoff = now - _LAST_SEEN_TOUCH_MIN_INTERVAL
+        _submit_analytics_task_silent(_touch_user_last_seen_silent, uid, now, cutoff)
+    except Exception:
+        pass
+
+
+def _touch_user_last_seen_silent(uid: int, now: datetime, cutoff: datetime) -> None:
+    try:
         tbl = User.__table__
         stmt = (
             update(tbl)
@@ -1467,8 +1487,9 @@ def _touch_user_last_seen_throttled(user: "User") -> None:
             .where(or_(tbl.c.last_seen_at.is_(None), tbl.c.last_seen_at < cutoff))
             .values(last_seen_at=now)
         )
-        with db.engine.begin() as conn:
-            conn.execute(stmt)
+        with app.app_context():
+            with db.engine.begin() as conn:
+                conn.execute(stmt)
     except Exception:
         pass
 
@@ -2575,6 +2596,25 @@ class UserActivityLog(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
 
+class PageVisitEvent(db.Model):
+    __tablename__ = "page_visit_events"
+    __table_args__ = (
+        db.Index("ix_page_visit_events_user_created_at", "user_id", "created_at"),
+        db.Index("ix_page_visit_events_session_created_at", "session_id", "created_at"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    company_name = db.Column(db.String(200), nullable=True, index=True)
+    email = db.Column(db.String(120), nullable=True, index=True)
+    page = db.Column(db.String(500), nullable=False)
+    endpoint = db.Column(db.String(120), nullable=True, index=True)
+    browser = db.Column(db.String(80), nullable=True, index=True)
+    session_id = db.Column(db.String(64), nullable=True, index=True)
+    user_agent = db.Column(db.String(500), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+
 def _csrd_policy_upload_dir() -> Path:
     d = FRONTEND_UPLOAD_DIR / "csrd_policies"
     d.mkdir(parents=True, exist_ok=True)
@@ -3227,6 +3267,7 @@ def _ensure_db_tables() -> None:
         _ensure_mapping_run_source_entry_group_column()
         _ensure_user_profile_columns()
         _ensure_user_last_seen_column()
+        _ensure_page_visit_event_indexes()
         _ensure_feed_post_reference_columns()
         _ensure_report_category_columns()
         _ensure_awards_form_columns()
@@ -3244,6 +3285,44 @@ def _ensure_db_tables() -> None:
         pass
 
 
+def _ensure_page_visit_event_indexes() -> None:
+    try:
+        from sqlalchemy import inspect, text
+
+        inspector = inspect(db.engine)
+        if not inspector.has_table("page_visit_events"):
+            return
+        names = {str(idx.get("name") or "") for idx in inspector.get_indexes("page_visit_events")}
+        stmts: list[str] = []
+        if "ix_page_visit_events_user_created_at" not in names:
+            stmts.append(
+                "CREATE INDEX IF NOT EXISTS ix_page_visit_events_user_created_at "
+                "ON page_visit_events (user_id, created_at)"
+            )
+        if "ix_page_visit_events_session_created_at" not in names:
+            stmts.append(
+                "CREATE INDEX IF NOT EXISTS ix_page_visit_events_session_created_at "
+                "ON page_visit_events (session_id, created_at)"
+            )
+        if "ix_page_visit_events_email_created_at" not in names:
+            stmts.append(
+                "CREATE INDEX IF NOT EXISTS ix_page_visit_events_email_created_at "
+                "ON page_visit_events (email, created_at)"
+            )
+        if "ix_page_visit_events_page_created_at" not in names:
+            stmts.append(
+                "CREATE INDEX IF NOT EXISTS ix_page_visit_events_page_created_at "
+                "ON page_visit_events (page, created_at)"
+            )
+        if not stmts:
+            return
+        with db.engine.begin() as conn:
+            for stmt in stmts:
+                conn.execute(text(stmt))
+    except Exception:
+        pass
+
+
 def _is_static_or_ignored_activity_path(path: str | None) -> bool:
     raw = str(path or "")
     return (
@@ -3253,6 +3332,49 @@ def _is_static_or_ignored_activity_path(path: str | None) -> bool:
         or raw.startswith("/favicon")
         or raw.startswith("/api/profile-photo")
     )
+
+
+def _is_excluded_page_visit_path(path: str | None, endpoint: str | None = None) -> bool:
+    raw = str(path or "").strip().lower().split("?", 1)[0]
+    endpoint_name = str(endpoint or "").strip().lower()
+    if (
+        not raw
+        or raw.startswith("/api/")
+        or raw.startswith("/static/")
+        or raw.startswith("/assets/")
+        or raw.startswith("/favicon")
+        or raw == "/logout"
+        or raw.startswith("/notifications")
+    ):
+        return True
+    if endpoint_name == "logout" or endpoint_name.startswith("api_") or endpoint_name.startswith("static"):
+        return True
+    excluded_tokens = ("unread_count", "poll", "heartbeat", "websocket", "reconnect", "notification")
+    return any(token in raw or token in endpoint_name for token in excluded_tokens)
+
+
+def _is_real_frontend_page_response(response: Response) -> bool:
+    if str(request.method or "").upper() != "GET":
+        return False
+    if _is_excluded_page_visit_path(request.path, request.endpoint):
+        return False
+    if request.headers.get("X-Requested-With", "").lower() == "xmlhttprequest":
+        return False
+    fetch_dest = request.headers.get("Sec-Fetch-Dest", "").lower()
+    if fetch_dest and fetch_dest not in {"document", "iframe"}:
+        return False
+    accept = request.headers.get("Accept", "")
+    if accept and "text/html" not in accept and "*/*" not in accept:
+        return False
+    return 200 <= int(getattr(response, "status_code", 0) or 0) < 300 and response.mimetype == "text/html"
+
+
+def _is_meaningful_frontend_page_log(row: object) -> bool:
+    method = str(getattr(row, "method", "") or "").upper()
+    action = str(getattr(row, "action", "") or "").strip()
+    if method != "GET" or action not in {"page_visit", "search_usage"}:
+        return False
+    return not _is_excluded_page_visit_path(getattr(row, "page", None), getattr(row, "endpoint", None))
 
 
 def _client_ip_address() -> str:
@@ -3385,7 +3507,6 @@ def _classify_activity_action() -> str:
 
 def _activity_log_payload_for_user(user: "User", *, action: str) -> dict[str, object]:
     ip_address = _client_ip_address()
-    country, city = _geo_lookup_for_ip(ip_address)
     device, browser, os_name = _parse_user_agent(request.headers.get("User-Agent"))
     return {
         "user_id": int(getattr(user, "id", 0) or 0) or None,
@@ -3396,8 +3517,8 @@ def _activity_log_payload_for_user(user: "User", *, action: str) -> dict[str, ob
         "endpoint": str(request.endpoint or "").strip() or None,
         "method": str(request.method or "").upper() or None,
         "ip_address": ip_address,
-        "country": country or "Unknown",
-        "city": city or "Unknown",
+        "country": None,
+        "city": None,
         "device": device or "Unknown",
         "browser": browser or "Unknown",
         "os": os_name or "Unknown",
@@ -3407,13 +3528,57 @@ def _activity_log_payload_for_user(user: "User", *, action: str) -> dict[str, ob
     }
 
 
-def _write_activity_log_for_user(user: "User", *, action: str) -> None:
+def _write_activity_log_for_user(user: "User", *, action: str) -> dict[str, object] | None:
     if user is None or not getattr(user, "id", None):
-        return
+        return None
     try:
         payload = _activity_log_payload_for_user(user, action=action)
-        with db.engine.begin() as conn:
-            conn.execute(UserActivityLog.__table__.insert().values(**payload))
+        _submit_analytics_task_silent(_insert_activity_log_silent, payload)
+        return payload
+    except Exception:
+        return None
+
+
+def _insert_activity_log_silent(payload: dict[str, object]) -> None:
+    try:
+        values = dict(payload)
+        if not values.get("country") or not values.get("city"):
+            country, city = _geo_lookup_for_ip(str(values.get("ip_address") or ""))
+            values["country"] = country or "Unknown"
+            values["city"] = city or "Unknown"
+        with app.app_context():
+            with db.engine.begin() as conn:
+                conn.execute(UserActivityLog.__table__.insert().values(**values))
+    except Exception:
+        pass
+
+
+def _write_page_visit_event_for_payload(payload: dict[str, object]) -> None:
+    page = str(payload.get("page") or "").strip()
+    if not page:
+        return
+    try:
+        values = {
+            "user_id": payload.get("user_id"),
+            "company_name": payload.get("company_name"),
+            "email": payload.get("email"),
+            "page": page,
+            "endpoint": payload.get("endpoint"),
+            "browser": payload.get("browser") or "Unknown",
+            "session_id": payload.get("session_id"),
+            "user_agent": str(request.headers.get("User-Agent") or "").strip()[:500] or None,
+            "created_at": payload.get("created_at") or datetime.utcnow(),
+        }
+        _submit_analytics_task_silent(_insert_page_visit_event_silent, values)
+    except Exception:
+        pass
+
+
+def _insert_page_visit_event_silent(values: dict[str, object]) -> None:
+    try:
+        with app.app_context():
+            with db.engine.begin() as conn:
+                conn.execute(PageVisitEvent.__table__.insert().values(**values))
     except Exception:
         pass
 
@@ -3429,9 +3594,86 @@ def _extract_dataset_name(path_or_ref: str | None) -> str | None:
     return None
 
 
+_REAL_PAGE_VISIT_COLUMNS = ["email", "page", "browser", "session_id", "created_at"]
+
+
+def _coerce_datetime(value: object, default: datetime | None = None) -> datetime | None:
+    if value is None:
+        return default
+    try:
+        if pd.isna(value):
+            return default
+    except (TypeError, ValueError):
+        pass
+    if hasattr(value, "to_pydatetime"):
+        try:
+            return value.to_pydatetime()
+        except Exception:
+            return default
+    return value if isinstance(value, datetime) else default
+
+
+def _humanize_last_active(value: object, *, now: datetime) -> str:
+    seen_at = _coerce_datetime(value)
+    if seen_at is None:
+        return ""
+    seconds = max(0, int((now - seen_at).total_seconds()))
+    if seconds <= 300:
+        return "Active now"
+    minutes = max(1, seconds // 60)
+    if minutes < 60:
+        return f"{minutes} min ago"
+    hours = minutes // 60
+    if hours < 24:
+        return f"{hours} hour{'s' if hours != 1 else ''} ago"
+    days = hours // 24
+    return f"{days} day{'s' if days != 1 else ''} ago"
+
+
+def _real_page_visit_frame(logs: list[UserActivityLog], page_events: list[PageVisitEvent], now: datetime) -> pd.DataFrame:
+    rows: list[dict[str, object]] = []
+    earliest_event_at: datetime | None = None
+
+    for event in page_events:
+        created_at = _coerce_datetime(getattr(event, "created_at", None), now) or now
+        if earliest_event_at is None or created_at < earliest_event_at:
+            earliest_event_at = created_at
+        rows.append(
+            {
+                "email": getattr(event, "email", None) or "",
+                "page": getattr(event, "page", None) or "",
+                "browser": getattr(event, "browser", None) or "Unknown",
+                "session_id": getattr(event, "session_id", None) or "",
+                "created_at": created_at,
+            }
+        )
+
+    for row in logs:
+        created_at = _coerce_datetime(getattr(row, "created_at", None), now) or now
+        if earliest_event_at is not None and created_at >= earliest_event_at:
+            continue
+        if not _is_meaningful_frontend_page_log(row):
+            continue
+        rows.append(
+            {
+                "email": getattr(row, "email", None) or "",
+                "page": getattr(row, "page", None) or "",
+                "browser": getattr(row, "browser", None) or "Unknown",
+                "session_id": getattr(row, "session_id", None) or "",
+                "created_at": created_at,
+            }
+        )
+
+    frame = pd.DataFrame(rows, columns=_REAL_PAGE_VISIT_COLUMNS)
+    if not frame.empty:
+        frame["created_at"] = pd.to_datetime(frame["created_at"])
+    return frame
+
+
 def _owner_analytics_context() -> dict[str, object]:
     now = datetime.utcnow()
     logs = UserActivityLog.query.order_by(UserActivityLog.created_at.asc()).all()
+    page_events = PageVisitEvent.query.order_by(PageVisitEvent.created_at.asc()).all()
     total_users = int(User.query.count())
     if not logs:
         empty_metrics = {
@@ -3502,6 +3744,7 @@ def _owner_analytics_context() -> dict[str, object]:
     frame["created_at"] = pd.to_datetime(frame["created_at"])
     frame["date"] = frame["created_at"].dt.strftime("%Y-%m-%d")
     frame["hour"] = frame["created_at"].dt.hour
+    real_page_frame = _real_page_visit_frame(logs, page_events, now)
 
     last_24h = frame[frame["created_at"] >= (now - timedelta(hours=24))]
     last_7d = frame[frame["created_at"] >= (now - timedelta(days=7))]
@@ -3643,9 +3886,29 @@ def _owner_analytics_context() -> dict[str, object]:
         for row in frame.sort_values("created_at", ascending=False).head(30).to_dict(orient="records")
     ]
     user_last_seen = []
+    login_counts_by_email = frame.loc[frame["action"] == "login"].groupby("email").size().to_dict()
     for email, group in frame[frame["email"].astype(str).str.strip() != ""].groupby("email"):
         latest = group.sort_values("created_at", ascending=False).iloc[0]
         first_seen = group["created_at"].min()
+        real_group = real_page_frame[real_page_frame["email"].astype(str).str.strip() == str(email).strip()]
+        real_page_visits = int(len(real_group.index))
+        real_pages = real_group["page"].fillna("").astype(str).str.strip()
+        real_pages = real_pages[real_pages != ""]
+        unique_pages = int(real_pages.nunique()) if not real_pages.empty else 0
+        most_used_page = str(real_pages.value_counts().idxmax()) if not real_pages.empty else ""
+        page_sessions = real_group["session_id"].fillna("").astype(str).str.strip()
+        page_sessions = page_sessions[page_sessions != ""]
+        login_sessions = int(login_counts_by_email.get(email, 0) or 0)
+        sessions_count = max(int(page_sessions.nunique()) if not page_sessions.empty else 0, login_sessions)
+        if sessions_count <= 0 and real_page_visits > 0:
+            sessions_count = 1
+        if real_page_visits > 0:
+            latest_real = real_group.sort_values("created_at", ascending=False).iloc[0]
+            last_active_at = latest_real.get("created_at")
+            browser = str(latest_real.get("browser") or "Unknown")
+        else:
+            last_active_at = latest["created_at"]
+            browser = str(latest.get("browser") or "Unknown")
         user_last_seen.append(
             {
                 "email": str(email),
@@ -3653,6 +3916,12 @@ def _owner_analytics_context() -> dict[str, object]:
                 "last_seen": latest["created_at"].strftime("%Y-%m-%d %H:%M"),
                 "first_seen": first_seen.strftime("%Y-%m-%d %H:%M") if hasattr(first_seen, "strftime") else "",
                 "visits": int(len(group.index)),
+                "real_page_visits": real_page_visits,
+                "unique_pages": unique_pages,
+                "sessions": sessions_count,
+                "most_used_page": most_used_page,
+                "last_active": _humanize_last_active(last_active_at, now=now),
+                "browser": browser,
                 "last_page": str(latest.get("page") or ""),
                 "location": ", ".join([v for v in [str(latest.get("city") or ""), str(latest.get("country") or "")] if v and v != "Unknown"]) or "Unknown",
                 "device": str(latest.get("device") or "Unknown"),
@@ -11345,7 +11614,7 @@ def _build_reporting_rows_from_summary(sub: "MappingRunSummary") -> list[dict[st
         if out:
             return out
     return out
-
+# Su an veri cekince hem 2025 hem 2026 verisini cekiyoruz ama bize sadece 2026 verisi lazim istersen ayni sayfaya option ekle bir tane yillari secebilecegin, istersen direk sadece 2026 verisini cekmek icin filtre koy bastan ve ne zaman bassak sadece 2026 verisini ceksin. Calistigi surece ikiside olur. Hicbirseyi bozma
 
 def _build_period_profile_from_normalized_run(run_id: str, fallback_dt: datetime | None) -> dict[str, object]:
     rid = str(run_id or "").strip()
@@ -15331,6 +15600,8 @@ def api_ccc_import_to_data_entry():
     labels = [str(p).strip() for p in projects if str(p).strip()]
     if not labels:
         return jsonify({"error": "No valid project labels"}), 400
+    year_filter = _coerce_ccc_year_filter(payload.get("year_filter", session.get("ccc_api_year_filter", CCC_API_DEFAULT_YEAR_FILTER)))
+    session["ccc_api_year_filter"] = year_filter
 
     unknown: list[str] = []
     for lab in labels:
@@ -15379,6 +15650,7 @@ def api_ccc_import_to_data_entry():
         project_labels=labels,
         user_id=int(getattr(current_user, "id", 0) or 0) or None,
         template_mode=tm,
+        year_filter=year_filter,
         job_user_id=int(getattr(current_user, "id", 0) or 0) or None,
         job_user_email=str(getattr(current_user, "email", "") or ""),
         mapper_email=str(getattr(current_user, "email", "") or ""),
@@ -17325,6 +17597,7 @@ def _run_ccc_import_job(
     user_id: int | None = None,
     template_mode: str = TEMPLATE_MODE_LEGACY,
     mapper_email: str = "",
+    year_filter: object = "2026",
 ) -> dict[str, object]:
     from frontend.services.ccc_data_entry_import_service import (
         CCC_IMPORT_DEDUP_COLUMN,
@@ -17346,6 +17619,7 @@ def _run_ccc_import_job(
         "fingerprint_duplicates_skipped": 0,
         "validation_skipped": 0,
         "status_skipped": 0,
+        "year_filter": _coerce_ccc_year_filter(year_filter),
         "errors": [],
     }
     ccc_batches_needing_mapping: set[tuple[str, str, str]] = set()
@@ -17354,7 +17628,8 @@ def _run_ccc_import_job(
     ccc_po = _load_stage1_api_source_module("ccc_purchase_orders")
     runtime = ccc_po.resolve_runtime_config()
 
-    log_import(f"starting import job projects={len(project_labels)}")
+    selected_year = _coerce_ccc_year_filter(year_filter)
+    log_import(f"starting import job projects={len(project_labels)} year={selected_year}")
     _update_job_progress(job_id, 2, "Resolving CCC API projects…")
 
     if not str(runtime.get("base_url") or "").strip():
@@ -17383,6 +17658,7 @@ def _run_ccc_import_job(
             "validation_skipped": 0,
             "status_skipped": 0,
             "fingerprint_duplicates_skipped": 0,
+            "year_filter": selected_year,
             "errors_count": 0,
         },
     )
@@ -17442,6 +17718,7 @@ def _run_ccc_import_job(
                 sorting=ccc_po.PURCHASE_ORDER_SORTING,
                 page_size=ccc_po.PURCHASE_ORDER_PAGE_SIZE,
                 query_params=None,
+                year_filter=selected_year,
             )
         except Exception as exc:
             stats["errors"].append(str(exc))
@@ -17555,6 +17832,7 @@ def _run_ccc_import_job(
                 "validation_skipped": int(stats["validation_skipped"]),
                 "status_skipped": int(stats["status_skipped"]),
                 "fingerprint_duplicates_skipped": int(stats["fingerprint_duplicates_skipped"]),
+                "year_filter": selected_year,
                 "errors_count": len(errs),
             },
         )
@@ -19137,6 +19415,34 @@ def _parse_json_object_form_field(name: str) -> dict[str, object]:
     return data
 
 
+CCC_API_YEAR_FILTER_OPTIONS = ("2026", "2025", "all")
+CCC_API_DEFAULT_YEAR_FILTER = "2026"
+
+
+def _coerce_ccc_year_filter(value: object, default: str = CCC_API_DEFAULT_YEAR_FILTER) -> str:
+    raw = str(value if value not in (None, "") else default).strip().lower()
+    if raw == "all":
+        return "all"
+    try:
+        year = int(raw)
+    except Exception:
+        return str(default)
+    return str(year) if str(year) in CCC_API_YEAR_FILTER_OPTIONS else str(default)
+
+
+def _parse_json_object_value(raw_value: object, field_name: str) -> dict[str, object]:
+    raw = str(raw_value or "").strip()
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except Exception as exc:
+        raise RuntimeError(f"{field_name} must be valid JSON.") from exc
+    if not isinstance(data, dict):
+        raise RuntimeError(f"{field_name} must be a JSON object.")
+    return data
+
+
 def _ccc_connection_status_payload(*, state: str = "unknown", message: str = "", tested_at: str = "") -> dict[str, str]:
     labels = {
         "connected": "Connected",
@@ -19292,6 +19598,7 @@ def _ccc_de_import_panel_projects(projects: list[dict[str, object]] | None) -> l
 def _ccc_ui_context(
     *,
     selected_project_id: int | None = None,
+    year_filter: object | None = None,
     base_url: str | None = None,
     username: str | None = None,
     password: str | None = None,
@@ -19299,6 +19606,9 @@ def _ccc_ui_context(
 ) -> dict[str, object]:
     defaults = _ccc_runtime_defaults()
     endpoints = _load_ccc_get_endpoints()
+    selected_year_filter = _coerce_ccc_year_filter(
+        year_filter if year_filter not in (None, "") else session.get("ccc_api_year_filter", CCC_API_DEFAULT_YEAR_FILTER)
+    )
     projects = _load_ccc_available_projects(
         base_url=base_url or defaults["base_url"],
         username=username or defaults["username"],
@@ -19342,6 +19652,7 @@ def _ccc_ui_context(
                 "endpoint_name": next(iter(endpoints.keys()), "purchase_order"),
                 "path_params": "",
                 "query_params": "",
+                "year_filter": selected_year_filter,
             },
             "ccc_connection_status": test_status,
             "ccc_last_sync": latest_sync,
@@ -19350,6 +19661,8 @@ def _ccc_ui_context(
             "ccc_purchase_orders": purchase_orders_summary,
             "ccc_mapping_rules": _load_ccc_mapping_rules(),
             "ccc_get_endpoints": endpoints,
+            "ccc_year_filter_options": CCC_API_YEAR_FILTER_OPTIONS,
+            "ccc_run_all_job_id": _active_job_id_for_job_type("ccc_api_run_all"),
         }
     )
     return context
@@ -19366,7 +19679,17 @@ def _test_ccc_connection_from_ui(*, base_url: str, username: str, password: str)
     )
 
 
-def _run_ccc_generic_ingest_from_ui(*, endpoint_name: str, base_url: str, username: str, password: str, page_size: int, path_params: dict[str, object], query_params: dict[str, object]) -> tuple[Path, dict[str, object]]:
+def _run_ccc_generic_ingest_from_ui(
+    *,
+    endpoint_name: str,
+    base_url: str,
+    username: str,
+    password: str,
+    page_size: int,
+    path_params: dict[str, object],
+    query_params: dict[str, object],
+    year_filter: object = CCC_API_DEFAULT_YEAR_FILTER,
+) -> tuple[Path, dict[str, object]]:
     ccc_ingest = _load_stage1_api_source_module("ccc_generic_ingest")
     result = ccc_ingest.ingest_endpoint(
         str(endpoint_name or "").strip(),
@@ -19376,6 +19699,7 @@ def _run_ccc_generic_ingest_from_ui(*, endpoint_name: str, base_url: str, userna
         page_size=int(page_size or 100),
         path_params=path_params,
         query_params=query_params,
+        year_filter=_coerce_ccc_year_filter(year_filter),
     )
     output_path = Path(result.get("output_path"))
     return output_path, dict(result)
@@ -19389,6 +19713,7 @@ def _run_ccc_purchase_orders_from_ui(
     page_size: int,
     project_id: int | None,
     query_params: dict[str, object] | None,
+    year_filter: object = CCC_API_DEFAULT_YEAR_FILTER,
 ) -> tuple[Path, dict[str, object]]:
     ccc_api = _load_stage1_api_source_module("ccc_purchase_orders")
     result = ccc_api.sync_purchase_orders_cache(
@@ -19397,9 +19722,276 @@ def _run_ccc_purchase_orders_from_ui(
         password=str(password or ""),
         project_id=project_id,
         query_params=dict(query_params or {}),
+        year_filter=_coerce_ccc_year_filter(year_filter),
     )
     output_path = Path(result.get("output_path"))
     return output_path, dict(result)
+
+
+def _ccc_endpoint_path_params(
+    endpoint_path: str,
+    path_params: dict[str, object] | None,
+    project_id: int | None,
+) -> dict[str, object]:
+    params = dict(path_params or {})
+    if "{projectId}" in str(endpoint_path or "") and project_id is not None:
+        params.setdefault("projectId", int(project_id))
+    return params
+
+
+def _run_ccc_endpoint_sync_from_ui(
+    *,
+    endpoint_name: str,
+    endpoint_path: str = "",
+    base_url: str,
+    username: str,
+    password: str,
+    page_size: int,
+    project_id: int | None,
+    path_params: dict[str, object] | None,
+    query_params: dict[str, object] | None,
+    year_filter: object = CCC_API_DEFAULT_YEAR_FILTER,
+) -> tuple[Path, dict[str, object]]:
+    selected_year = _coerce_ccc_year_filter(year_filter)
+    if endpoint_name == "purchase_order":
+        return _run_ccc_purchase_orders_from_ui(
+            base_url=base_url,
+            username=username,
+            password=password,
+            page_size=page_size,
+            project_id=project_id,
+            query_params=query_params,
+            year_filter=selected_year,
+        )
+    return _run_ccc_generic_ingest_from_ui(
+        endpoint_name=endpoint_name,
+        base_url=base_url,
+        username=username,
+        password=password,
+        page_size=page_size,
+        path_params=_ccc_endpoint_path_params(endpoint_path, path_params, project_id),
+        query_params=dict(query_params or {}),
+        year_filter=selected_year,
+    )
+
+
+def _append_ccc_sync_history_entry(
+    *,
+    endpoint_name: str,
+    base_url: str,
+    page_size: int,
+    year_filter: object,
+    result: dict[str, object] | None = None,
+    output_path: Path | None = None,
+    status: str = "success",
+    message: str = "",
+    project_id: int | None = None,
+    run_all: bool = False,
+) -> None:
+    result = dict(result or {})
+    imported = int(result.get("records_imported") or 0)
+    out_name = output_path.name if output_path else str(result.get("output_file") or "")
+    selected_year = _coerce_ccc_year_filter(year_filter)
+    summary_parts = [
+        f"Base URL: {base_url}",
+        f"Endpoint: {endpoint_name}",
+        f"Page size: {int(page_size)}",
+        f"Year: {selected_year}",
+    ]
+    if project_id is not None:
+        summary_parts.append(f"Project ID: {project_id}")
+    if run_all:
+        summary_parts.append("Run All APIs")
+    _append_run_history(
+        "ccc_api_source",
+        {
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "type": "ccc_api_sync",
+            "status": status,
+            "scenario": endpoint_name,
+            "parameters_summary": ", ".join(summary_parts),
+            "base_url": base_url,
+            "endpoint": endpoint_name,
+            "project_id": project_id,
+            "page_size": int(page_size),
+            "year_filter": selected_year,
+            "records_imported": imported,
+            "output_filename": out_name if status == "success" else "",
+            "output_file": out_name if status == "success" else "",
+            "message": message or (f"Imported {imported} records." if status == "success" else "Sync failed."),
+        },
+    )
+
+
+def _run_ccc_all_apis_job(
+    *,
+    job_id: str,
+    base_url: str,
+    username: str,
+    password: str,
+    page_size: int,
+    project_id: int | None,
+    path_params: dict[str, object] | None = None,
+    query_params: dict[str, object] | None = None,
+    year_filter: object = CCC_API_DEFAULT_YEAR_FILTER,
+) -> dict[str, object]:
+    endpoints = _load_ccc_get_endpoints()
+    if not endpoints:
+        raise RuntimeError("No configured CCC API endpoints found.")
+
+    selected_year = _coerce_ccc_year_filter(year_filter)
+    total = len(endpoints)
+    started = time.perf_counter()
+    stats: dict[str, object] = {
+        "ok": True,
+        "phase": "running",
+        "year_filter": selected_year,
+        "endpoints_total": total,
+        "endpoints_completed": 0,
+        "records_imported": 0,
+        "errors": [],
+        "results": [],
+    }
+    print(f"[CCC_RUN_ALL] started total={total} year={selected_year}")
+    _update_job(
+        job_id,
+        result={
+            "phase": "running",
+            "year_filter": selected_year,
+            "endpoints_total": total,
+            "endpoints_completed": 0,
+            "records_imported": 0,
+            "errors_count": 0,
+        },
+    )
+
+    for idx, (endpoint_name, endpoint_path) in enumerate(endpoints.items()):
+        _raise_if_job_cancelled(job_id)
+        start_ep = time.perf_counter()
+        completed_before = int(stats["endpoints_completed"])
+        progress = 5 + int((idx / max(1, total)) * 88)
+        _update_job_progress(
+            job_id,
+            progress,
+            f"Running {endpoint_name} ({completed_before}/{total} completed)",
+        )
+        print(f"[CCC_RUN_ALL] endpoint started endpoint={endpoint_name} completed={completed_before}/{total}")
+        try:
+            out_path, result = _run_ccc_endpoint_sync_from_ui(
+                endpoint_name=str(endpoint_name),
+                endpoint_path=str(endpoint_path),
+                base_url=base_url,
+                username=username,
+                password=password,
+                page_size=int(page_size),
+                project_id=project_id,
+                path_params=path_params,
+                query_params=query_params,
+                year_filter=selected_year,
+            )
+            imported = int(result.get("records_imported") or 0)
+            stats["records_imported"] = int(stats["records_imported"]) + imported
+            stats["results"].append(
+                {
+                    "endpoint": endpoint_name,
+                    "status": "success",
+                    "records_imported": imported,
+                    "output_file": out_path.name,
+                }
+            )
+            _append_ccc_sync_history_entry(
+                endpoint_name=str(endpoint_name),
+                base_url=base_url,
+                page_size=int(page_size),
+                year_filter=selected_year,
+                result=result,
+                output_path=out_path,
+                status="success",
+                message=f"Imported {imported} records.",
+                project_id=project_id if endpoint_name == "purchase_order" else None,
+                run_all=True,
+            )
+            print(
+                "[CCC_RUN_ALL] endpoint completed "
+                f"endpoint={endpoint_name} records={imported} runtime={time.perf_counter() - start_ep:.2f}s"
+            )
+        except Exception as exc:
+            err = str(exc)
+            errors = stats["errors"] if isinstance(stats["errors"], list) else []
+            errors.append({"endpoint": endpoint_name, "error": err})
+            stats["errors"] = errors
+            stats["results"].append({"endpoint": endpoint_name, "status": "failed", "error": err})
+            _append_ccc_sync_history_entry(
+                endpoint_name=str(endpoint_name),
+                base_url=base_url,
+                page_size=int(page_size),
+                year_filter=selected_year,
+                status="failed",
+                message=err,
+                run_all=True,
+            )
+            print(f"[CCC_RUN_ALL] endpoint failed endpoint={endpoint_name} error={err}")
+
+        stats["endpoints_completed"] = int(stats["endpoints_completed"]) + 1
+        errors_now = stats["errors"] if isinstance(stats["errors"], list) else []
+        _update_job(
+            job_id,
+            result={
+                "phase": "running",
+                "year_filter": selected_year,
+                "endpoints_total": total,
+                "endpoints_completed": int(stats["endpoints_completed"]),
+                "records_imported": int(stats["records_imported"]),
+                "errors_count": len(errors_now),
+            },
+        )
+        _update_job_progress(
+            job_id,
+            5 + int((int(stats["endpoints_completed"]) / max(1, total)) * 88),
+            f"Completed {stats['endpoints_completed']}/{total}: {endpoint_name}",
+        )
+
+    runtime = time.perf_counter() - started
+    errors_final = stats["errors"] if isinstance(stats["errors"], list) else []
+    stats["phase"] = "completed"
+    stats["ok"] = not errors_final
+    stats["errors_count"] = len(errors_final)
+    stats["runtime_seconds"] = round(runtime, 2)
+    _append_run_history(
+        "ccc_api_source",
+        {
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "type": "ccc_api_run_all",
+            "status": "success" if not errors_final else "partial",
+            "scenario": "Run All APIs",
+            "parameters_summary": (
+                f"Endpoints: {total}, completed: {stats['endpoints_completed']}, "
+                f"records: {stats['records_imported']}, year: {selected_year}"
+            ),
+            "base_url": base_url,
+            "endpoint": "Run All APIs",
+            "page_size": int(page_size),
+            "year_filter": selected_year,
+            "records_imported": int(stats["records_imported"]),
+            "output_filename": "",
+            "output_file": "",
+            "message": (
+                f"Completed {stats['endpoints_completed']}/{total} endpoints in {runtime:.1f}s "
+                f"with {len(errors_final)} error(s)."
+            ),
+        },
+    )
+    print(
+        "[CCC_RUN_ALL] completed "
+        f"endpoints={stats['endpoints_completed']}/{total} records={stats['records_imported']} "
+        f"errors={len(errors_final)} runtime={runtime:.2f}s"
+    )
+    _update_job_progress(
+        job_id,
+        100,
+        f"Run All APIs completed: {stats['endpoints_completed']}/{total} endpoints, {stats['records_imported']} records",
+    )
+    return stats
 
 
 def _scope_label(scope_key: str) -> str:
@@ -20893,7 +21485,11 @@ def suppliers_internal_page():
 @login_required
 def data_sources_ccc_api():
     selected_project_id = _coerce_ccc_project_id(request.args.get("project_id"))
-    context = _ccc_ui_context(selected_project_id=selected_project_id)
+    selected_year_filter = _coerce_ccc_year_filter(
+        request.args.get("year_filter", session.get("ccc_api_year_filter", CCC_API_DEFAULT_YEAR_FILTER))
+    )
+    session["ccc_api_year_filter"] = selected_year_filter
+    context = _ccc_ui_context(selected_project_id=selected_project_id, year_filter=selected_year_filter)
     form_state = dict(context.get("form_state") or {})
     if request.method == "POST":
         action = str(request.form.get("action", "sync") or "sync").strip().lower()
@@ -20905,8 +21501,10 @@ def data_sources_ccc_api():
             "endpoint_name": str(request.form.get("endpoint_name", "") or "").strip(),
             "path_params": str(request.form.get("path_params", "") or "").strip(),
             "query_params": str(request.form.get("query_params", "") or "").strip(),
+            "year_filter": _coerce_ccc_year_filter(request.form.get("year_filter")),
             "has_password": bool(str(request.form.get("password", "") or "").strip()) or bool(_ccc_runtime_defaults().get("has_password")),
         }
+        session["ccc_api_year_filter"] = str(form_state["year_filter"])
         password = str(request.form.get("password", "") or "")
         try:
             if action == "test_connection":
@@ -20917,6 +21515,7 @@ def data_sources_ccc_api():
                 )
                 context = _ccc_ui_context(
                     selected_project_id=form_state["project_id"],
+                    year_filter=form_state["year_filter"],
                     base_url=form_state["base_url"],
                     username=form_state["username"],
                     password=password,
@@ -20935,9 +21534,10 @@ def data_sources_ccc_api():
                         "type": "ccc_api_test",
                         "status": "success",
                         "scenario": "Connection test",
-                        "parameters_summary": f"Base URL: {form_state['base_url']}",
+                        "parameters_summary": f"Base URL: {form_state['base_url']}, Year: {form_state['year_filter']}",
                         "base_url": form_state["base_url"],
                         "page_size": int(form_state["page_size"]),
+                        "year_filter": form_state["year_filter"],
                         "records_imported": 0,
                         "output_filename": "",
                         "output_file": "",
@@ -20955,6 +21555,45 @@ def data_sources_ccc_api():
                     feed_api_name="CCC API",
                     feed_timestamp=datetime.utcnow(),
                 )
+            elif action == "run_all":
+                active_run_all = _active_job_id_for_job_type("ccc_api_run_all")
+                if active_run_all:
+                    context = _ccc_ui_context(
+                        selected_project_id=form_state["project_id"],
+                        year_filter=form_state["year_filter"],
+                        base_url=form_state["base_url"],
+                        username=form_state["username"],
+                        password=password,
+                    )
+                    context["ccc_run_all_job_id"] = active_run_all
+                    context["run_notice"] = "Run All APIs is already running. Progress is shown below."
+                else:
+                    path_params = _parse_json_object_form_field("path_params")
+                    query_params = _parse_json_object_form_field("query_params")
+                    job_id = run_in_background(
+                        "ccc_api_run_all",
+                        "CCC API",
+                        _run_ccc_all_apis_job,
+                        base_url=form_state["base_url"],
+                        username=form_state["username"],
+                        password=password,
+                        page_size=int(form_state["page_size"]),
+                        project_id=_coerce_ccc_project_id(form_state.get("project_id")),
+                        path_params=path_params,
+                        query_params=query_params,
+                        year_filter=form_state["year_filter"],
+                        job_user_id=int(getattr(current_user, "id", 0) or 0) or None,
+                        job_user_email=str(getattr(current_user, "email", "") or ""),
+                    )
+                    context = _ccc_ui_context(
+                        selected_project_id=form_state["project_id"],
+                        year_filter=form_state["year_filter"],
+                        base_url=form_state["base_url"],
+                        username=form_state["username"],
+                        password=password,
+                    )
+                    context["ccc_run_all_job_id"] = job_id
+                    context["run_notice"] = "Run All APIs started. Endpoints will run sequentially in the background."
             else:
                 endpoint_name = str(form_state["endpoint_name"] or "").strip()
                 if endpoint_name == "purchase_order":
@@ -20969,9 +21608,11 @@ def data_sources_ccc_api():
                         page_size=int(form_state["page_size"]),
                         project_id=project_id,
                         query_params=query_params,
+                        year_filter=form_state["year_filter"],
                     )
                     context = _ccc_ui_context(
                         selected_project_id=_coerce_ccc_project_id(result.get("project_id"), project_id),
+                        year_filter=form_state["year_filter"],
                         base_url=form_state["base_url"],
                         username=form_state["username"],
                         password=password,
@@ -20999,11 +21640,12 @@ def data_sources_ccc_api():
                             "type": "ccc_api_sync",
                             "status": "success",
                             "scenario": endpoint_name,
-                            "parameters_summary": f"Project ID: {selected_project_id}, Sorting: D, Page size: 200",
+                            "parameters_summary": f"Project ID: {selected_project_id}, Sorting: D, Page size: 200, Year: {form_state['year_filter']}",
                             "base_url": form_state["base_url"],
                             "endpoint": endpoint_name,
                             "project_id": selected_project_id,
                             "page_size": 200,
+                            "year_filter": form_state["year_filter"],
                             "records_imported": imported,
                             "output_filename": out_path.name,
                             "output_file": out_path.name,
@@ -21036,9 +21678,11 @@ def data_sources_ccc_api():
                         page_size=int(form_state["page_size"]),
                         path_params=path_params,
                         query_params=query_params,
+                        year_filter=form_state["year_filter"],
                     )
                     context = _ccc_ui_context(
                         selected_project_id=form_state["project_id"],
+                        year_filter=form_state["year_filter"],
                         base_url=form_state["base_url"],
                         username=form_state["username"],
                         password=password,
@@ -21071,11 +21715,13 @@ def data_sources_ccc_api():
                                 f"Base URL: {form_state['base_url']}, "
                                 f"Endpoint: {endpoint_name}, "
                                 f"Page size: {int(form_state['page_size'])}, "
+                                f"Year: {form_state['year_filter']}, "
                                 f"Rows: {imported}"
                             ),
                             "base_url": form_state["base_url"],
                             "endpoint": endpoint_name,
                             "page_size": int(form_state["page_size"]),
+                            "year_filter": form_state["year_filter"],
                             "records_imported": imported,
                             "output_filename": out_path.name,
                             "output_file": out_path.name,
@@ -21094,11 +21740,13 @@ def data_sources_ccc_api():
         except Exception as exc:
             context = _ccc_ui_context(
                 selected_project_id=form_state.get("project_id"),
+                year_filter=form_state.get("year_filter"),
                 base_url=form_state.get("base_url"),
                 username=form_state.get("username"),
                 password=password,
             )
-            error_message = f"CCC API {'connection test' if action == 'test_connection' else 'sync'} failed: {exc}"
+            action_label = "connection test" if action == "test_connection" else ("Run All APIs" if action == "run_all" else "sync")
+            error_message = f"CCC API {action_label} failed: {exc}"
             context["run_error"] = error_message
             context["ccc_connection_status"] = _ccc_connection_status_payload(
                 state="failed",
@@ -21115,11 +21763,13 @@ def data_sources_ccc_api():
                     "parameters_summary": (
                         f"Base URL: {form_state['base_url']}, "
                         f"Endpoint: {form_state['endpoint_name'] or 'n/a'}, "
-                        f"Page size: {int(form_state['page_size'])}"
+                        f"Page size: {int(form_state['page_size'])}, "
+                        f"Year: {form_state.get('year_filter', CCC_API_DEFAULT_YEAR_FILTER)}"
                     ),
                     "base_url": form_state["base_url"],
                     "endpoint": form_state["endpoint_name"] or "",
                     "page_size": int(form_state["page_size"]),
+                    "year_filter": form_state.get("year_filter", CCC_API_DEFAULT_YEAR_FILTER),
                     "records_imported": 0,
                     "output_filename": "",
                     "output_file": "",
