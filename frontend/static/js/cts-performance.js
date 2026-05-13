@@ -6,6 +6,72 @@
   if (typeof window === "undefined" || typeof document === "undefined") return;
 
   var pollers = {};
+  var scriptPromises = {};
+  var timings = window.__CTS_INIT_TIMINGS__ = window.__CTS_INIT_TIMINGS__ || [];
+
+  function now() {
+    return window.performance && typeof window.performance.now === "function"
+      ? window.performance.now()
+      : Date.now();
+  }
+
+  function recordInit(name, durationMs, detail) {
+    var entry = {
+      name: String(name || "init"),
+      duration: Math.round(Number(durationMs || 0) * 10) / 10,
+      detail: detail ? String(detail) : "",
+      path: window.location.pathname,
+      timestamp: new Date().toISOString(),
+    };
+    timings.push(entry);
+    if (timings.length > 40) timings.splice(0, timings.length - 40);
+    if (window.__CTS_FRONTEND_DEBUG__ && window.console && typeof window.console.debug === "function") {
+      window.console.debug("[CTS perf]", entry.name, entry.duration + "ms", entry.detail || "");
+    }
+    return entry;
+  }
+
+  function measureInit(name, callback, detail) {
+    var started = now();
+    try {
+      return callback();
+    } finally {
+      recordInit(name, now() - started, detail);
+    }
+  }
+
+  function loadScriptOnce(key, src) {
+    var normalizedKey = String(key || src || "").trim();
+    var normalizedSrc = String(src || "").trim();
+    if (!normalizedKey || !normalizedSrc) {
+      return Promise.reject(new Error("Script source is required."));
+    }
+    if (scriptPromises[normalizedKey]) return scriptPromises[normalizedKey];
+    scriptPromises[normalizedKey] = new Promise(function (resolve, reject) {
+      var existing = document.querySelector('script[data-cts-script-key="' + normalizedKey.replace(/"/g, '\\"') + '"]');
+      if (existing && existing.dataset.loaded === "true") {
+        resolve(existing);
+        return;
+      }
+      var script = existing || document.createElement("script");
+      script.src = normalizedSrc;
+      script.async = true;
+      script.defer = true;
+      script.dataset.ctsScriptKey = normalizedKey;
+      script.addEventListener("load", function () {
+        script.dataset.loaded = "true";
+        resolve(script);
+      }, { once: true });
+      script.addEventListener("error", function () {
+        delete scriptPromises[normalizedKey];
+        reject(new Error("Failed to load " + normalizedSrc));
+      }, { once: true });
+      if (!existing) {
+        document.head.appendChild(script);
+      }
+    });
+    return scriptPromises[normalizedKey];
+  }
 
   function stopPoll(key) {
     var p = pollers[key];
@@ -51,10 +117,16 @@
   }
 
   window.CtsPerf = {
+    getInitTimings: function () {
+      return timings.slice();
+    },
     isDocumentVisible: function () {
       return document.visibilityState !== "hidden";
     },
+    loadScriptOnce: loadScriptOnce,
     managePoll: managePoll,
+    measureInit: measureInit,
+    recordInit: recordInit,
     stopPoll: stopPoll,
   };
 })();

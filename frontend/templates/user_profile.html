@@ -28,7 +28,10 @@
         <input type="file" accept="image/png,image/jpeg,image/webp" hidden data-profile-cover-input>
         {% endif %}
         {% if profile_company_logo_url %}
-        <img class="profile-hero-banner__logo cts-company-logo-inline cts-company-logo-inline--banner" src="{{ profile_company_logo_url }}" alt="{{ profile_company }}">
+        <div class="profile-hero-banner__brand" aria-label="{{ profile_brand_name or profile_company }}">
+          <img class="profile-hero-banner__logo cts-company-logo-inline" src="{{ profile_company_logo_url }}" alt="{{ profile_brand_name or profile_company }}">
+          <span>{{ profile_brand_name or profile_company }}</span>
+        </div>
         {% endif %}
       </div>
       <div class="profile-hero-card__body">
@@ -40,15 +43,20 @@
               {% if profile_role_label %}
               <span class="feed-role-badge feed-role-badge--profile">{{ profile_role_label }}</span>
               {% endif %}
+              {% if profile_country_flag %}
+              <span class="profile-country-inline" aria-label="{{ profile_country_name or profile_location }}">
+                <span class="profile-country-inline__flag" aria-hidden="true">{{ profile_country_flag }}</span>
+                {% if profile_country_name %}
+                <span>{{ profile_country_name }}</span>
+                {% endif %}
+              </span>
+              {% endif %}
             </div>
             {% if profile_title %}
             <p class="profile-hero-card__title">{{ profile_title }}</p>
             {% endif %}
             <p class="profile-hero-card__meta">
               <span>{{ profile_company }}</span>
-              {% if profile_country_flag %}
-              <span class="profile-country-flag" aria-label="{{ profile_location }}">{{ profile_country_flag }}</span>
-              {% endif %}
             </p>
             <div class="profile-hero-card__social">
               <span><strong data-profile-follower-count>{{ profile_stats.followers }}</strong> followers</span>
@@ -120,11 +128,11 @@
                 <h2>Posts</h2>
                 <p class="profile-section-card__eyebrow mb-0">{{ profile_stats.recent_activity_label }}</p>
               </div>
-              <span>{{ profile_stats.posts }} post{{ '' if profile_stats.posts == 1 else 's' }}</span>
+              <span><span data-profile-post-count>{{ profile_stats.posts }}</span> post{{ '' if profile_stats.posts == 1 else 's' }}</span>
             </div>
             <div class="profile-section-card__body profile-section-card__body--feed">
               <div class="profile-activity-summary">
-                <strong>{{ profile_stats.posts }}</strong>
+                <strong data-profile-post-count>{{ profile_stats.posts }}</strong>
                 <span>Total feed posts</span>
               </div>
               {% if profile_posts %}
@@ -311,7 +319,7 @@
             <h2>Recent Activity</h2>
             <p class="profile-section-card__eyebrow mb-0">{{ profile_stats.recent_activity_label }}</p>
           </div>
-          <span>{{ profile_stats.posts }} post{{ '' if profile_stats.posts == 1 else 's' }}</span>
+          <span><span data-profile-post-count>{{ profile_stats.posts }}</span> post{{ '' if profile_stats.posts == 1 else 's' }}</span>
         </div>
         <div class="profile-section-card__body">
           {% if profile_posts %}
@@ -340,6 +348,7 @@
     </div>
   </div>
 </section>
+{% include 'partials/feed_delete_modal.html' %}
 {% if can_create_posts %}
 <div class="modal fade" id="feedChallengeResponseModal" tabindex="-1" aria-labelledby="feedChallengeResponseModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">

@@ -17,6 +17,19 @@
     return data;
   }
 
+  function ensureMappingCards() {
+    if (window.CtsMappingCards) {
+      return Promise.resolve(window.CtsMappingCards);
+    }
+    const src = window.__CTS_MAPPING_CARDS_SCRIPT__;
+    if (window.CtsPerf && src) {
+      return window.CtsPerf.loadScriptOnce("mapping-cards", src).then(function () {
+        return window.CtsMappingCards || null;
+      });
+    }
+    return Promise.resolve(null);
+  }
+
   function setBadge(element, count) {
     if (!element) return;
     const value = Number(count || 0);
@@ -55,9 +68,14 @@
     const markAllBtn = notificationRoot.querySelector("[data-mark-all-notifications]");
 
     async function loadNotifications() {
+      const started = performance && typeof performance.now === "function" ? performance.now() : Date.now();
       const assets = window.__CTS_MAPPING_CARD_ASSETS__ || {};
       const adminKeys = new Set();
       let adminMappingHtml = "";
+
+      if (assets.isAdmin && assets.adminUploadNotificationsUrl) {
+        await ensureMappingCards().catch(function () { return null; });
+      }
 
       if (assets.isAdmin && window.CtsMappingCards && assets.adminUploadNotificationsUrl) {
         try {
@@ -90,6 +108,10 @@
       const data = await fetchJson("/api/notifications/recent");
       setBadge(badge, data.unread_count);
       let rows = Array.isArray(data.notifications) ? data.notifications : [];
+
+      if (rows.some(function (item) { return item && item.mapping_card; })) {
+        await ensureMappingCards().catch(function () { return null; });
+      }
 
       if (assets.isAdmin && adminKeys.size) {
         rows = rows.filter(function (item) {
@@ -156,6 +178,13 @@
 
       if (window.CtsMappingCards && typeof window.CtsMappingCards.wireLogoAvatarFallbacks === "function") {
         window.CtsMappingCards.wireLogoAvatarFallbacks(list);
+      }
+      if (window.CtsLottie && typeof window.CtsLottie.scan === "function") {
+        window.CtsLottie.scan(list);
+      }
+      if (window.CtsPerf && typeof window.CtsPerf.recordInit === "function") {
+        const ended = performance && typeof performance.now === "function" ? performance.now() : Date.now();
+        window.CtsPerf.recordInit("navbar notifications init", ended - started, String(rows.length || 0));
       }
     }
 

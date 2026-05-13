@@ -1,4 +1,5 @@
 (function () {
+  const feedInitStarted = performance && typeof performance.now === "function" ? performance.now() : Date.now();
   const modalEl = document.getElementById("feedPostModal");
   const form = document.getElementById("feedComposerForm");
   const contentInput = document.getElementById("feedPostContent");
@@ -8,6 +9,8 @@
   const challengeResponseModalEl = document.getElementById("feedChallengeResponseModal");
   const challengeResponseForm = document.getElementById("feedChallengeResponseForm");
   const challengeResponseTitle = document.getElementById("feedChallengeResponseTitle");
+  const deletePostModalEl = document.getElementById("feedDeletePostModal");
+  const deletePostConfirmButton = deletePostModalEl ? deletePostModalEl.querySelector("[data-feed-post-delete-confirm]") : null;
   const preview = document.getElementById("feedMediaPreview");
   const fileName = document.getElementById("feedFileName");
   const reactionMeta = {
@@ -18,10 +21,20 @@
     funny: { label: "Funny", icon: "😂" }
   };
   let mentionContactsPromise = null;
+  let previewObjectUrl = "";
+  let deletePostState = {
+    endpoint: "",
+    postId: "",
+    postEl: null
+  };
 
   function clearPreview() {
     if (!preview || !fileName) {
       return;
+    }
+    if (previewObjectUrl) {
+      URL.revokeObjectURL(previewObjectUrl);
+      previewObjectUrl = "";
     }
     preview.innerHTML = "";
     preview.setAttribute("hidden", "");
@@ -51,6 +64,7 @@
 
     if (kind === "image" || kind === "video") {
       const objectUrl = URL.createObjectURL(file);
+      previewObjectUrl = objectUrl;
       const mediaEl = document.createElement(kind === "image" ? "img" : "video");
       mediaEl.src = objectUrl;
       if (kind === "video") {
@@ -58,6 +72,8 @@
         mediaEl.preload = "metadata";
       } else {
         mediaEl.alt = file.name || "Preview";
+        mediaEl.loading = "lazy";
+        mediaEl.decoding = "async";
       }
       preview.appendChild(mediaEl);
       preview.removeAttribute("hidden");
@@ -231,7 +247,7 @@
     return '' +
       '<article class="feed-comment" data-feed-comment-id="' + Number(comment.id || 0) + '">' +
         '<a href="' + escapeHtml(comment.author_profile_url || "#") + '" class="feed-comment__avatar-link" aria-label="' + escapeHtml(comment.author_name || "User") + ' profile">' +
-          '<img class="feed-avatar-image feed-avatar-image--sm" src="' + escapeHtml(comment.author_avatar_url || "") + '" alt="' + escapeHtml(comment.author_name || "User") + '">' +
+          '<img class="feed-avatar-image feed-avatar-image--sm" src="' + escapeHtml(comment.author_avatar_url || "") + '" alt="' + escapeHtml(comment.author_name || "User") + '" loading="lazy" decoding="async">' +
         '</a>' +
         '<div class="feed-comment__body">' +
           '<div class="feed-comment__bubble">' +
@@ -247,6 +263,85 @@
           '</button>' +
         '</div>' +
       '</article>';
+  }
+
+  function setCommentsBusy(root, busy) {
+    if (!root) {
+      return;
+    }
+    root.classList.toggle("is-loading", Boolean(busy));
+  }
+
+  function renderComments(root, comments) {
+    if (!root) {
+      return;
+    }
+    const list = root.querySelector("[data-feed-comment-list]");
+    if (!list) {
+      return;
+    }
+    const normalized = Array.isArray(comments) ? comments : [];
+    const placeholder = list.querySelector("[data-feed-comments-placeholder]");
+    if (placeholder) {
+      placeholder.remove();
+    }
+    list.innerHTML = normalized.map(commentHtml).join("");
+    root.dataset.commentsLoaded = "true";
+  }
+
+  function loadComments(root) {
+    if (!root || root.dataset.commentsLoaded === "true" || root.dataset.commentsLoading === "true") {
+      return Promise.resolve();
+    }
+    const endpoint = String(root.dataset.commentsEndpoint || "").trim();
+    if (!endpoint) {
+      root.dataset.commentsLoaded = "true";
+      return Promise.resolve();
+    }
+    root.dataset.commentsLoading = "true";
+    setCommentsBusy(root, true);
+    return fetch(endpoint, {
+      headers: {
+        Accept: "application/json",
+        "X-Requested-With": "XMLHttpRequest"
+      }
+    })
+      .then(function (response) {
+        return response.json().catch(function () {
+          return {};
+        }).then(function (payload) {
+          if (!response.ok || !payload.ok) {
+            throw new Error(String(payload.error || "Could not load comments."));
+          }
+          return payload;
+        });
+      })
+      .then(function (payload) {
+        renderComments(root, payload.comments || []);
+      })
+      .catch(function () {})
+      .finally(function () {
+        root.dataset.commentsLoading = "false";
+        setCommentsBusy(root, false);
+      });
+  }
+
+  function ensureCommentComposer(root) {
+    if (!root) {
+      return null;
+    }
+    var existing = root.querySelector("[data-feed-comment-composer]");
+    if (existing) {
+      return existing;
+    }
+    var template = root.querySelector("[data-feed-comment-composer-template]");
+    if (!template || !template.content || !template.content.firstElementChild) {
+      return null;
+    }
+    var composer = template.content.firstElementChild.cloneNode(true);
+    var list = root.querySelector("[data-feed-comment-list]");
+    root.insertBefore(composer, list || null);
+    return composer;
   }
 
   function loadMentionContacts(endpoint) {
@@ -431,7 +526,15 @@
         .then(function (comment) {
           comment.like_endpoint = "/api/feed/comments/" + encodeURIComponent(comment.id) + "/like";
           if (commentList) {
+            const placeholder = commentList.querySelector("[data-feed-comments-placeholder]");
+            if (placeholder) {
+              placeholder.remove();
+            }
             commentList.insertAdjacentHTML("beforeend", commentHtml(comment));
+          }
+          const root = form.closest("[data-feed-comments]");
+          if (root) {
+            root.dataset.commentsLoaded = "true";
           }
           input.value = "";
           form._mentionMap = {};
@@ -464,6 +567,148 @@
     button.textContent = busy ? "Uploading..." : "Edit cover";
   }
 
+  function showFeedToast(message, variant) {
+    const text = String(message || "").trim();
+    if (!text) {
+      return;
+    }
+    let stack = document.querySelector("[data-feed-toast-stack]");
+    if (!stack) {
+      stack = document.createElement("div");
+      stack.className = "feed-toast-stack";
+      stack.setAttribute("data-feed-toast-stack", "");
+      stack.setAttribute("aria-live", "polite");
+      stack.setAttribute("aria-atomic", "true");
+      document.body.appendChild(stack);
+    }
+    const toast = document.createElement("div");
+    toast.className = "feed-toast" + (variant ? " feed-toast--" + String(variant) : "");
+    toast.setAttribute("role", "status");
+    toast.textContent = text;
+    stack.appendChild(toast);
+    window.setTimeout(function () {
+      toast.classList.add("is-visible");
+    }, 10);
+    window.setTimeout(function () {
+      toast.classList.remove("is-visible");
+      window.setTimeout(function () {
+        toast.remove();
+      }, 180);
+    }, 2600);
+  }
+
+  function closeAllPostMenus(exceptMenu) {
+    Array.from(document.querySelectorAll("[data-feed-post-menu]")).forEach(function (menu) {
+      if (exceptMenu && menu === exceptMenu) {
+        return;
+      }
+      const toggle = menu.querySelector("[data-feed-post-menu-toggle]");
+      const panel = menu.querySelector("[data-feed-post-menu-panel]");
+      if (toggle) {
+        toggle.setAttribute("aria-expanded", "false");
+      }
+      if (panel) {
+        panel.hidden = true;
+      }
+    });
+  }
+
+  function setPostMenuOpen(menu, open) {
+    if (!menu) {
+      return;
+    }
+    const toggle = menu.querySelector("[data-feed-post-menu-toggle]");
+    const panel = menu.querySelector("[data-feed-post-menu-panel]");
+    if (toggle) {
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+    if (panel) {
+      panel.hidden = !open;
+    }
+  }
+
+  function setDeletePostBusy(busy) {
+    if (!deletePostConfirmButton) {
+      return;
+    }
+    const idle = deletePostConfirmButton.querySelector(".feed-delete-modal__confirm-idle");
+    const busyLabel = deletePostConfirmButton.querySelector(".feed-delete-modal__confirm-busy");
+    deletePostConfirmButton.disabled = Boolean(busy);
+    if (idle) {
+      idle.hidden = Boolean(busy);
+    }
+    if (busyLabel) {
+      busyLabel.hidden = !busy;
+    }
+  }
+
+  function hideDeletePostModal() {
+    if (!deletePostModalEl) {
+      return;
+    }
+    if (typeof bootstrap !== "undefined" && bootstrap.Modal) {
+      bootstrap.Modal.getOrCreateInstance(deletePostModalEl).hide();
+      return;
+    }
+    deletePostModalEl.classList.remove("show");
+    deletePostModalEl.style.display = "none";
+  }
+
+  function showDeletePostModal() {
+    if (!deletePostModalEl) {
+      return;
+    }
+    if (typeof bootstrap !== "undefined" && bootstrap.Modal) {
+      bootstrap.Modal.getOrCreateInstance(deletePostModalEl).show();
+      return;
+    }
+    deletePostModalEl.style.display = "block";
+    deletePostModalEl.classList.add("show");
+  }
+
+  function removeDeletedPost(postEl) {
+    if (!postEl) {
+      return;
+    }
+    postEl.classList.add("is-deleting");
+    window.setTimeout(function () {
+      const parentList = postEl.closest(".feed-stream__list");
+      postEl.remove();
+      if (parentList && !parentList.querySelector("[data-feed-post-id]")) {
+        const empty = document.createElement("div");
+        empty.className = "feed-empty-state feed-empty-state--inline";
+        empty.innerHTML = "<h3>No posts yet</h3><p>No visible posts remain.</p>";
+        parentList.replaceWith(empty);
+      }
+    }, 180);
+  }
+
+  function updateProfilePostCounters(delta) {
+    Array.from(document.querySelectorAll("[data-profile-post-count]")).forEach(function (node) {
+      const current = Number(node.textContent || 0);
+      if (!Number.isFinite(current)) {
+        return;
+      }
+      node.textContent = String(Math.max(0, current + delta));
+    });
+  }
+
+  function openDeletePostDialog(button) {
+    const endpoint = String(button && button.dataset.deleteEndpoint || "").trim();
+    const postEl = button ? button.closest("[data-feed-post-id]") : null;
+    if (!endpoint || !postEl) {
+      return;
+    }
+    deletePostState = {
+      endpoint: endpoint,
+      postId: String(button.dataset.postId || postEl.dataset.feedPostId || ""),
+      postEl: postEl
+    };
+    closeAllPostMenus();
+    setDeletePostBusy(false);
+    showDeletePostModal();
+  }
+
   if (imageInput) {
     imageInput.addEventListener("change", function () {
       handleFileSelection(imageInput, "image");
@@ -486,44 +731,58 @@
     });
   }
 
+  if (deletePostModalEl) {
+    deletePostModalEl.addEventListener("hidden.bs.modal", function () {
+      setDeletePostBusy(false);
+      deletePostState = { endpoint: "", postId: "", postEl: null };
+    });
+  }
+
+  if (deletePostConfirmButton) {
+    deletePostConfirmButton.addEventListener("click", function () {
+      const endpoint = String(deletePostState.endpoint || "").trim();
+      const postEl = deletePostState.postEl;
+      if (!endpoint || !postEl) {
+        hideDeletePostModal();
+        return;
+      }
+      setDeletePostBusy(true);
+      fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "X-Requested-With": "XMLHttpRequest"
+        }
+      })
+        .then(function (response) {
+          return response.json().catch(function () {
+            return {};
+          }).then(function (payload) {
+            if (!response.ok || !payload.ok) {
+              throw new Error(String(payload.error || "Could not delete post."));
+            }
+            return payload;
+          });
+        })
+        .then(function () {
+          hideDeletePostModal();
+          removeDeletedPost(postEl);
+          updateProfilePostCounters(-1);
+          showFeedToast("Post deleted.", "success");
+        })
+        .catch(function (error) {
+          showFeedToast(error && error.message ? error.message : "Could not delete post.", "danger");
+        })
+        .finally(function () {
+          setDeletePostBusy(false);
+        });
+    });
+  }
+
   Array.from(document.querySelectorAll("[data-feed-reaction-picker]")).forEach(function (picker) {
     const initialTrigger = picker.querySelector("[data-feed-reaction-trigger]");
     const initialReaction = initialTrigger ? String(initialTrigger.dataset.currentReaction || "").trim() : "";
     applyReactionState(picker, initialReaction);
-
-    const trigger = picker.querySelector("[data-feed-reaction-trigger]");
-    if (trigger) {
-      trigger.addEventListener("click", function () {
-        saveReaction(picker, "like");
-      });
-    }
-
-    Array.from(picker.querySelectorAll("[data-feed-reaction-option]")).forEach(function (button) {
-      button.addEventListener("click", function () {
-        saveReaction(picker, String(button.dataset.reactionType || "").trim());
-      });
-    });
-  });
-
-  Array.from(document.querySelectorAll('[data-feed-ui="share"]')).forEach(function (button) {
-    button.addEventListener("click", function () {
-      const rawUrl = String(button.dataset.shareUrl || "").trim() || window.location.href;
-      const shareUrl = new URL(rawUrl, window.location.origin).href;
-      const labelNode = button.querySelector("span:last-child");
-      const originalLabel = labelNode ? labelNode.textContent : "Share";
-      copyText(shareUrl).then(function (copied) {
-        button.classList.add("is-active");
-        if (labelNode) {
-          labelNode.textContent = copied ? "Copied" : "Share";
-        }
-        window.setTimeout(function () {
-          button.classList.remove("is-active");
-          if (labelNode) {
-            labelNode.textContent = originalLabel;
-          }
-        }, 1200);
-      });
-    });
   });
 
   if (challengeResponseModalEl && challengeResponseForm) {
@@ -613,7 +872,8 @@
       dragStartX: 0,
       dragStartY: 0,
       startOffsetX: 0,
-      startOffsetY: 0
+      startOffsetY: 0,
+      renderRaf: 0
     };
 
     function closeCoverEditor() {
@@ -657,12 +917,23 @@
       preview.style.transform = "translate(calc(-50% + " + coverState.offsetX + "px), calc(-50% + " + coverState.offsetY + "px))";
     }
 
+    function scheduleCoverPreview() {
+      if (coverState.renderRaf) {
+        return;
+      }
+      coverState.renderRaf = window.requestAnimationFrame(function () {
+        coverState.renderRaf = 0;
+        renderCoverPreview();
+      });
+    }
+
     function cropCoverToBlob() {
       return new Promise(function (resolve, reject) {
         if (!preview || !viewport || !coverState.file) {
           reject(new Error("Cover image is not ready."));
           return;
         }
+        renderCoverPreview();
         const rect = viewport.getBoundingClientRect();
         const outputWidth = 1600;
         const outputHeight = Math.round(outputWidth * rect.height / Math.max(1, rect.width));
@@ -726,7 +997,7 @@
         coverState.imageNaturalHeight = preview.naturalHeight || 1;
         editor.hidden = false;
         document.body.classList.add("modal-open", "overflow-hidden");
-        renderCoverPreview();
+        scheduleCoverPreview();
       };
       preview.src = coverState.imageUrl;
     });
@@ -734,7 +1005,7 @@
     if (zoomInput) {
       zoomInput.addEventListener("input", function () {
         coverState.zoom = Number(zoomInput.value) || 1;
-        renderCoverPreview();
+        scheduleCoverPreview();
       });
     }
 
@@ -754,7 +1025,7 @@
         }
         coverState.offsetX = coverState.startOffsetX + event.clientX - coverState.dragStartX;
         coverState.offsetY = coverState.startOffsetY + event.clientY - coverState.dragStartY;
-        renderCoverPreview();
+        scheduleCoverPreview();
       });
       viewport.addEventListener("pointerup", function (event) {
         coverState.dragging = false;
@@ -807,21 +1078,84 @@
       });
     }
 
-    window.addEventListener("resize", renderCoverPreview);
+    window.addEventListener("resize", scheduleCoverPreview, { passive: true });
   });
 
-  Array.from(document.querySelectorAll(".feed-comment-form")).forEach(initCommentForm);
-
   document.addEventListener("click", function (event) {
+    const reactionOption = event.target.closest("[data-feed-reaction-option]");
+    if (reactionOption) {
+      const picker = reactionOption.closest("[data-feed-reaction-picker]");
+      saveReaction(picker, String(reactionOption.dataset.reactionType || "").trim());
+      return;
+    }
+
+    const reactionTrigger = event.target.closest("[data-feed-reaction-trigger]");
+    if (reactionTrigger) {
+      const picker = reactionTrigger.closest("[data-feed-reaction-picker]");
+      saveReaction(picker, "like");
+      return;
+    }
+
+    const shareButton = event.target.closest('[data-feed-ui="share"]');
+    if (shareButton) {
+      const rawUrl = String(shareButton.dataset.shareUrl || "").trim() || window.location.href;
+      const shareUrl = new URL(rawUrl, window.location.origin).href;
+      const labelNode = shareButton.querySelector("span:last-child");
+      const originalLabel = labelNode ? labelNode.textContent : "Share";
+      copyText(shareUrl).then(function (copied) {
+        shareButton.classList.add("is-active");
+        if (labelNode) {
+          labelNode.textContent = copied ? "Copied" : "Share";
+        }
+        window.setTimeout(function () {
+          shareButton.classList.remove("is-active");
+          if (labelNode) {
+            labelNode.textContent = originalLabel;
+          }
+        }, 1200);
+      });
+      return;
+    }
+
+    const menuToggle = event.target.closest("[data-feed-post-menu-toggle]");
+    if (menuToggle) {
+      const menu = menuToggle.closest("[data-feed-post-menu]");
+      const expanded = menuToggle.getAttribute("aria-expanded") === "true";
+      closeAllPostMenus(menu);
+      setPostMenuOpen(menu, !expanded);
+      return;
+    }
+
+    const deleteOpenButton = event.target.closest("[data-feed-post-delete-open]");
+    if (deleteOpenButton) {
+      openDeletePostDialog(deleteOpenButton);
+      return;
+    }
+
+    if (!event.target.closest("[data-feed-post-menu]")) {
+      closeAllPostMenus();
+    }
+
     const toggleButton = event.target.closest("[data-feed-comment-toggle]");
     if (toggleButton) {
       const postEl = toggleButton.closest("[data-feed-post-id]");
-      const composer = postEl ? postEl.querySelector("[data-feed-comment-composer]") : null;
+      const commentsRoot = postEl ? postEl.querySelector("[data-feed-comments]") : null;
+      const composer = ensureCommentComposer(commentsRoot);
       const input = composer ? composer.querySelector("[data-feed-comment-input]") : null;
-      if (composer) {
-        const shouldOpen = composer.hidden;
-        composer.hidden = !shouldOpen ? true : false;
+      const form = composer ? composer.querySelector(".feed-comment-form") : null;
+      if (commentsRoot) {
+        const shouldOpen = commentsRoot.hidden;
+        commentsRoot.hidden = !shouldOpen;
+        if (composer) {
+          composer.hidden = !shouldOpen ? true : false;
+        }
         toggleButton.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+        if (shouldOpen && form) {
+          initCommentForm(form);
+        }
+        if (shouldOpen) {
+          loadComments(commentsRoot);
+        }
         if (shouldOpen && input) {
           input.focus();
         }
@@ -867,4 +1201,14 @@
       Array.from(document.querySelectorAll("[data-feed-mention-list]")).forEach(hideMentionList);
     }
   });
+
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") {
+      closeAllPostMenus();
+    }
+  });
+  if (window.CtsPerf && typeof window.CtsPerf.recordInit === "function") {
+    const feedInitEnded = performance && typeof performance.now === "function" ? performance.now() : Date.now();
+    window.CtsPerf.recordInit("feed init", feedInitEnded - feedInitStarted, String(document.querySelectorAll("[data-feed-post-id]").length || 0));
+  }
 })();

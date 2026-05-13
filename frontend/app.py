@@ -1,10 +1,11 @@
 import warnings
 import importlib.util
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file, send_from_directory, Response, session, abort, g
+from flask import Flask, render_template, render_template_string, request, redirect, url_for, flash, jsonify, send_file, send_from_directory, Response, session, abort, g, has_request_context
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from sqlalchemy import and_, asc, case, desc, exists, func, literal_column, or_, tuple_, update
+from sqlalchemy import and_, asc, case, desc, event, exists, func, literal_column, or_, tuple_, update
+from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError, OperationalError
 from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -24,7 +25,7 @@ import hashlib
 import html
 import json
 import mimetypes
-from collections import defaultdict, Counter
+from collections import defaultdict, Counter, deque
 import csv
 import difflib
 from io import BytesIO, StringIO
@@ -995,6 +996,396 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
 
+PERF_ROUTE_LOG_MS = float(os.getenv("CTS_PERF_ROUTE_LOG_MS", "750") or 750)
+PERF_QUERY_LOG_MS = float(os.getenv("CTS_PERF_QUERY_LOG_MS", "150") or 150)
+_PERF_MAX_SAMPLES = 100
+_PERF_LOCK = threading.Lock()
+_PERF_SLOW_ROUTES: deque[dict[str, object]] = deque(maxlen=_PERF_MAX_SAMPLES)
+_PERF_SLOW_SQL: deque[dict[str, object]] = deque(maxlen=_PERF_MAX_SAMPLES)
+_PERF_LATEST_QUERY_GROUPS: deque[dict[str, object]] = deque(maxlen=20)
+_PERF_ROUTE_AGG: dict[str, dict[str, object]] = {}
+_PERF_QUERY_GROUP_AGG: dict[str, dict[str, object]] = {}
+_PERF_TOTAL_SLOW_SQL = 0
+
+
+def _perf_request_stats() -> dict[str, object]:
+    stats = getattr(g, "_perf_sql_stats", None)
+    if isinstance(stats, dict):
+        return stats
+    stats = {"count": 0, "total_ms": 0.0, "slow_count": 0, "query_groups": {}}
+    g._perf_sql_stats = stats
+    return stats
+
+
+def _perf_endpoint_label() -> str:
+    try:
+        rule = getattr(request, "url_rule", None)
+        rule_text = getattr(rule, "rule", None)
+        if rule_text:
+            return f"{request.method} {rule_text}"
+        return f"{request.method} {request.path}"
+    except RuntimeError:
+        return "background"
+
+
+def _perf_sql_fingerprint(statement: str) -> str:
+    compact_statement = re.sub(r"\s+", " ", str(statement or "")).strip()
+    compact_statement = re.sub(r"IN \((?:\?,?\s*){2,}\)", "IN (?)", compact_statement)
+    compact_statement = re.sub(r"VALUES \((?:\?,?\s*){2,}\)", "VALUES (?)", compact_statement)
+    return compact_statement[:500]
+
+
+def _perf_record_slow_sql(elapsed_ms: float, statement: str) -> None:
+    global _PERF_TOTAL_SLOW_SQL
+    compact_statement = re.sub(r"\s+", " ", str(statement or "")).strip()
+    sample = {
+        "timestamp": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "elapsed_ms": round(float(elapsed_ms), 1),
+        "endpoint": request.endpoint if has_request_context() else "background",
+        "route": _perf_endpoint_label() if has_request_context() else "background",
+        "statement": compact_statement[:500],
+    }
+    with _PERF_LOCK:
+        _PERF_TOTAL_SLOW_SQL += 1
+        _PERF_SLOW_SQL.appendleft(sample)
+
+
+def _perf_record_route(
+    *,
+    elapsed_ms: float,
+    response: Response,
+    sql_count: int,
+    sql_ms: float,
+    slow_sql: int,
+    query_groups: dict[str, dict[str, object]],
+) -> None:
+    key = _perf_endpoint_label()
+    response_bytes = int(response.calculate_content_length() or 0)
+    top_query_groups = sorted(
+        query_groups.values(),
+        key=lambda item: (float(item.get("total_ms", 0.0)), int(item.get("count", 0))),
+        reverse=True,
+    )[:10]
+    sample = {
+        "timestamp": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "endpoint": request.endpoint or "",
+        "route": key,
+        "status": int(response.status_code),
+        "elapsed_ms": round(float(elapsed_ms), 1),
+        "sql_count": int(sql_count),
+        "sql_ms": round(float(sql_ms), 1),
+        "slow_sql": int(slow_sql),
+        "response_bytes": response_bytes,
+    }
+    query_group_sample = {
+        "timestamp": sample["timestamp"],
+        "route": key,
+        "sql_count": int(sql_count),
+        "sql_ms": round(float(sql_ms), 1),
+        "groups": [
+            {
+                "sql": str(item.get("sql", "")),
+                "count": int(item.get("count", 0)),
+                "total_ms": round(float(item.get("total_ms", 0.0)), 1),
+                "max_ms": round(float(item.get("max_ms", 0.0)), 1),
+            }
+            for item in top_query_groups
+        ],
+    }
+    with _PERF_LOCK:
+        agg = _PERF_ROUTE_AGG.setdefault(
+            key,
+            {
+                "route": key,
+                "endpoint": request.endpoint or "",
+                "count": 0,
+                "total_ms": 0.0,
+                "max_ms": 0.0,
+                "total_sql_count": 0,
+                "total_sql_ms": 0.0,
+                "slow_sql": 0,
+                "total_response_bytes": 0,
+                "max_response_bytes": 0,
+            },
+        )
+        agg["count"] = int(agg.get("count", 0)) + 1
+        agg["total_ms"] = float(agg.get("total_ms", 0.0)) + float(elapsed_ms)
+        agg["max_ms"] = max(float(agg.get("max_ms", 0.0)), float(elapsed_ms))
+        agg["total_sql_count"] = int(agg.get("total_sql_count", 0)) + int(sql_count)
+        agg["total_sql_ms"] = float(agg.get("total_sql_ms", 0.0)) + float(sql_ms)
+        agg["slow_sql"] = int(agg.get("slow_sql", 0)) + int(slow_sql)
+        agg["total_response_bytes"] = int(agg.get("total_response_bytes", 0)) + response_bytes
+        agg["max_response_bytes"] = max(int(agg.get("max_response_bytes", 0)), response_bytes)
+        _PERF_LATEST_QUERY_GROUPS.appendleft(query_group_sample)
+        for item in query_groups.values():
+            sql = str(item.get("sql", ""))
+            qagg = _PERF_QUERY_GROUP_AGG.setdefault(
+                sql,
+                {
+                    "sql": sql,
+                    "count": 0,
+                    "total_ms": 0.0,
+                    "max_ms": 0.0,
+                },
+            )
+            qagg["count"] = int(qagg.get("count", 0)) + int(item.get("count", 0))
+            qagg["total_ms"] = float(qagg.get("total_ms", 0.0)) + float(item.get("total_ms", 0.0))
+            qagg["max_ms"] = max(float(qagg.get("max_ms", 0.0)), float(item.get("max_ms", 0.0)))
+        if elapsed_ms >= PERF_ROUTE_LOG_MS or slow_sql:
+            _PERF_SLOW_ROUTES.appendleft(sample)
+
+
+def _perf_snapshot() -> dict[str, object]:
+    with _PERF_LOCK:
+        route_rows = []
+        for item in _PERF_ROUTE_AGG.values():
+            count = max(1, int(item.get("count", 0)))
+            total_ms = float(item.get("total_ms", 0.0))
+            total_sql_count = int(item.get("total_sql_count", 0))
+            route_rows.append(
+                {
+                    "route": item.get("route", ""),
+                    "endpoint": item.get("endpoint", ""),
+                    "count": count,
+                    "avg_ms": round(total_ms / count, 1),
+                    "max_ms": round(float(item.get("max_ms", 0.0)), 1),
+                    "avg_sql_count": round(total_sql_count / count, 1),
+                    "slow_sql": int(item.get("slow_sql", 0)),
+                    "avg_kb": round((int(item.get("total_response_bytes", 0)) / count) / 1024, 1),
+                    "max_kb": round(int(item.get("max_response_bytes", 0)) / 1024, 1),
+                }
+            )
+        route_rows.sort(key=lambda item: (float(item["avg_ms"]), float(item["max_ms"])), reverse=True)
+        payload_rows = sorted(route_rows, key=lambda item: (float(item["avg_kb"]), float(item["max_kb"])), reverse=True)[:20]
+        query_group_rows = []
+        for item in _PERF_QUERY_GROUP_AGG.values():
+            count = max(1, int(item.get("count", 0)))
+            total_ms = float(item.get("total_ms", 0.0))
+            query_group_rows.append(
+                {
+                    "sql": item.get("sql", ""),
+                    "count": count,
+                    "total_ms": round(total_ms, 1),
+                    "avg_ms": round(total_ms / count, 2),
+                    "max_ms": round(float(item.get("max_ms", 0.0)), 1),
+                }
+            )
+        query_group_rows.sort(key=lambda item: (float(item["total_ms"]), int(item["count"])), reverse=True)
+        latest_query_groups = []
+        for sample in list(_PERF_LATEST_QUERY_GROUPS)[:10]:
+            for group in list(sample.get("groups", []))[:5]:
+                latest_query_groups.append(
+                    {
+                        "timestamp": sample.get("timestamp", ""),
+                        "route": sample.get("route", ""),
+                        "request_sql_count": sample.get("sql_count", 0),
+                        "group_count": group.get("count", 0),
+                        "group_total_ms": group.get("total_ms", 0),
+                        "group_max_ms": group.get("max_ms", 0),
+                        "sql": group.get("sql", ""),
+                    }
+                )
+        return {
+            "route_threshold_ms": PERF_ROUTE_LOG_MS,
+            "query_threshold_ms": PERF_QUERY_LOG_MS,
+            "latest_slow_routes": list(_PERF_SLOW_ROUTES),
+            "latest_slow_sql": list(_PERF_SLOW_SQL),
+            "latest_query_groups": latest_query_groups,
+            "heaviest_query_groups": query_group_rows[:20],
+            "total_slow_sql": _PERF_TOTAL_SLOW_SQL,
+            "heaviest_routes": route_rows[:20],
+            "heaviest_payload_routes": payload_rows,
+        }
+
+
+def _perf_table(headers: list[str], rows: list[dict[str, object]], keys: list[str]) -> str:
+    if not rows:
+        return '<p class="text-muted">No samples recorded yet.</p>'
+    thead = "".join(f"<th>{html.escape(header)}</th>" for header in headers)
+    body_rows = []
+    for row in rows:
+        cells = "".join(f"<td>{html.escape(str(row.get(key, '')))}</td>" for key in keys)
+        body_rows.append(f"<tr>{cells}</tr>")
+    return '<div class="table-responsive"><table class="table table-sm table-striped align-middle"><thead><tr>' + thead + "</tr></thead><tbody>" + "".join(body_rows) + "</tbody></table></div>"
+
+
+@app.route("/admin/performance-diagnostics")
+@login_required
+def admin_performance_diagnostics():
+    if not getattr(current_user, "is_admin", False):
+        abort(403)
+    snapshot = _perf_snapshot()
+    frontend_script = """
+      <script>
+        (function () {
+          var el = document.getElementById("frontendDiagnostics");
+          if (!el) return;
+          try {
+            var raw = window.localStorage.getItem("ctsPerfFrontendLatest");
+            if (!raw) return;
+            var data = JSON.parse(raw);
+            var resources = Array.isArray(data.slowestResources) ? data.slowestResources : [];
+            var initTimings = Array.isArray(data.initTimings) ? data.initTimings.slice() : [];
+            initTimings.sort(function (a, b) { return Number(b.duration || 0) - Number(a.duration || 0); });
+            var rows = [
+              ["Path", data.path || ""],
+              ["Captured", data.timestamp || ""],
+              ["DOM nodes", data.domNodes || 0],
+              ["Scripts", data.scripts || 0],
+              ["Stylesheets", data.stylesheets || 0],
+              ["Images", data.images || 0],
+              ["Chart hosts", data.chartHosts || 0],
+              ["Lottie elements", data.lottieElements || 0],
+              ["Active Lotties", data.activeLotties || 0],
+              ["Navigation duration", (data.navigationDuration || 0) + " ms"],
+              ["Payload transfer", (data.transferKb || 0) + " KB"]
+            ];
+            el.innerHTML = rows.map(function (row) {
+              return '<div class="d-flex justify-content-between gap-3 border-bottom py-1"><strong>' +
+                String(row[0]) + '</strong><span class="text-end">' + String(row[1]) + '</span></div>';
+            }).join("") + (resources.length ? '<div class="mt-3"><strong>Slowest frontend resources</strong><ol class="small mb-0 mt-2">' +
+              resources.map(function (item) {
+                return '<li>' + String(item.name || '').slice(0, 110) + ' - ' + String(item.duration || 0) + ' ms</li>';
+              }).join("") + '</ol></div>' : "") + (initTimings.length ? '<div class="mt-3"><strong>Slowest frontend init blocks</strong><ol class="small mb-0 mt-2">' +
+              initTimings.slice(0, 8).map(function (item) {
+                return '<li>' + String(item.name || 'init') + ' - ' + String(item.duration || 0) + ' ms' + (item.detail ? ' (' + String(item.detail) + ')' : '') + '</li>';
+              }).join("") + '</ol></div>' : "");
+          } catch (e) {}
+        })();
+      </script>
+    """
+    html_body = f"""
+    <section class="container py-4">
+      <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap mb-4">
+        <div>
+          <p class="text-uppercase text-muted small fw-bold mb-1">Internal diagnostics</p>
+          <h1 class="h3 mb-1">Performance Diagnostics</h1>
+          <p class="text-muted mb-0">In-memory route and SQL timing samples for this Flask process.</p>
+        </div>
+        <a class="btn btn-outline-secondary btn-sm" href="{html.escape(url_for('admin_performance_diagnostics'))}">Refresh</a>
+      </div>
+      <div class="row g-3 mb-4">
+        <div class="col-md-4"><div class="border rounded p-3 h-100"><div class="text-muted small">Slow route threshold</div><div class="fs-4 fw-bold">{float(snapshot['route_threshold_ms']):.0f} ms</div></div></div>
+        <div class="col-md-4"><div class="border rounded p-3 h-100"><div class="text-muted small">Slow SQL threshold</div><div class="fs-4 fw-bold">{float(snapshot['query_threshold_ms']):.0f} ms</div></div></div>
+        <div class="col-md-4"><div class="border rounded p-3 h-100"><div class="text-muted small">Slow SQL samples</div><div class="fs-4 fw-bold">{int(snapshot['total_slow_sql'])}</div></div></div>
+      </div>
+      <h2 class="h5">Heaviest Routes</h2>
+      {_perf_table(['Route', 'Endpoint', 'Count', 'Avg ms', 'Max ms', 'Avg SQL count', 'Slow SQL'], snapshot['heaviest_routes'], ['route', 'endpoint', 'count', 'avg_ms', 'max_ms', 'avg_sql_count', 'slow_sql'])}
+      <h2 class="h5 mt-4">Heaviest Payload Routes</h2>
+      {_perf_table(['Route', 'Endpoint', 'Count', 'Avg KB', 'Max KB', 'Avg ms'], snapshot['heaviest_payload_routes'], ['route', 'endpoint', 'count', 'avg_kb', 'max_kb', 'avg_ms'])}
+      <h2 class="h5 mt-4">Latest Browser Frontend Metrics</h2>
+      <p class="text-muted small">Collected in this browser after page load/idle. Open a target page, then return here to see its latest DOM/resource snapshot.</p>
+      <div id="frontendDiagnostics" class="border rounded p-3 text-muted">No browser metrics recorded yet.</div>
+      <h2 class="h5 mt-4">Latest Slow Routes</h2>
+      {_perf_table(['Time', 'Route', 'Status', 'Elapsed ms', 'SQL count', 'SQL ms', 'Slow SQL'], snapshot['latest_slow_routes'], ['timestamp', 'route', 'status', 'elapsed_ms', 'sql_count', 'sql_ms', 'slow_sql'])}
+      <h2 class="h5 mt-4">Latest Slow SQL</h2>
+      {_perf_table(['Time', 'Route', 'Elapsed ms', 'Statement'], snapshot['latest_slow_sql'], ['timestamp', 'route', 'elapsed_ms', 'statement'])}
+      <h2 class="h5 mt-4">Heaviest Query Groups</h2>
+      {_perf_table(['Count', 'Total ms', 'Avg ms', 'Max ms', 'SQL fingerprint'], snapshot['heaviest_query_groups'], ['count', 'total_ms', 'avg_ms', 'max_ms', 'sql'])}
+      <h2 class="h5 mt-4">Latest Request Query Groups</h2>
+      {_perf_table(['Time', 'Route', 'Request SQL count', 'Group count', 'Group total ms', 'Group max ms', 'SQL fingerprint'], snapshot['latest_query_groups'], ['timestamp', 'route', 'request_sql_count', 'group_count', 'group_total_ms', 'group_max_ms', 'sql'])}
+      {frontend_script}
+    </section>
+    """
+    return render_template_string(
+        '{% extends "base.html" %}{% block title %}Performance Diagnostics{% endblock %}{% block content %}{{ content }}{% endblock %}',
+        content=Markup(html_body),
+        use_app_sidebar=True,
+    )
+
+
+@event.listens_for(Engine, "before_cursor_execute")
+def _perf_before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    context._cts_perf_query_started = time.perf_counter()
+
+
+@event.listens_for(Engine, "after_cursor_execute")
+def _perf_after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    started = getattr(context, "_cts_perf_query_started", None)
+    if not started:
+        return
+    elapsed_ms = (time.perf_counter() - started) * 1000.0
+    if has_request_context():
+        stats = _perf_request_stats()
+        stats["count"] = int(stats.get("count", 0)) + 1
+        stats["total_ms"] = float(stats.get("total_ms", 0.0)) + elapsed_ms
+        fingerprint = _perf_sql_fingerprint(statement)
+        query_groups = stats.setdefault("query_groups", {})
+        if isinstance(query_groups, dict):
+            group = query_groups.setdefault(
+                fingerprint,
+                {"sql": fingerprint, "count": 0, "total_ms": 0.0, "max_ms": 0.0},
+            )
+            group["count"] = int(group.get("count", 0)) + 1
+            group["total_ms"] = float(group.get("total_ms", 0.0)) + elapsed_ms
+            group["max_ms"] = max(float(group.get("max_ms", 0.0)), elapsed_ms)
+        if elapsed_ms >= PERF_QUERY_LOG_MS:
+            stats["slow_count"] = int(stats.get("slow_count", 0)) + 1
+            compact_statement = re.sub(r"\s+", " ", str(statement or "")).strip()
+            _perf_record_slow_sql(elapsed_ms, compact_statement)
+            app.logger.warning(
+                "[PERF][SQL] %.1fms endpoint=%s statement=%s",
+                elapsed_ms,
+                request.endpoint if request else None,
+                compact_statement[:500],
+            )
+        return
+    if elapsed_ms >= PERF_QUERY_LOG_MS:
+        compact_statement = re.sub(r"\s+", " ", str(statement or "")).strip()
+        _perf_record_slow_sql(elapsed_ms, compact_statement)
+        app.logger.warning("[PERF][SQL] %.1fms statement=%s", elapsed_ms, compact_statement[:500])
+
+
+@app.before_request
+def _perf_start_request_timer():
+    g._perf_request_started = time.perf_counter()
+    g._perf_sql_stats = {"count": 0, "total_ms": 0.0, "slow_count": 0, "query_groups": {}}
+
+
+@app.after_request
+def _perf_log_slow_request(response: Response):
+    started = getattr(g, "_perf_request_started", None)
+    if not started:
+        return response
+    elapsed_ms = (time.perf_counter() - started) * 1000.0
+    stats = _perf_request_stats()
+    sql_count = int(stats.get("count", 0))
+    sql_ms = float(stats.get("total_ms", 0.0))
+    slow_sql = int(stats.get("slow_count", 0))
+    query_groups = stats.get("query_groups", {})
+    if not isinstance(query_groups, dict):
+        query_groups = {}
+    response.headers["X-CTS-Response-Time-ms"] = f"{elapsed_ms:.1f}"
+    response.headers["X-CTS-SQL-Count"] = str(sql_count)
+    _perf_record_route(
+        elapsed_ms=elapsed_ms,
+        response=response,
+        sql_count=sql_count,
+        sql_ms=sql_ms,
+        slow_sql=slow_sql,
+        query_groups=query_groups,
+    )
+    if elapsed_ms >= PERF_ROUTE_LOG_MS or slow_sql:
+        app.logger.warning(
+            "[PERF][ROUTE] %.1fms endpoint=%s method=%s path=%s status=%s sql_count=%s sql_ms=%.1f slow_sql=%s",
+            elapsed_ms,
+            request.endpoint,
+            request.method,
+            request.path,
+            response.status_code,
+            sql_count,
+            sql_ms,
+            slow_sql,
+        )
+    return response
+
+
+@app.after_request
+def _apply_safe_cache_headers(response: Response):
+    if request.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "public, max-age=86400"
+    return response
+
 _EVIDENCE_MAX_SIZE_USER_MSG = "File exceeds maximum allowed size (25MB)."
 
 
@@ -1138,6 +1529,7 @@ def _enforce_readonly_auditor_access():
     }
     blocked_write_endpoints = {
         "create_feed_post",
+        "delete_feed_post",
         "api_feed_post_reaction",
         "create_challenge",
         "submit_challenge_response",
@@ -3254,35 +3646,51 @@ def _export_internal_supplier_dc_tokens_safe() -> None:
         pass
 
 
+_DB_TABLES_ENSURED = False
+_DB_TABLES_ENSURE_LOCK = threading.Lock()
+
+
 def _ensure_db_tables() -> None:
     """
     Best-effort table creation for environments that don't run app.py directly.
-    Safe to call within request context.
+    Safe to call within request context. The expensive inspector/bootstrap work
+    runs at most once per process.
     """
-    try:
-        db.create_all()
-        _migrate_employee_commuting_legacy_tables()
-        _ensure_mapping_run_summary_columns()
-        _ensure_data_entry_columns()
-        _ensure_mapping_run_source_entry_group_column()
-        _ensure_user_profile_columns()
-        _ensure_user_last_seen_column()
-        _ensure_page_visit_event_indexes()
-        _ensure_feed_post_reference_columns()
-        _ensure_report_category_columns()
-        _ensure_awards_form_columns()
-        _ensure_mapping_unmapped_row_columns()
-        _ensure_mapping_unmapped_perf_indexes()
-        _ensure_mapping_review_snapshot_columns()
-        _ensure_mapping_review_snapshot_perf_indexes()
-        _ensure_mapping_preview_archive_indexes()
-        _ensure_evidence_tables_columns()
-        _ensure_governance_register_columns()
-        _ensure_notification_meta_json_column()
-        _migrate_profile_photos_to_storage_once()
-        _supplier_mgmt_post_bootstrap()
-    except Exception:
-        pass
+    global _DB_TABLES_ENSURED
+    if _DB_TABLES_ENSURED:
+        return
+    with _DB_TABLES_ENSURE_LOCK:
+        if _DB_TABLES_ENSURED:
+            return
+        ok = False
+        try:
+            db.create_all()
+            _migrate_employee_commuting_legacy_tables()
+            _ensure_mapping_run_summary_columns()
+            _ensure_data_entry_columns()
+            _ensure_mapping_run_source_entry_group_column()
+            _ensure_user_profile_columns()
+            _ensure_user_last_seen_column()
+            _ensure_page_visit_event_indexes()
+            _ensure_feed_post_reference_columns()
+            _ensure_report_category_columns()
+            _ensure_awards_form_columns()
+            _ensure_mapping_unmapped_row_columns()
+            _ensure_mapping_unmapped_perf_indexes()
+            _ensure_mapping_review_snapshot_columns()
+            _ensure_mapping_review_snapshot_perf_indexes()
+            _ensure_mapping_preview_archive_indexes()
+            _ensure_evidence_tables_columns()
+            _ensure_governance_register_columns()
+            _ensure_notification_meta_json_column()
+            _migrate_profile_photos_to_storage_once()
+            _supplier_mgmt_post_bootstrap()
+            ok = True
+        except Exception:
+            pass
+        if ok:
+            _DB_TABLES_ENSURED = True
+        return
 
 
 def _ensure_page_visit_event_indexes() -> None:
@@ -4099,19 +4507,86 @@ def _company_logo_static_rel(template_company_key: str) -> str | None:
     key = (template_company_key or "").strip()
     if not key:
         return None
+    try:
+        cache = getattr(g, "_company_logo_static_rel_cache", None)
+        if isinstance(cache, dict) and key in cache:
+            return cache[key]
+    except RuntimeError:
+        cache = None
     slug_rel = _canonical_company_logo_slug_rel(key)
     if slug_rel:
+        try:
+            cache = getattr(g, "_company_logo_static_rel_cache", None)
+            if isinstance(cache, dict):
+                cache[key] = slug_rel
+        except RuntimeError:
+            pass
         return slug_rel
     row = Company.query.filter_by(company_name=key).first()
     if not row or not row.company_logo_path:
+        try:
+            cache = getattr(g, "_company_logo_static_rel_cache", None)
+            if isinstance(cache, dict):
+                cache[key] = None
+        except RuntimeError:
+            pass
         return None
     p = APP_DIR / "static" / row.company_logo_path
     try:
         if p.is_file():
+            try:
+                cache = getattr(g, "_company_logo_static_rel_cache", None)
+                if isinstance(cache, dict):
+                    cache[key] = row.company_logo_path
+            except RuntimeError:
+                pass
             return row.company_logo_path
     except Exception:
         pass
+    try:
+        cache = getattr(g, "_company_logo_static_rel_cache", None)
+        if isinstance(cache, dict):
+            cache[key] = None
+    except RuntimeError:
+        pass
     return None
+
+
+def _prime_company_logo_static_rel_cache(company_names: list[str]) -> None:
+    clean_names = []
+    seen = set()
+    for raw in company_names:
+        key = str(raw or "").strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        clean_names.append(key)
+    if not clean_names:
+        return
+    cache: dict[str, str | None] = {}
+    missing_db_names: list[str] = []
+    for key in clean_names:
+        slug_rel = _canonical_company_logo_slug_rel(key)
+        cache[key] = slug_rel
+        if not slug_rel:
+            missing_db_names.append(key)
+    if missing_db_names:
+        rows = Company.query.filter(Company.company_name.in_(missing_db_names)).all()
+        rows_by_name = {str(row.company_name or "").strip(): row for row in rows}
+        for key in missing_db_names:
+            row = rows_by_name.get(key)
+            rel = str(getattr(row, "company_logo_path", "") or "").strip() if row else ""
+            if rel:
+                try:
+                    cache[key] = rel if (APP_DIR / "static" / rel).is_file() else None
+                except Exception:
+                    cache[key] = None
+            else:
+                cache[key] = None
+    try:
+        g._company_logo_static_rel_cache = cache
+    except RuntimeError:
+        pass
 
 
 def _save_profile_photo_file(storage, user_id: int) -> str | None:
@@ -5003,6 +5478,34 @@ def _save_feed_media_file(storage, *, user_id: int) -> tuple[str | None, str | N
     return (dest.relative_to(APP_DIR / "static").as_posix(), media_type, None)
 
 
+def _delete_feed_media_file(rel_path: str | None) -> None:
+    rel = str(rel_path or "").strip().replace("\\", "/")
+    if not rel.startswith("feed_uploads/"):
+        return
+    try:
+        static_root = (APP_DIR / "static").resolve()
+        upload_root = (static_root / "feed_uploads").resolve()
+        target = (static_root / rel).resolve()
+        if upload_root in target.parents and target.is_file():
+            target.unlink()
+    except Exception:
+        pass
+
+
+def _user_can_delete_feed_post(row: FeedPost | None, user: object | None) -> bool:
+    if row is None or user is None or not getattr(user, "is_authenticated", False):
+        return False
+    if _is_readonly_user(user):
+        return False
+    if int(getattr(row, "author_user_id", 0) or 0) == int(getattr(user, "id", 0) or 0):
+        return True
+    raw_role = getattr(user, "role", None)
+    role = normalize_user_role(raw_role)
+    if role in {"owner", "super_admin", "admin"}:
+        return True
+    return bool(getattr(user, "is_admin", False) and not raw_role)
+
+
 def _json_list(value: object) -> list[str]:
     if isinstance(value, list):
         return [str(item).strip() for item in value if str(item).strip()]
@@ -5190,12 +5693,19 @@ def _event_payload(row: Event | None) -> dict[str, object] | None:
     }
 
 
-def _award_form_payload(row: AwardsForm | None) -> dict[str, object] | None:
+def _award_form_payload(
+    row: AwardsForm | None,
+    *,
+    submission_count: int | None = None,
+    question_count: int | None = None,
+) -> dict[str, object] | None:
     if row is None:
         return None
     creator = getattr(row, "creator", None)
-    submission_count = AwardsSubmission.query.filter_by(form_id=int(row.id)).count()
-    question_count = AwardsQuestion.query.filter_by(form_id=int(row.id)).count()
+    if submission_count is None:
+        submission_count = AwardsSubmission.query.filter_by(form_id=int(row.id)).count()
+    if question_count is None:
+        question_count = AwardsQuestion.query.filter_by(form_id=int(row.id)).count()
     return {
         "id": int(row.id),
         "title": str(getattr(row, "title", "") or "").strip() or "Untitled award",
@@ -5504,10 +6014,15 @@ def _awards_single_choice_analytics(form_id: int) -> list[dict[str, object]]:
     return analytics
 
 
-def _challenge_payload(row: Challenge | None) -> dict[str, object] | None:
+def _challenge_payload(
+    row: Challenge | None,
+    *,
+    response_count: int | None = None,
+) -> dict[str, object] | None:
     if row is None:
         return None
-    response_count = ChallengeResponse.query.filter_by(challenge_id=int(row.id)).count()
+    if response_count is None:
+        response_count = ChallengeResponse.query.filter_by(challenge_id=int(row.id)).count()
     deadline = getattr(row, "deadline", None)
     deadline_label = deadline.strftime("%d %b %Y %H:%M") if isinstance(deadline, datetime) else ""
     return {
@@ -5600,10 +6115,14 @@ def _comment_payload(
     *,
     like_count: int = 0,
     liked_by_viewer: bool = False,
+    mention_user_map: dict[int, User] | None = None,
 ) -> dict[str, object]:
     author = getattr(row, "user", None)
     mention_ids = _json_int_list(getattr(row, "mentioned_user_ids_json", None))
-    mention_users = User.query.filter(User.id.in_(mention_ids)).all() if mention_ids else []
+    if mention_user_map is not None:
+        mention_users = [mention_user_map[uid] for uid in mention_ids if uid in mention_user_map]
+    else:
+        mention_users = User.query.filter(User.id.in_(mention_ids)).all() if mention_ids else []
     return {
         "id": int(row.id),
         "post_id": int(getattr(row, "post_id", 0) or 0),
@@ -5650,6 +6169,13 @@ def _comment_payload_maps(post_ids: list[int], viewer_user_id: int) -> tuple[dic
             CommentLike.user_id == int(viewer_user_id or 0),
         ).all()
     } if viewer_user_id else set()
+    mention_ids: set[int] = set()
+    for row in rows:
+        mention_ids.update(_json_int_list(getattr(row, "mentioned_user_ids_json", None)))
+    mention_user_map: dict[int, User] = {
+        int(user.id): user
+        for user in User.query.filter(User.id.in_(list(mention_ids))).all()
+    } if mention_ids else {}
     payload_map: dict[int, list[dict[str, object]]] = {post_id: [] for post_id in post_ids}
     count_map: dict[int, int] = {post_id: 0 for post_id in post_ids}
     for row in rows:
@@ -5658,10 +6184,25 @@ def _comment_payload_maps(post_ids: list[int], viewer_user_id: int) -> tuple[dic
             row,
             like_count=like_counts.get(int(row.id), 0),
             liked_by_viewer=int(row.id) in liked_ids,
+            mention_user_map=mention_user_map,
         )
         payload_map.setdefault(post_id, []).append(payload)
         count_map[post_id] = count_map.get(post_id, 0) + 1
     return payload_map, count_map
+
+
+def _comment_count_map(post_ids: list[int]) -> dict[int, int]:
+    if not post_ids:
+        return {}
+    return {
+        int(post_id): int(total or 0)
+        for post_id, total in (
+            db.session.query(Comment.post_id, db.func.count(Comment.id))
+            .filter(Comment.post_id.in_(post_ids))
+            .group_by(Comment.post_id)
+            .all()
+        )
+    }
 
 
 def _feed_post_payload(
@@ -5670,16 +6211,30 @@ def _feed_post_payload(
     reaction_summary: list[dict[str, object]] | None = None,
     current_reaction: str | None = None,
     comments: list[dict[str, object]] | None = None,
+    comment_count: int | None = None,
+    reference_payloads: dict[tuple[str, int], dict[str, object] | None] | None = None,
 ) -> dict[str, object]:
     author = getattr(row, "author", None)
     normalized_reference_type = _normalize_feed_reference_type(getattr(row, "reference_type", None))
     reference_id = int(getattr(row, "reference_id", 0) or 0)
-    report_payload = _report_payload(Report.query.get(reference_id)) if normalized_reference_type == "report" and reference_id else None
-    newsletter_payload = _newsletter_payload(Newsletter.query.get(reference_id)) if normalized_reference_type == "newsletter" and reference_id else None
-    event_payload = _event_payload(Event.query.get(reference_id)) if normalized_reference_type == "event" and reference_id else None
-    award_payload = _award_form_payload(AwardsForm.query.get(reference_id)) if normalized_reference_type == "award" and reference_id else None
-    challenge_payload = _challenge_payload(Challenge.query.get(reference_id)) if normalized_reference_type == "challenge" and reference_id else None
-    response_payload = _challenge_response_payload(ChallengeResponse.query.get(reference_id)) if normalized_reference_type == "challenge_response" and reference_id else None
+    reference_payload = (
+        reference_payloads.get((normalized_reference_type, reference_id))
+        if reference_payloads is not None and normalized_reference_type and reference_id
+        else None
+    )
+    report_payload = reference_payload if normalized_reference_type == "report" else None
+    newsletter_payload = reference_payload if normalized_reference_type == "newsletter" else None
+    event_payload = reference_payload if normalized_reference_type == "event" else None
+    award_payload = reference_payload if normalized_reference_type == "award" else None
+    challenge_payload = reference_payload if normalized_reference_type == "challenge" else None
+    response_payload = reference_payload if normalized_reference_type == "challenge_response" else None
+    if reference_payloads is None:
+        report_payload = _report_payload(Report.query.get(reference_id)) if normalized_reference_type == "report" and reference_id else None
+        newsletter_payload = _newsletter_payload(Newsletter.query.get(reference_id)) if normalized_reference_type == "newsletter" and reference_id else None
+        event_payload = _event_payload(Event.query.get(reference_id)) if normalized_reference_type == "event" and reference_id else None
+        award_payload = _award_form_payload(AwardsForm.query.get(reference_id)) if normalized_reference_type == "award" and reference_id else None
+        challenge_payload = _challenge_payload(Challenge.query.get(reference_id)) if normalized_reference_type == "challenge" and reference_id else None
+        response_payload = _challenge_response_payload(ChallengeResponse.query.get(reference_id)) if normalized_reference_type == "challenge_response" and reference_id else None
     company_name = (getattr(author, "company_name", None) or "").strip() or "CTS Carbon Platform"
     author_title = _user_professional_title(author)
     author_name = _user_display_name(author) or "CTS User"
@@ -5714,12 +6269,14 @@ def _feed_post_payload(
         "challenge_response": response_payload,
         "can_respond_to_challenge": bool(challenge_payload and not _is_readonly_user(current_user) and challenge_payload.get("is_open")),
         "comments": comment_rows,
-        "comment_count": len(comment_rows),
+        "comment_count": int(comment_count if comment_count is not None else len(comment_rows)),
         "reaction_summary": summary,
         "reaction_total": sum(int(item.get("count") or 0) for item in summary),
         "current_reaction": str(reaction_state.get("type") or ""),
         "current_reaction_label": str(reaction_state.get("label") or "Like"),
         "current_reaction_icon": str(reaction_state.get("icon") or "👍"),
+        "can_delete": _user_can_delete_feed_post(row, current_user),
+        "delete_url": url_for("delete_feed_post", post_id=int(row.id)),
     }
 
 
@@ -14202,6 +14759,34 @@ def _country_flag_emoji(raw_code: object) -> str:
     return "".join(chr(0x1F1E6 + ord(char) - ord("A")) for char in code)
 
 
+def _country_code_for_name(raw_name: object) -> str:
+    name = str(raw_name or "").strip().lower()
+    if not name:
+        return ""
+    for item_code, item_name in ISO_COUNTRIES:
+        if str(item_name or "").strip().lower() == name:
+            return str(item_code or "").strip().upper()
+    return ""
+
+
+def _profile_country_display(u: User | None) -> dict[str, str]:
+    if u is None:
+        return {"flag": "", "name": ""}
+    raw_code = str(getattr(u, "company_country", None) or "").strip().upper()
+    country_name = ""
+    country_code = raw_code if re.fullmatch(r"[A-Z]{2}", raw_code) else ""
+    if country_code:
+        for item_code, item_name in ISO_COUNTRIES:
+            if str(item_code).strip().upper() == country_code:
+                country_name = str(item_name or "").strip()
+                break
+    if not country_name:
+        _company, canonical_country = _canonical_company_name_and_country(getattr(u, "company_name", "") or "")
+        country_name = str(canonical_country or "").strip()
+        country_code = _country_code_for_name(country_name)
+    return {"flag": _country_flag_emoji(country_code), "name": country_name}
+
+
 def _profile_location_label(u: User | None) -> str:
     if u is None:
         return ""
@@ -14258,16 +14843,84 @@ def _suggested_profile_users(user_id: int, *, company_name: str) -> list[dict[st
     return suggestions
 
 
-def _feed_payloads_for_rows(rows: list[FeedPost]) -> list[dict[str, object]]:
+def _feed_payloads_for_rows(rows: list[FeedPost], *, include_comments: bool = True) -> list[dict[str, object]]:
     post_ids = [int(row.id) for row in rows]
     reaction_summary_map, current_reaction_map = _feed_reaction_maps(post_ids, int(getattr(current_user, "id", 0) or 0))
-    comment_payload_map, _comment_count_map = _comment_payload_maps(post_ids, int(getattr(current_user, "id", 0) or 0))
+    if include_comments:
+        comment_payload_map, comment_count_map = _comment_payload_maps(post_ids, int(getattr(current_user, "id", 0) or 0))
+    else:
+        comment_payload_map = {post_id: [] for post_id in post_ids}
+        comment_count_map = _comment_count_map(post_ids)
+    reference_ids: dict[str, set[int]] = defaultdict(set)
+    for row in rows:
+        ref_type = _normalize_feed_reference_type(getattr(row, "reference_type", None))
+        ref_id = int(getattr(row, "reference_id", 0) or 0)
+        if ref_type and ref_id:
+            reference_ids[ref_type].add(ref_id)
+
+    reference_payloads: dict[tuple[str, int], dict[str, object] | None] = {}
+    if reference_ids.get("report"):
+        for item in Report.query.filter(Report.id.in_(list(reference_ids["report"]))).all():
+            reference_payloads[("report", int(item.id))] = _report_payload(item)
+    if reference_ids.get("newsletter"):
+        for item in Newsletter.query.filter(Newsletter.id.in_(list(reference_ids["newsletter"]))).all():
+            reference_payloads[("newsletter", int(item.id))] = _newsletter_payload(item)
+    if reference_ids.get("event"):
+        for item in Event.query.filter(Event.id.in_(list(reference_ids["event"]))).all():
+            reference_payloads[("event", int(item.id))] = _event_payload(item)
+    if reference_ids.get("award"):
+        award_ids = list(reference_ids["award"])
+        award_submission_counts = {
+            int(form_id): int(total or 0)
+            for form_id, total in (
+                db.session.query(AwardsSubmission.form_id, db.func.count(AwardsSubmission.id))
+                .filter(AwardsSubmission.form_id.in_(award_ids))
+                .group_by(AwardsSubmission.form_id)
+                .all()
+            )
+        }
+        award_question_counts = {
+            int(form_id): int(total or 0)
+            for form_id, total in (
+                db.session.query(AwardsQuestion.form_id, db.func.count(AwardsQuestion.id))
+                .filter(AwardsQuestion.form_id.in_(award_ids))
+                .group_by(AwardsQuestion.form_id)
+                .all()
+            )
+        }
+        for item in AwardsForm.query.filter(AwardsForm.id.in_(award_ids)).all():
+            reference_payloads[("award", int(item.id))] = _award_form_payload(
+                item,
+                submission_count=award_submission_counts.get(int(item.id), 0),
+                question_count=award_question_counts.get(int(item.id), 0),
+            )
+    if reference_ids.get("challenge"):
+        challenge_ids = list(reference_ids["challenge"])
+        challenge_response_counts = {
+            int(challenge_id): int(total or 0)
+            for challenge_id, total in (
+                db.session.query(ChallengeResponse.challenge_id, db.func.count(ChallengeResponse.id))
+                .filter(ChallengeResponse.challenge_id.in_(challenge_ids))
+                .group_by(ChallengeResponse.challenge_id)
+                .all()
+            )
+        }
+        for item in Challenge.query.filter(Challenge.id.in_(challenge_ids)).all():
+            reference_payloads[("challenge", int(item.id))] = _challenge_payload(
+                item,
+                response_count=challenge_response_counts.get(int(item.id), 0),
+            )
+    if reference_ids.get("challenge_response"):
+        for item in ChallengeResponse.query.filter(ChallengeResponse.id.in_(list(reference_ids["challenge_response"]))).all():
+            reference_payloads[("challenge_response", int(item.id))] = _challenge_response_payload(item)
     return [
         _feed_post_payload(
             row,
             reaction_summary=reaction_summary_map.get(int(row.id), []),
             current_reaction=current_reaction_map.get(int(row.id), ""),
             comments=comment_payload_map.get(int(row.id), []),
+            comment_count=comment_count_map.get(int(row.id), 0),
+            reference_payloads=reference_payloads,
         )
         for row in rows
     ]
@@ -14311,6 +14964,13 @@ def public_profile(user_id: int):
     ]
     last_activity_at = max((value for value in activity_candidates if value is not None), default=None)
     active_recently = bool(last_activity_at and last_activity_at >= (datetime.utcnow() - timedelta(days=14)))
+    profile_country = _profile_country_display(user_row)
+    profile_brand_name = "CTS-VDC Services" if bool(getattr(user_row, "is_admin", False)) else (company_name or "CTS Carbon Platform")
+    profile_brand_logo_url = (
+        url_for("static", filename="images/Logos/CTS-VDC_Logo_documents.png")
+        if bool(getattr(user_row, "is_admin", False))
+        else _company_logo_url(company_name)
+    )
     return render_template(
         "user_profile.html",
         profile_user=user_row,
@@ -14319,11 +14979,13 @@ def public_profile(user_id: int):
         profile_role_label=_user_role_label(user_row),
         profile_avatar_url=_user_avatar_url(user_row),
         profile_company=company_name or "CTS Carbon Platform",
-        profile_country_flag=_country_flag_emoji(getattr(user_row, "company_country", None)),
+        profile_country_flag=profile_country.get("flag", ""),
+        profile_country_name=profile_country.get("name", ""),
         profile_cover_url=url_for("static", filename=user_row.cover_image) if getattr(user_row, "cover_image", None) else "",
         profile_location=_profile_location_label(user_row),
         profile_about=_profile_about_text(user_row),
-        profile_company_logo_url=_company_logo_url(company_name),
+        profile_company_logo_url=profile_brand_logo_url,
+        profile_brand_name=profile_brand_name,
         profile_stats={
             "posts": len(posts),
             "reports": len(reports),
@@ -24160,8 +24822,12 @@ def feed():
     if selected_filter != "all":
         query = query.filter(FeedPost.post_type == selected_filter)
     rows = query.all()
-    posts = _feed_payloads_for_rows(rows)
+    _prime_company_logo_static_rel_cache(
+        [getattr(getattr(row, "author", None), "company_name", "") for row in rows]
+        + [getattr(current_user, "company_name", "")]
+    )
     can_create_posts = not _is_readonly_user(current_user)
+    posts = _feed_payloads_for_rows(rows, include_comments=not can_create_posts)
     return render_template(
         "feed.html",
         posts=posts,
@@ -24280,6 +24946,36 @@ def create_feed_post():
     return redirect_after_post()
 
 
+@app.route("/feed/post/<int:post_id>/delete", methods=["POST"])
+@login_required
+def delete_feed_post(post_id: int):
+    _ensure_db_tables()
+    post = FeedPost.query.get(int(post_id))
+    if post is None:
+        return jsonify({"error": "Post not found."}), 404
+    if not _user_can_delete_feed_post(post, current_user):
+        return jsonify({"error": "You can only delete posts you own."}), 403
+
+    media_path = str(getattr(post, "media_path", "") or "").strip()
+    try:
+        comment_ids = [
+            int(comment_id)
+            for (comment_id,) in db.session.query(Comment.id).filter(Comment.post_id == int(post.id)).all()
+        ]
+        if comment_ids:
+            CommentLike.query.filter(CommentLike.comment_id.in_(comment_ids)).delete(synchronize_session=False)
+            Comment.query.filter(Comment.id.in_(comment_ids)).delete(synchronize_session=False)
+        PostReaction.query.filter(PostReaction.post_id == int(post.id)).delete(synchronize_session=False)
+        db.session.delete(post)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return jsonify({"error": "Could not delete post."}), 500
+
+    _delete_feed_media_file(media_path)
+    return jsonify({"ok": True, "post_id": int(post_id)})
+
+
 @app.route("/feed/challenges", methods=["POST"])
 @login_required
 def create_challenge():
@@ -24360,13 +25056,17 @@ def submit_challenge_response(challenge_id: int):
     return redirect(url_for("feed", type="alert"))
 
 
-@app.route("/api/feed/posts/<int:post_id>/comments", methods=["POST"])
+@app.route("/api/feed/posts/<int:post_id>/comments", methods=["GET", "POST"])
 @login_required
 def api_feed_post_comment(post_id: int):
     _ensure_db_tables()
     post = FeedPost.query.get(post_id)
     if post is None:
         return jsonify({"error": "Post not found."}), 404
+    if request.method == "GET":
+        payload_map, count_map = _comment_payload_maps([int(post.id)], int(getattr(current_user, "id", 0) or 0))
+        comments = payload_map.get(int(post.id), [])
+        return jsonify({"ok": True, "comments": comments, "comment_count": int(count_map.get(int(post.id), len(comments)) or 0)})
     payload = request.get_json(silent=True) or {}
     content = str(payload.get("content", "") or "").strip()
     if not content:

@@ -30,7 +30,9 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/chart-system.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/enterprise_grid.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard_admin_illustrations.css') }}">
+    {% if current_user.is_authenticated %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/collaboration.css') }}">
+    {% endif %}
     {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -51,6 +53,7 @@
     <div class="app-layout" id="appLayout">
     <script>
       (function () {
+        var started = window.performance && typeof window.performance.now === "function" ? window.performance.now() : Date.now();
         var el = document.getElementById("appLayout");
         if (!el) return;
         var mobileMq = window.matchMedia("(max-width: 768px)");
@@ -64,6 +67,15 @@
         } else {
           el.classList.add("app-sidebar-labels-hidden");
         }
+        var ended = window.performance && typeof window.performance.now === "function" ? window.performance.now() : Date.now();
+        window.__CTS_INIT_TIMINGS__ = window.__CTS_INIT_TIMINGS__ || [];
+        window.__CTS_INIT_TIMINGS__.push({
+          name: "app shell preload",
+          duration: Math.round((ended - started) * 10) / 10,
+          detail: mobileMq.matches ? "mobile" : (tabletMq.matches ? "tablet" : "desktop"),
+          path: window.location.pathname,
+          timestamp: new Date().toISOString()
+        });
       })();
     </script>
     {% include 'partials/app_sidebar.html' %}
@@ -410,16 +422,34 @@
     </div>
     {% endif %}
 
+    <script
+      id="ctsShellConfig"
+      data-debug="{{ 'true' if (config.DEBUG or (current_user.is_authenticated and current_user.is_admin)) else 'false' }}"
+      data-lottie-src="https://cdn.jsdelivr.net/npm/lottie-web@5.12.2/build/player/lottie.min.js"
+      data-mapping-cards-script="{{ url_for('static', filename='js/mapping-notification-cards.js') }}"
+    >
+      window.__CTS_INIT_TIMINGS__ = window.__CTS_INIT_TIMINGS__ || [];
+      (function (script) {
+        var data = script ? script.dataset : {};
+        window.__CTS_FRONTEND_DEBUG__ = data.debug === "true";
+        window.__CTS_LOTTIE_WEB_URL__ = data.lottieSrc || "";
+        window.__CTS_MAPPING_CARDS_SCRIPT__ = data.mappingCardsScript || "";
+      })(document.currentScript);
+    </script>
     <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/lottie-web@5.12.2/build/player/lottie.min.js"></script>
+    <script defer src="{{ url_for('static', filename='js/cts-performance.js') }}"></script>
     <script defer src="{{ url_for('static', filename='js/lottie-init.js') }}"></script>
     <script defer src="{{ url_for('static', filename='js/busy-overlay.js') }}"></script>
+    {% if not use_app_sidebar %}
     <script defer src="{{ url_for('static', filename='js/saas.js') }}"></script>
     <script defer src="{{ url_for('static', filename='js/global-effects.js') }}"></script>
+    {% endif %}
     <script defer src="{{ url_for('static', filename='js/theme.js') }}"></script>
     <script>
       (function () {
+        var recordedNavbarInit = false;
         function resetStaleUiState() {
+          var started = window.performance && typeof window.performance.now === "function" ? window.performance.now() : Date.now();
           document.documentElement.classList.remove("sidebar-open", "menu-open", "modal-open", "overflow-hidden");
           document.body.classList.remove(
             "sidebar-open",
@@ -431,6 +461,11 @@
           var layout = document.getElementById("appLayout");
           if (layout) {
             layout.classList.remove("is-sidebar-mobile-open");
+          }
+          if (!recordedNavbarInit && window.CtsPerf && typeof window.CtsPerf.recordInit === "function") {
+            var ended = window.performance && typeof window.performance.now === "function" ? window.performance.now() : Date.now();
+            window.CtsPerf.recordInit("navbar init", ended - started, String(document.querySelectorAll(".app-topbar, .saas-nav").length || 0));
+            recordedNavbarInit = true;
           }
         }
         window.addEventListener("load", resetStaleUiState, { once: true });
@@ -449,8 +484,6 @@
         isAdmin: {{ current_user.is_admin | tojson }}
       };
     </script>
-    <script defer src="{{ url_for('static', filename='js/cts-performance.js') }}"></script>
-    <script defer src="{{ url_for('static', filename='js/mapping-notification-cards.js') }}"></script>
     <script defer src="{{ url_for('static', filename='js/collaboration.js') }}"></script>
     {% endif %}
     {% if use_app_sidebar %}
@@ -498,7 +531,13 @@
         async function loadAdminUploadNotifications() {
           const body = document.getElementById('adminUploadNotificationsBody');
           const modalEl = document.getElementById('adminUploadNotificationsModal');
-          if (!body || !modalEl || typeof bootstrap === 'undefined' || !window.CtsMappingCards) return;
+          if (!body || !modalEl || typeof bootstrap === 'undefined') return;
+          if (!window.CtsMappingCards && window.CtsPerf && window.__CTS_MAPPING_CARDS_SCRIPT__) {
+            try {
+              await window.CtsPerf.loadScriptOnce('mapping-cards', window.__CTS_MAPPING_CARDS_SCRIPT__);
+            } catch (e) {}
+          }
+          if (!window.CtsMappingCards) return;
 
           try {
             if (shouldResetSeenStateForLoginReferrer()) {
@@ -546,6 +585,54 @@
       })();
     </script>
     {% endif %}
+    <script>
+      (function () {
+        function collectFrontendMetrics() {
+          try {
+            var navigation = performance.getEntriesByType ? performance.getEntriesByType("navigation")[0] : null;
+            var resources = performance.getEntriesByType ? performance.getEntriesByType("resource") : [];
+            var slowest = Array.prototype.slice.call(resources || [])
+              .filter(function (item) {
+                return item && (item.initiatorType === "script" || item.initiatorType === "link" || item.initiatorType === "img");
+              })
+              .sort(function (a, b) { return (b.duration || 0) - (a.duration || 0); })
+              .slice(0, 8)
+              .map(function (item) {
+                return {
+                  name: String(item.name || "").replace(window.location.origin, ""),
+                  duration: Math.round(item.duration || 0),
+                  type: item.initiatorType || ""
+                };
+              });
+            var transferKb = navigation && navigation.transferSize
+              ? Math.round(navigation.transferSize / 1024)
+              : 0;
+            window.localStorage.setItem("ctsPerfFrontendLatest", JSON.stringify({
+              path: window.location.pathname,
+              timestamp: new Date().toISOString(),
+              domNodes: document.getElementsByTagName("*").length,
+              scripts: document.scripts.length,
+              stylesheets: document.styleSheets.length,
+              images: document.images.length,
+              chartHosts: document.querySelectorAll(".chart-host, [data-chart], [data-chart-host]").length,
+              lottieElements: document.querySelectorAll(".lottie-icon[data-animation]").length,
+              activeLotties: document.querySelectorAll(".lottie-icon[data-lottie-ready='1']").length,
+              initTimings: window.CtsPerf && window.CtsPerf.getInitTimings ? window.CtsPerf.getInitTimings() : (window.__CTS_INIT_TIMINGS__ || []),
+              navigationDuration: navigation ? Math.round(navigation.duration || 0) : 0,
+              transferKb: transferKb,
+              slowestResources: slowest
+            }));
+          } catch (e) {}
+        }
+        window.addEventListener("load", function () {
+          if (window.requestIdleCallback) {
+            window.requestIdleCallback(collectFrontendMetrics, { timeout: 1500 });
+          } else {
+            window.setTimeout(collectFrontendMetrics, 300);
+          }
+        }, { once: true });
+      })();
+    </script>
     {% block scripts %}{% endblock %}
 </body>
 </html> 

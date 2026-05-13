@@ -5,7 +5,7 @@
   <header class="feed-post__header">
     <a href="{{ post.author_profile_url }}" class="feed-post__header-link" aria-label="{{ post.author_name }} profile">
       <span class="feed-post__avatar-link">
-        <img class="feed-avatar-image" src="{{ post.author_avatar_url }}" alt="{{ post.author_name }}">
+        <img class="feed-avatar-image" src="{{ post.author_avatar_url }}" alt="{{ post.author_name }}" loading="lazy" decoding="async">
       </span>
       <div class="feed-post__identity">
         <div class="feed-post__headline">
@@ -36,6 +36,32 @@
         </p>
       </div>
     </a>
+    {% if post.can_delete %}
+    <div class="feed-post__menu" data-feed-post-menu>
+      <button
+        class="feed-post__menu-toggle"
+        type="button"
+        aria-label="Post actions"
+        aria-haspopup="menu"
+        aria-expanded="false"
+        data-feed-post-menu-toggle
+      >
+        <span aria-hidden="true">&hellip;</span>
+      </button>
+      <div class="feed-post__menu-panel" role="menu" hidden data-feed-post-menu-panel>
+        <button
+          class="feed-post__menu-item feed-post__menu-item--danger"
+          type="button"
+          role="menuitem"
+          data-feed-post-delete-open
+          data-delete-endpoint="{{ post.delete_url }}"
+          data-post-id="{{ post.id }}"
+        >
+          Delete post
+        </button>
+      </div>
+    </div>
+    {% endif %}
   </header>
 
   {% if post.report %}
@@ -43,7 +69,7 @@
     <div class="feed-report-stack" aria-label="Report preview">
       {% for preview_url in post.report.preview_urls %}
       <div class="feed-report-stack__page">
-        <img src="{{ preview_url }}" alt="{{ post.report.title }} preview page {{ loop.index }}">
+        <img src="{{ preview_url }}" alt="{{ post.report.title }} preview page {{ loop.index }}" loading="lazy" decoding="async">
       </div>
       {% endfor %}
     </div>
@@ -134,7 +160,7 @@
 
   {% if post.media_url and post.media_type == 'image' %}
   <div class="feed-post__media">
-    <img src="{{ post.media_url }}" alt="Post image">
+    <img src="{{ post.media_url }}" alt="Post image" loading="lazy" decoding="async">
   </div>
   {% elif post.media_url and post.media_type == 'video' %}
   <div class="feed-post__media">
@@ -207,33 +233,48 @@
     </button>
   </footer>
 
-  <section class="feed-comments" data-feed-comments>
+  <section
+    class="feed-comments"
+    data-feed-comments
+    data-comments-endpoint="{{ url_for('api_feed_post_comment', post_id=post.id) }}"
+    data-comments-loaded="{% if can_create_posts %}false{% else %}true{% endif %}"
+    data-comment-count="{{ post.comment_count }}"
+    {% if can_create_posts %}hidden{% endif %}
+  >
     {% if can_create_posts %}
-    <div class="feed-comment-composer" data-feed-comment-composer hidden>
-      <img class="feed-avatar-image feed-avatar-image--sm" src="{{ comment_actor_avatar_url }}" alt="Your avatar">
-      <form
-        class="feed-comment-form"
-        data-comment-endpoint="{{ url_for('api_feed_post_comment', post_id=post.id) }}"
-        data-mention-endpoint="{{ url_for('api_message_contacts') }}"
-      >
-        <div class="feed-comment-form__shell">
-          <textarea
-            class="feed-comment-form__input"
-            rows="1"
-            placeholder="{% if post.challenge %}Share a response...{% else %}Write a comment...{% endif %}"
-            data-feed-comment-input
-          ></textarea>
-          <div class="feed-comment-mentions" data-feed-mention-list hidden></div>
-        </div>
-      </form>
-    </div>
+    <template data-feed-comment-composer-template>
+      <div class="feed-comment-composer" data-feed-comment-composer hidden>
+        <img class="feed-avatar-image feed-avatar-image--sm" src="{{ comment_actor_avatar_url }}" alt="Your avatar" loading="lazy" decoding="async">
+        <form
+          class="feed-comment-form"
+          data-comment-endpoint="{{ url_for('api_feed_post_comment', post_id=post.id) }}"
+          data-mention-endpoint="{{ url_for('api_message_contacts') }}"
+        >
+          <div class="feed-comment-form__shell">
+            <textarea
+              class="feed-comment-form__input"
+              rows="1"
+              placeholder="{% if post.challenge %}Share a response...{% else %}Write a comment...{% endif %}"
+              data-feed-comment-input
+            ></textarea>
+            <div class="feed-comment-mentions" data-feed-mention-list hidden></div>
+          </div>
+        </form>
+      </div>
+    </template>
     {% endif %}
 
     <div class="feed-comment-list" data-feed-comment-list>
+      {% if can_create_posts and post.comment_count %}
+      <p class="feed-comments__placeholder text-muted small mb-0" data-feed-comments-placeholder>
+        {{ post.comment_count }} comment{{ '' if post.comment_count == 1 else 's' }}. Open comments to load the conversation.
+      </p>
+      {% endif %}
+      {% if not can_create_posts %}
       {% for comment in post.comments %}
       <article class="feed-comment" data-feed-comment-id="{{ comment.id }}">
         <a href="{{ comment.author_profile_url }}" class="feed-comment__avatar-link" aria-label="{{ comment.author_name }} profile">
-          <img class="feed-avatar-image feed-avatar-image--sm" src="{{ comment.author_avatar_url }}" alt="{{ comment.author_name }}">
+          <img class="feed-avatar-image feed-avatar-image--sm" src="{{ comment.author_avatar_url }}" alt="{{ comment.author_name }}" loading="lazy" decoding="async">
         </a>
         <div class="feed-comment__body">
           <div class="feed-comment__bubble">
@@ -258,6 +299,7 @@
         </div>
       </article>
       {% endfor %}
+      {% endif %}
     </div>
   </section>
 </article>

@@ -3,6 +3,7 @@
   const mobileMq = window.matchMedia("(max-width: 768px)");
 
   function init() {
+    const sidebarInitStarted = window.performance && typeof window.performance.now === "function" ? window.performance.now() : Date.now();
     const layout = document.getElementById("appLayout");
     const sidebar = document.querySelector("[data-sidebar-root]");
     if (!layout || !sidebar) return;
@@ -234,6 +235,10 @@
       openSecondary(initialSecondary, matchingTrigger ? matchingTrigger.getAttribute("data-secondary-title") : "Details");
     } else {
       closeSecondary();
+    }
+    if (window.CtsPerf && typeof window.CtsPerf.recordInit === "function") {
+      const sidebarInitEnded = window.performance && typeof window.performance.now === "function" ? window.performance.now() : Date.now();
+      window.CtsPerf.recordInit("sidebar init", sidebarInitEnded - sidebarInitStarted, String(railButtons.length + branchButtons.length));
     }
   }
 
