@@ -1,0 +1,15 @@
+flowchart TD
+    Route[Flask route] --> Context[Build template context]
+    Context --> Template[Jinja template]
+    Template --> Html[HTML with CSS, JS and JSON payloads]
+    Html --> Browser[Browser renders shell]
+    Browser --> GlobalJS[base.html global scripts]
+    Browser --> PageJS[Page script or inline JS]
+    PageJS --> Payload{Data source}
+    Payload -- JSON script tag --> Parse[Parse embedded payload]
+    Payload -- API fetch --> Fetch[Call Flask JSON endpoint]
+    Parse --> Render[Render table, chart, map or modal]
+    Fetch --> Render
+    Render --> Interactions[User edits, filters, opens modals]
+    Interactions --> Api[POST or GET API calls]
+    Api --> Route

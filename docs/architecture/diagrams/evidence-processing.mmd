@@ -1,0 +1,17 @@
+flowchart TD
+    Pending[EvidenceFile pending] --> Kind{Detected file kind}
+    Kind -- PDF --> PdfOptimize[Ghostscript optimize]
+    PdfOptimize --> PdfThumb[PyMuPDF first page thumbnail]
+    Kind -- Image --> ImageOptimize[Pillow WebP optimize]
+    ImageOptimize --> ImageThumb[Tiny WebP thumbnail]
+    Kind -- Archive --> ArchiveRewrite[Safe archive rewrite when possible]
+    Kind -- Other --> KeepOriginal[Keep original file]
+    PdfThumb --> UpdateRecord[Update storage paths and sizes]
+    ImageThumb --> UpdateRecord
+    ArchiveRewrite --> UpdateRecord
+    KeepOriginal --> UpdateRecord
+    UpdateRecord --> Ready[processing_status ready]
+    PdfOptimize --> Failure[Processing error]
+    ImageOptimize --> Failure
+    Failure --> Fallback[Keep original and store error]
+    Fallback --> Ready

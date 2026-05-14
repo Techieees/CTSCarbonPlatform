@@ -56,7 +56,7 @@ body.dark-mode {
   min-height: 100%;
   background: var(--app-sidebar-bg);
   border-right: 1px solid var(--app-sidebar-border);
-  contain: paint style;
+  contain: style;
   overflow: hidden;
   z-index: 60;
 }

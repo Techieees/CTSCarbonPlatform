@@ -1,0 +1,14 @@
+flowchart TD
+    Browser[Browser multipart upload] --> Route[Flask upload route]
+    Route --> Auth[Login and company access check]
+    Auth --> Staging[Write temporary staging file]
+    Staging --> Validate[Validate size, extension, MIME signature]
+    Validate --> Hash[Calculate SHA256]
+    Hash --> Dedupe{Existing file for company}
+    Dedupe -- Yes --> Existing[Reuse existing EvidenceFile]
+    Dedupe -- No --> Store[Move file to local storage]
+    Store --> Record[Create EvidenceFile pending]
+    Record --> ProcessJob[Start processing job]
+    Existing --> Link[Link to Data Entry row if requested]
+    ProcessJob --> Link
+    Link --> Response[Return upload result]

@@ -1,0 +1,18 @@
+flowchart TD
+    Browser[Browser] --> Nginx[Nginx]
+    Nginx --> Gunicorn[Gunicorn 127.0.0.1:8000]
+    Gunicorn --> Flask[Flask app.py]
+    Flask --> Before[before_request hooks]
+    Before --> Route[Route handler]
+    Route --> DB[(SQLite)]
+    Route --> Files[Local files and workbooks]
+    Route --> External[External APIs when needed]
+    DB --> Route
+    Files --> Route
+    External --> Route
+    Route --> After[after_request hooks]
+    After --> Response[HTML or JSON response]
+    Response --> Browser
+    Browser --> JS[Page JavaScript]
+    JS --> ApiCalls[fetch and polling calls]
+    ApiCalls --> Nginx

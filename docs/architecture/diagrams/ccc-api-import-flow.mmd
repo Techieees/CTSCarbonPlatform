@@ -1,0 +1,18 @@
+flowchart TD
+    User[User selects CCC import] --> Endpoint[POST /api/ccc/import-to-data-entry]
+    Endpoint --> Access[Check user and company access]
+    Access --> Resolve[Resolve selected projects]
+    Resolve --> Client[CCC API client]
+    Client --> PurchaseOrders[Fetch purchase orders]
+    PurchaseOrders --> StatusFilter[Filter allowed purchase order statuses]
+    StatusFilter --> Transform[Transform to Data Entry row shape]
+    Transform --> Dedupe[Generate dedupe key]
+    Dedupe --> Existing{Already imported}
+    Existing -- Yes --> Skip[Skip row]
+    Existing -- No --> Save[Write DataEntry cells]
+    Save --> Notify[Create notification]
+    Save --> Mapping{Auto mapping requested}
+    Mapping -- Yes --> Job[Create mapping job]
+    Mapping -- No --> Result[Return import counts]
+    Job --> Result
+    Skip --> Result

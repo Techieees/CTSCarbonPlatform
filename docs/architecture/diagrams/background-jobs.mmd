@@ -1,0 +1,18 @@
+flowchart TD
+    Route[Route starts long operation] --> Create[Create job in memory]
+    Create --> Dict[(jobs dict)]
+    Create --> Thread[Start daemon thread]
+    Thread --> Context[Push Flask app context]
+    Context --> Work[Run job function]
+    Work --> Progress[Update progress and message]
+    Progress --> Dict
+    Work --> CancelCheck{Cancel requested}
+    CancelCheck -- Yes --> Cancelled[Set status cancelled]
+    CancelCheck -- No --> Finish{Work succeeded}
+    Finish -- Yes --> Completed[Set status completed]
+    Finish -- No --> Failed[Set status failed and error]
+    Dict --> Poll[GET /job-status/job_id]
+    Poll --> UI[Update browser progress]
+    Completed --> Cleanup[Cleanup old finished jobs]
+    Failed --> Cleanup
+    Cancelled --> Cleanup

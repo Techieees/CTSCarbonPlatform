@@ -1,0 +1,22 @@
+flowchart TD
+    Dashboard[GET /dashboard] --> UserAccess[Resolve user company and role]
+    UserAccess --> DataEntry[(DataEntry)]
+    UserAccess --> Runs[(MappingRun)]
+    UserAccess --> Summary[(MappingRunSummary)]
+    UserAccess --> Records[(NormalizedEmissionRecord)]
+    UserAccess --> Jobs[(In-memory jobs)]
+    UserAccess --> Notifications[(Notification)]
+    DataEntry --> Context[Dashboard template context]
+    Runs --> Context
+    Summary --> Context
+    Records --> Context
+    Jobs --> Context
+    Notifications --> Context
+    Context --> Template[dashboard.html]
+    Template --> Browser[Browser dashboard]
+    Browser --> PollJobs[Poll job status]
+    Browser --> FetchRows[Fetch Data Entry rows]
+    Browser --> FetchNotifications[Fetch unread notifications]
+    PollJobs --> Jobs
+    FetchRows --> DataEntry
+    FetchNotifications --> Notifications

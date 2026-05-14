@@ -1,0 +1,12 @@
+flowchart TD
+    User[User starts translation] --> Route[POST /run-translation]
+    Route --> Access[Check login and company access]
+    Access --> Plan[Build sheet and column plan]
+    Plan --> Job[Create background job]
+    Job --> Worker[Translation thread]
+    Worker --> SourceRows[Read DataEntry source columns]
+    SourceRows --> Translator[Translation helper]
+    Translator --> Update[Write translated DataEntry columns]
+    Update --> Invalidate[Invalidate affected unmapped review rows]
+    Invalidate --> Notify[Update job status and notifications]
+    Notify --> Poll[UI polls job-status]

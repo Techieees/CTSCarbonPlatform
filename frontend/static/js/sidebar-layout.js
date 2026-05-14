@@ -80,8 +80,21 @@
       sidebar.setAttribute("data-current-secondary", "");
     }
 
+    function ensureExpandedForNestedNavigation() {
+      if (isExpanded()) {
+        return true;
+      }
+      if (desktopMq.matches && !pinnedExpanded) {
+        sidebar.classList.add("is-hover-expanded");
+        sidebar.classList.add("is-primary-open");
+        syncExpandedState();
+        return true;
+      }
+      return false;
+    }
+
     function openSecondary(panelId, titleText) {
-      if (!isExpanded()) {
+      if (!ensureExpandedForNestedNavigation()) {
         return;
       }
       const normalized = String(panelId || "").trim();
@@ -127,14 +140,10 @@
     });
 
     branchButtons.forEach((button) => {
+      button.setAttribute("aria-expanded", "false");
       button.addEventListener("click", () => {
-        if (!isExpanded()) {
-          if (desktopMq.matches && !pinnedExpanded) {
-            sidebar.classList.add("is-hover-expanded");
-            syncExpandedState();
-          } else {
-            return;
-          }
+        if (!ensureExpandedForNestedNavigation()) {
+          return;
         }
         const targetId = button.getAttribute("data-secondary-id");
         const isAlreadyOpen = sidebar.getAttribute("data-current-secondary") === targetId && sidebar.classList.contains("is-secondary-open");
@@ -205,7 +214,6 @@
 
     window.addEventListener("load", () => {
       setMobileOpen(false);
-      closeSecondary();
     }, { once: true });
 
     if (desktopMq.addEventListener) {

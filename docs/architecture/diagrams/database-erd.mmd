@@ -1,0 +1,108 @@
+erDiagram
+    User ||--o{ MappingRun : starts
+    User ||--o{ EvidenceFile : uploads
+    User ||--o{ Notification : receives
+    User ||--o{ Message : sends
+    User ||--o{ Message : receives
+    User ||--o{ FeedPost : writes
+    User ||--o{ Comment : writes
+    User ||--o{ SupplierSyncRun : triggers
+
+    Company ||..o{ User : "company_name"
+    Company ||..o{ DataEntry : "company_name"
+    Company ||..o{ MappingRun : "company_name"
+    Company ||..o{ EvidenceFile : "company_name"
+
+    DataEntry ||..o{ DataEntryEvidence : "company sheet entry_group"
+    EvidenceFile ||--o{ DataEntryEvidence : linked_by
+
+    MappingRun ||--o{ NormalizedEmissionRecord : normalizes
+    MappingRun ||--o{ MappingReviewSnapshot : snapshots
+    MappingRun ||--o{ MappingUnmappedRow : unmapped_rows
+    MappingRun ||--o| MappingPreviewArchive : preview
+    MappingRun ||..o| MappingRunSummary : "run_id"
+
+    AwardsForm ||--o{ AwardsQuestion : contains
+    AwardsForm ||--o{ AwardsSubmission : receives
+    AwardsSubmission ||--o{ AwardsAnswer : answers
+    AwardsQuestion ||--o{ AwardsAnswer : answered_by
+
+    FeedPost ||--o{ Comment : has
+    FeedPost ||--o{ PostReaction : has
+    Comment ||--o{ CommentLike : has
+
+    CccSupplierRegistry ||..o{ SupplierSyncRun : synced_by
+    SupplierSyncRun ||..o{ SupplierSyncCheckpoint : advances
+
+    User {
+        int id PK
+        string email
+        string company_name
+        string role
+        bool is_admin
+    }
+
+    Company {
+        int id PK
+        string company_name
+        int created_by_user_id FK
+    }
+
+    DataEntry {
+        int id PK
+        string company_name
+        string sheet_name
+        string entry_group
+        int row_index
+        string column_name
+        text value
+    }
+
+    MappingRun {
+        string id PK
+        int user_id FK
+        string company_name
+        string sheet_name
+        string status
+        string output_path
+    }
+
+    MappingRunSummary {
+        int id PK
+        string run_id
+        string company_name
+        string sheet_name
+        float tco2e_total
+    }
+
+    NormalizedEmissionRecord {
+        int id PK
+        string mapping_run_id FK
+        string company_name
+        string sheet_name
+        float emissions_tco2e
+        string scope
+    }
+
+    EvidenceFile {
+        int id PK
+        string company_name
+        string sha256_hash
+        string storage_path
+        string processing_status
+    }
+
+    DataEntryEvidence {
+        int id PK
+        string company_name
+        string sheet_name
+        string entry_group
+        int evidence_file_id FK
+    }
+
+    Notification {
+        int id PK
+        int user_id FK
+        string category
+        bool is_read
+    }

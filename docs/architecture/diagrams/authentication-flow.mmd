@@ -1,0 +1,17 @@
+flowchart TD
+    LoginPage[GET /login] --> Submit[POST /login]
+    Submit --> Lookup[Find user by email]
+    Lookup --> CheckPassword{Password hash valid}
+    CheckPassword -- No --> LoginError[Flash error and render login]
+    CheckPassword -- Yes --> ActiveCheck{User active}
+    ActiveCheck -- No --> LoginError
+    ActiveCheck -- Yes --> Session[Flask-Login session cookie]
+    Session --> ProfileGuard{Profile setup complete}
+    ProfileGuard -- No --> ProfileSetup[/profile/setup]
+    ProfileGuard -- Yes --> Dashboard[/dashboard]
+    Dashboard --> RouteGuard{Route role check}
+    RouteGuard -- Allowed --> Handler[Route handler]
+    RouteGuard -- Denied --> Forbidden[403 or redirect]
+    Handler --> ReadonlyGuard{Readonly auditor writing}
+    ReadonlyGuard -- Yes --> Forbidden
+    ReadonlyGuard -- No --> Response[Response]
