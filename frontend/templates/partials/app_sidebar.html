@@ -73,7 +73,7 @@
       </button>
       <button type="button" class="app-sidebar__rail-item nav-item {% if selected_section == 'carbon' %}is-active active{% endif %}" data-sidebar-section-trigger data-section-id="carbon" data-section="carbon" aria-label="Carbon Accounting">
         <div class="icon app-sidebar__icon">{{ illu.illu_nav_carbon('') }}</div>
-        <span class="label app-sidebar__label">Carbon</span>
+        <span class="label app-sidebar__label">Carbon Accounting</span>
       </button>
       <button type="button" class="app-sidebar__rail-item nav-item {% if selected_section == 'data' %}is-active active{% endif %}" data-sidebar-section-trigger data-section-id="data" data-section="data" aria-label="Data">
         <div class="icon app-sidebar__icon">{{ illu.illu_nav_data('') }}</div>
@@ -119,6 +119,18 @@
             {{ illu.illu_nav_home('app-sidebar__icon') }}
             <span>Dashboard</span>
           </a>
+          <button
+            type="button"
+            class="app-sidebar__menu-item app-sidebar__menu-item--branch {% if carbon_active or governance_active or esg_active %}is-active{% endif %}"
+            data-sidebar-flyout-trigger
+            data-flyout-id="sustainability"
+            data-flyout-title="Sustainability"
+            aria-expanded="false"
+          >
+            {{ illu.illu_nav_leaf('app-sidebar__icon') }}
+            <span>Sustainability</span>
+            <span class="app-sidebar__menu-arrow" aria-hidden="true"></span>
+          </button>
         </nav>
       </div>
 
@@ -219,8 +231,12 @@
             type="button"
             class="app-sidebar__menu-item app-sidebar__menu-item--branch {% if selected_secondary == 'data-sources' %}is-active{% endif %}"
             data-sidebar-secondary-trigger
+            data-sidebar-flyout-trigger
             data-secondary-id="data-sources"
             data-secondary-title="Data Sources"
+            data-flyout-id="data-sources"
+            data-flyout-title="Data Sources"
+            aria-expanded="false"
           >
             {{ illu.illu_nav_data('app-sidebar__icon') }}
             <span>Data Sources</span>
@@ -230,8 +246,12 @@
             type="button"
             class="app-sidebar__menu-item app-sidebar__menu-item--branch {% if selected_secondary == 'data-outputs' %}is-active{% endif %}"
             data-sidebar-secondary-trigger
+            data-sidebar-flyout-trigger
             data-secondary-id="data-outputs"
             data-secondary-title="Data Outputs"
+            data-flyout-id="data-outputs"
+            data-flyout-title="Data Outputs"
+            aria-expanded="false"
           >
             {{ illu.illu_sidebar_data_outputs_branch('app-sidebar__icon') }}
             <span>Data Outputs</span>
@@ -416,87 +436,193 @@
       </div>
     </div>
 
-    <div class="app-sidebar__secondary {% if selected_secondary %}is-active{% endif %}" data-sidebar-secondary-shell>
+    <div
+      class="app-sidebar__secondary app-sidebar__flyout"
+      data-sidebar-flyout-panel="sustainability"
+      data-sidebar-flyout-level="2"
+    >
       <div class="app-sidebar__secondary-header">
-        <h3 data-sidebar-secondary-title>
-          {% if selected_secondary == 'data-sources' %}
-            Data Sources
-          {% elif selected_secondary == 'data-outputs' %}
-            Data Outputs
-          {% else %}
-            Details
-          {% endif %}
-        </h3>
-        <button type="button" class="app-sidebar__secondary-close" data-sidebar-secondary-close aria-label="Close secondary panel">
+        <h3>Sustainability</h3>
+        <button type="button" class="app-sidebar__secondary-close" data-sidebar-flyout-close aria-label="Close Sustainability navigation">
           {{ illu.illu_times('') }}
         </button>
       </div>
+      <nav class="app-sidebar__panel-menu">
+        <button
+          type="button"
+          class="app-sidebar__menu-item app-sidebar__menu-item--branch {% if carbon_active %}is-active{% endif %}"
+          data-sidebar-flyout-trigger
+          data-flyout-id="sustainability-carbon-accounting"
+          data-flyout-title="Carbon Accounting"
+          aria-expanded="false"
+        >
+          {{ illu.illu_nav_carbon('app-sidebar__icon') }}
+          <span>Carbon Accounting</span>
+          <span class="app-sidebar__menu-arrow" aria-hidden="true"></span>
+        </button>
+        <button
+          type="button"
+          class="app-sidebar__menu-item app-sidebar__menu-item--branch {% if governance_active or esg_active %}is-active{% endif %}"
+          data-sidebar-flyout-trigger
+          data-flyout-id="sustainability-governance"
+          data-flyout-title="Governance"
+          aria-expanded="false"
+        >
+          {{ illu.illu_nav_id('app-sidebar__icon') }}
+          <span>Governance</span>
+          <span class="app-sidebar__menu-arrow" aria-hidden="true"></span>
+        </button>
+      </nav>
+    </div>
 
-      <div class="app-sidebar__secondary-panel {% if selected_secondary == 'data-sources' %}is-active{% endif %}" data-sidebar-secondary-panel="data-sources">
-        <nav class="app-sidebar__panel-menu">
-          <a href="{{ url_for('data_sources_ccc_api') }}" class="app-sidebar__menu-item {% if ep == 'data_sources_ccc_api' %}is-active{% endif %}" {% if ep == 'data_sources_ccc_api' %}aria-current="page"{% endif %}>
-            {{ illu.illu_sidebar_ds_ccc('app-sidebar__icon') }}
-            <span>CCC API</span>
-          </a>
-          {% if can_manage_supplier_registries() %}
-          <a href="{{ url_for('suppliers_all_page') }}" class="app-sidebar__menu-item {% if ep == 'suppliers_all_page' %}is-active{% endif %}" {% if ep == 'suppliers_all_page' %}aria-current="page"{% endif %}>
-            {{ illu.illu_nav_suppliers('app-sidebar__icon') }}
-            <span>All suppliers (CCC)</span>
-          </a>
-          {% endif %}
-          <a href="{{ url_for('engage_waste_api_page') }}" class="app-sidebar__menu-item {% if ep == 'engage_waste_api_page' %}is-active{% endif %}" {% if ep == 'engage_waste_api_page' %}aria-current="page"{% endif %}>
-            {{ illu.illu_sidebar_ds_engage_waste('app-sidebar__icon') }}
-            <span>Engage Waste API</span>
-          </a>
-          <a href="{{ url_for('data_sources_klarakarbon') }}" class="app-sidebar__menu-item {% if ep == 'data_sources_klarakarbon' %}is-active{% endif %}" {% if ep == 'data_sources_klarakarbon' %}aria-current="page"{% endif %}>
-            {{ illu.illu_sidebar_ds_klarakarbon('app-sidebar__icon') }}
-            <span>Klarakarbon</span>
-          </a>
-          <a href="{{ url_for('data_sources_averages') }}" class="app-sidebar__menu-item {% if ep == 'data_sources_averages' %}is-active{% endif %}" {% if ep == 'data_sources_averages' %}aria-current="page"{% endif %}>
-            {{ illu.illu_sidebar_ds_averages('app-sidebar__icon') }}
-            <span>Averages</span>
-          </a>
-          <a href="{{ url_for('data_sources_scenarios') }}" class="app-sidebar__menu-item {% if ep == 'data_sources_scenarios' %}is-active{% endif %}" {% if ep == 'data_sources_scenarios' %}aria-current="page"{% endif %}>
-            {{ illu.illu_sidebar_ds_scenarios('app-sidebar__icon') }}
-            <span>Scenarios</span>
-          </a>
-          <a href="{{ url_for('data_sources_employee_commuting') }}" class="app-sidebar__menu-item {% if ep == 'data_sources_employee_commuting' %}is-active{% endif %}" {% if ep == 'data_sources_employee_commuting' %}aria-current="page"{% endif %}>
-            {{ illu.illu_sidebar_ds_headcount('app-sidebar__icon') }}
-            <span>Employee Commuting</span>
-          </a>
-          {% if current_user.is_admin %}
-          <a href="{{ url_for('admin') }}#travel-preprocessing-upload" class="app-sidebar__menu-item">
-            {{ illu.illu_nav_pen_entry('app-sidebar__icon') }}
-            <span>Travel Preprocessing Upload</span>
-          </a>
-          {% endif %}
-        </nav>
+    <div
+      class="app-sidebar__secondary app-sidebar__flyout {% if selected_secondary == 'data-sources' %}is-active{% endif %}"
+      data-sidebar-secondary-shell
+      data-sidebar-flyout-panel="data-sources"
+      data-sidebar-flyout-level="2"
+    >
+      <div class="app-sidebar__secondary-header">
+        <h3>Data Sources</h3>
+        <button type="button" class="app-sidebar__secondary-close" data-sidebar-flyout-close aria-label="Close Data Sources navigation">
+          {{ illu.illu_times('') }}
+        </button>
       </div>
+      <nav class="app-sidebar__panel-menu">
+        <a href="{{ url_for('data_sources_ccc_api') }}" class="app-sidebar__menu-item {% if ep == 'data_sources_ccc_api' %}is-active{% endif %}" {% if ep == 'data_sources_ccc_api' %}aria-current="page"{% endif %}>
+          {{ illu.illu_sidebar_ds_ccc('app-sidebar__icon') }}
+          <span>CCC API</span>
+        </a>
+        {% if can_manage_supplier_registries() %}
+        <a href="{{ url_for('suppliers_all_page') }}" class="app-sidebar__menu-item {% if ep == 'suppliers_all_page' %}is-active{% endif %}" {% if ep == 'suppliers_all_page' %}aria-current="page"{% endif %}>
+          {{ illu.illu_nav_suppliers('app-sidebar__icon') }}
+          <span>All suppliers (CCC)</span>
+        </a>
+        {% endif %}
+        <a href="{{ url_for('engage_waste_api_page') }}" class="app-sidebar__menu-item {% if ep == 'engage_waste_api_page' %}is-active{% endif %}" {% if ep == 'engage_waste_api_page' %}aria-current="page"{% endif %}>
+          {{ illu.illu_sidebar_ds_engage_waste('app-sidebar__icon') }}
+          <span>Engage Waste API</span>
+        </a>
+        <a href="{{ url_for('data_sources_klarakarbon') }}" class="app-sidebar__menu-item {% if ep == 'data_sources_klarakarbon' %}is-active{% endif %}" {% if ep == 'data_sources_klarakarbon' %}aria-current="page"{% endif %}>
+          {{ illu.illu_sidebar_ds_klarakarbon('app-sidebar__icon') }}
+          <span>Klarakarbon</span>
+        </a>
+        <a href="{{ url_for('data_sources_averages') }}" class="app-sidebar__menu-item {% if ep == 'data_sources_averages' %}is-active{% endif %}" {% if ep == 'data_sources_averages' %}aria-current="page"{% endif %}>
+          {{ illu.illu_sidebar_ds_averages('app-sidebar__icon') }}
+          <span>Averages</span>
+        </a>
+        <a href="{{ url_for('data_sources_scenarios') }}" class="app-sidebar__menu-item {% if ep == 'data_sources_scenarios' %}is-active{% endif %}" {% if ep == 'data_sources_scenarios' %}aria-current="page"{% endif %}>
+          {{ illu.illu_sidebar_ds_scenarios('app-sidebar__icon') }}
+          <span>Scenarios</span>
+        </a>
+        <a href="{{ url_for('data_sources_employee_commuting') }}" class="app-sidebar__menu-item {% if ep == 'data_sources_employee_commuting' %}is-active{% endif %}" {% if ep == 'data_sources_employee_commuting' %}aria-current="page"{% endif %}>
+          {{ illu.illu_sidebar_ds_headcount('app-sidebar__icon') }}
+          <span>Employee Commuting</span>
+        </a>
+        {% if current_user.is_admin %}
+        <a href="{{ url_for('admin') }}#travel-preprocessing-upload" class="app-sidebar__menu-item">
+          {{ illu.illu_nav_pen_entry('app-sidebar__icon') }}
+          <span>Travel Preprocessing Upload</span>
+        </a>
+        {% endif %}
+      </nav>
+    </div>
 
-      <div class="app-sidebar__secondary-panel {% if selected_secondary == 'data-outputs' %}is-active{% endif %}" data-sidebar-secondary-panel="data-outputs">
-        <nav class="app-sidebar__panel-menu">
-          <a href="{{ url_for('analytics_mapped_window_output') }}" class="app-sidebar__menu-item {% if ep == 'analytics_mapped_window_output' %}is-active{% endif %}" {% if ep == 'analytics_mapped_window_output' %}aria-current="page"{% endif %}>
-            {{ illu.illu_sidebar_do_mapped('app-sidebar__icon') }}
-            <span>Mapped window output</span>
-          </a>
-          <a href="{{ url_for('analytics_emissions_totals') }}" class="app-sidebar__menu-item {% if ep == 'analytics_emissions_totals' %}is-active{% endif %}" {% if ep == 'analytics_emissions_totals' %}aria-current="page"{% endif %}>
-            {{ illu.illu_sidebar_do_totals('app-sidebar__icon') }}
-            <span>Totals tables</span>
-          </a>
-          <a href="{{ url_for('analytics_share_analysis') }}" class="app-sidebar__menu-item {% if ep == 'analytics_share_analysis' %}is-active{% endif %}" {% if ep == 'analytics_share_analysis' %}aria-current="page"{% endif %}>
-            {{ illu.illu_sidebar_do_share('app-sidebar__icon') }}
-            <span>Share analysis</span>
-          </a>
-          <a href="{{ url_for('data_output_travel') }}" class="app-sidebar__menu-item {% if ep == 'data_output_travel' %}is-active{% endif %}" {% if ep == 'data_output_travel' %}aria-current="page"{% endif %}>
-            {{ illu.illu_sidebar_do_travel('app-sidebar__icon') }}
-            <span>Travel MGMT</span>
-          </a>
-          <a href="{{ url_for('data_output_klarakarbon') }}" class="app-sidebar__menu-item {% if ep == 'data_output_klarakarbon' %}is-active{% endif %}" {% if ep == 'data_output_klarakarbon' %}aria-current="page"{% endif %}>
-            {{ illu.illu_sidebar_do_klarakarbon('app-sidebar__icon') }}
-            <span>Klarakarbon</span>
-          </a>
-        </nav>
+    <div
+      class="app-sidebar__secondary app-sidebar__flyout {% if selected_secondary == 'data-outputs' %}is-active{% endif %}"
+      data-sidebar-secondary-shell
+      data-sidebar-flyout-panel="data-outputs"
+      data-sidebar-flyout-level="2"
+    >
+      <div class="app-sidebar__secondary-header">
+        <h3>Data Outputs</h3>
+        <button type="button" class="app-sidebar__secondary-close" data-sidebar-flyout-close aria-label="Close Data Outputs navigation">
+          {{ illu.illu_times('') }}
+        </button>
       </div>
+      <nav class="app-sidebar__panel-menu">
+        <a href="{{ url_for('analytics_mapped_window_output') }}" class="app-sidebar__menu-item {% if ep == 'analytics_mapped_window_output' %}is-active{% endif %}" {% if ep == 'analytics_mapped_window_output' %}aria-current="page"{% endif %}>
+          {{ illu.illu_sidebar_do_mapped('app-sidebar__icon') }}
+          <span>Mapped window output</span>
+        </a>
+        <a href="{{ url_for('analytics_emissions_totals') }}" class="app-sidebar__menu-item {% if ep == 'analytics_emissions_totals' %}is-active{% endif %}" {% if ep == 'analytics_emissions_totals' %}aria-current="page"{% endif %}>
+          {{ illu.illu_sidebar_do_totals('app-sidebar__icon') }}
+          <span>Totals tables</span>
+        </a>
+        <a href="{{ url_for('analytics_share_analysis') }}" class="app-sidebar__menu-item {% if ep == 'analytics_share_analysis' %}is-active{% endif %}" {% if ep == 'analytics_share_analysis' %}aria-current="page"{% endif %}>
+          {{ illu.illu_sidebar_do_share('app-sidebar__icon') }}
+          <span>Share analysis</span>
+        </a>
+        <a href="{{ url_for('data_output_travel') }}" class="app-sidebar__menu-item {% if ep == 'data_output_travel' %}is-active{% endif %}" {% if ep == 'data_output_travel' %}aria-current="page"{% endif %}>
+          {{ illu.illu_sidebar_do_travel('app-sidebar__icon') }}
+          <span>Travel MGMT</span>
+        </a>
+        <a href="{{ url_for('data_output_klarakarbon') }}" class="app-sidebar__menu-item {% if ep == 'data_output_klarakarbon' %}is-active{% endif %}" {% if ep == 'data_output_klarakarbon' %}aria-current="page"{% endif %}>
+          {{ illu.illu_sidebar_do_klarakarbon('app-sidebar__icon') }}
+          <span>Klarakarbon</span>
+        </a>
+      </nav>
+    </div>
+
+    <div
+      class="app-sidebar__secondary app-sidebar__flyout"
+      data-sidebar-flyout-panel="sustainability-carbon-accounting"
+      data-sidebar-flyout-level="3"
+    >
+      <div class="app-sidebar__secondary-header">
+        <h3>Carbon Accounting</h3>
+        <button type="button" class="app-sidebar__secondary-close" data-sidebar-flyout-close aria-label="Close Carbon Accounting navigation">
+          {{ illu.illu_times('') }}
+        </button>
+      </div>
+      <nav class="app-sidebar__panel-menu">
+        <a href="{{ url_for('carbon_accounting') }}" class="app-sidebar__menu-item {% if ep == 'carbon_accounting' %}is-active{% endif %}" {% if ep == 'carbon_accounting' %}aria-current="page"{% endif %}>
+          {{ illu.illu_sidebar_carbon_overview('app-sidebar__icon') }}
+          <span>Overview</span>
+        </a>
+        <a href="{{ url_for('emissions_records_page') }}" class="app-sidebar__menu-item {% if ep == 'emissions_records_page' %}is-active{% endif %}" {% if ep == 'emissions_records_page' %}aria-current="page"{% endif %}>
+          {{ illu.illu_nav_data('app-sidebar__icon') }}
+          <span>Emissions Records</span>
+        </a>
+        <a href="{{ url_for('scope1_detail') }}" class="app-sidebar__menu-item {% if ep == 'scope1_detail' %}is-active{% endif %}" {% if ep == 'scope1_detail' %}aria-current="page"{% endif %}>
+          {{ illu.illu_sidebar_scope1('app-sidebar__icon') }}
+          <span>Scope 1</span>
+        </a>
+        <a href="{{ url_for('scope2_detail') }}" class="app-sidebar__menu-item {% if ep == 'scope2_detail' %}is-active{% endif %}" {% if ep == 'scope2_detail' %}aria-current="page"{% endif %}>
+          {{ illu.illu_sidebar_scope2('app-sidebar__icon') }}
+          <span>Scope 2</span>
+        </a>
+        <a href="{{ url_for('scope3_detail') }}" class="app-sidebar__menu-item {% if ep == 'scope3_detail' %}is-active{% endif %}" {% if ep == 'scope3_detail' %}aria-current="page"{% endif %}>
+          {{ illu.illu_sidebar_scope3('app-sidebar__icon') }}
+          <span>Scope 3</span>
+        </a>
+      </nav>
+    </div>
+
+    <div
+      class="app-sidebar__secondary app-sidebar__flyout"
+      data-sidebar-flyout-panel="sustainability-governance"
+      data-sidebar-flyout-level="3"
+    >
+      <div class="app-sidebar__secondary-header">
+        <h3>Governance</h3>
+        <button type="button" class="app-sidebar__secondary-close" data-sidebar-flyout-close aria-label="Close Governance navigation">
+          {{ illu.illu_times('') }}
+        </button>
+      </div>
+      <nav class="app-sidebar__panel-menu">
+        <a href="{{ url_for('csrd_policies') }}" class="app-sidebar__menu-item {% if ep == 'csrd_policies' %}is-active{% endif %}" {% if ep == 'csrd_policies' %}aria-current="page"{% endif %}>
+          {{ illu.illu_nav_file('app-sidebar__icon') }}
+          <span>Policies</span>
+        </a>
+        <a href="{{ url_for('governance_audit_ready_output') }}" class="app-sidebar__menu-item {% if governance_active %}is-active{% endif %}" {% if governance_active %}aria-current="page"{% endif %}>
+          {{ illu.illu_sidebar_governance_audit('app-sidebar__icon') }}
+          <span>Audits</span>
+        </a>
+        <a href="{{ url_for('csrd') }}" class="app-sidebar__menu-item {% if ep == 'csrd' %}is-active{% endif %}" {% if ep == 'csrd' %}aria-current="page"{% endif %}>
+          {{ illu.illu_nav_csrd('app-sidebar__icon') }}
+          <span>CSRD</span>
+        </a>
+      </nav>
     </div>
   </div>
 </aside>

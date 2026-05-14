@@ -10,11 +10,10 @@
 
     const railButtons = Array.from(sidebar.querySelectorAll("[data-sidebar-section-trigger]"));
     const sectionPanels = Array.from(sidebar.querySelectorAll("[data-sidebar-section-panel]"));
-    const secondaryShell = sidebar.querySelector("[data-sidebar-secondary-shell]");
-    const secondaryPanels = Array.from(sidebar.querySelectorAll("[data-sidebar-secondary-panel]"));
-    const secondaryTitle = sidebar.querySelector("[data-sidebar-secondary-title]");
-    const secondaryClose = sidebar.querySelector("[data-sidebar-secondary-close]");
-    const branchButtons = Array.from(sidebar.querySelectorAll("[data-sidebar-secondary-trigger]"));
+    const flyoutPanels = Array.from(sidebar.querySelectorAll("[data-sidebar-flyout-panel]"));
+    const flyoutTriggers = Array.from(sidebar.querySelectorAll("[data-sidebar-flyout-trigger]"));
+    const legacySecondaryTriggers = Array.from(sidebar.querySelectorAll("[data-sidebar-secondary-trigger]"));
+    const branchButtons = Array.from(new Set([...flyoutTriggers, ...legacySecondaryTriggers]));
     const toggleButton = sidebar.querySelector("[data-sidebar-toggle]");
     const mobileToggle = document.querySelector("[data-sidebar-mobile-toggle]");
     const mobileBackdrop = sidebar.querySelector("[data-sidebar-mobile-backdrop]");
@@ -65,19 +64,38 @@
       sidebar.setAttribute("data-current-section", normalized);
     }
 
-    function closeSecondary() {
-      sidebar.classList.remove("is-secondary-open");
-      if (secondaryShell) {
-        secondaryShell.classList.remove("is-active");
-      }
-      secondaryPanels.forEach((panel) => {
-        panel.classList.remove("is-active");
+    function panelLevel(panel) {
+      const raw = Number.parseInt(panel.getAttribute("data-sidebar-flyout-level") || "2", 10);
+      return Number.isFinite(raw) ? raw : 2;
+    }
+
+    function triggerTarget(button) {
+      return button.getAttribute("data-flyout-id") || button.getAttribute("data-secondary-id") || "";
+    }
+
+    function closeFlyouts(fromLevel = 2) {
+      flyoutPanels.forEach((panel) => {
+        if (panelLevel(panel) >= fromLevel) {
+          panel.classList.remove("is-active");
+        }
       });
       branchButtons.forEach((button) => {
-        button.classList.remove("is-open");
-        button.setAttribute("aria-expanded", "false");
+        const targetId = triggerTarget(button);
+        const targetPanel = flyoutPanels.find((panel) => panel.getAttribute("data-sidebar-flyout-panel") === targetId);
+        if (!targetPanel || panelLevel(targetPanel) >= fromLevel) {
+          button.classList.remove("is-open");
+          button.setAttribute("aria-expanded", "false");
+        }
       });
-      sidebar.setAttribute("data-current-secondary", "");
+      const hasOpenFlyouts = flyoutPanels.some((panel) => panel.classList.contains("is-active"));
+      sidebar.classList.toggle("is-secondary-open", hasOpenFlyouts);
+      if (!hasOpenFlyouts) {
+        sidebar.setAttribute("data-current-secondary", "");
+      }
+    }
+
+    function closeSecondary() {
+      closeFlyouts(2);
     }
 
     function ensureExpandedForNestedNavigation() {
@@ -93,31 +111,39 @@
       return false;
     }
 
-    function openSecondary(panelId, titleText) {
+    function openFlyout(panelId) {
       if (!ensureExpandedForNestedNavigation()) {
         return;
       }
       const normalized = String(panelId || "").trim();
       if (!normalized) {
-        closeSecondary();
+        closeFlyouts(2);
         return;
       }
+      const targetPanel = flyoutPanels.find((panel) => panel.getAttribute("data-sidebar-flyout-panel") === normalized);
+      if (!targetPanel) {
+        closeFlyouts(2);
+        return;
+      }
+      const level = panelLevel(targetPanel);
+      closeFlyouts(level);
+      targetPanel.classList.add("is-active");
       sidebar.classList.add("is-secondary-open");
-      if (secondaryShell) {
-        secondaryShell.classList.add("is-active");
-      }
-      secondaryPanels.forEach((panel) => {
-        panel.classList.toggle("is-active", panel.getAttribute("data-sidebar-secondary-panel") === normalized);
-      });
       branchButtons.forEach((button) => {
-        const isMatch = button.getAttribute("data-secondary-id") === normalized;
-        button.classList.toggle("is-open", isMatch);
-        button.setAttribute("aria-expanded", isMatch ? "true" : "false");
+        const targetId = triggerTarget(button);
+        const isMatch = targetId === normalized;
+        if (isMatch) {
+          button.classList.add("is-open");
+          button.setAttribute("aria-expanded", "true");
+        }
       });
-      if (secondaryTitle) {
-        secondaryTitle.textContent = titleText || "Details";
+      if (level === 2) {
+        sidebar.setAttribute("data-current-secondary", normalized);
       }
-      sidebar.setAttribute("data-current-secondary", normalized);
+    }
+
+    function openSecondary(panelId) {
+      openFlyout(panelId);
     }
 
     railButtons.forEach((button) => {
@@ -141,23 +167,36 @@
 
     branchButtons.forEach((button) => {
       button.setAttribute("aria-expanded", "false");
-      button.addEventListener("click", () => {
-        if (!ensureExpandedForNestedNavigation()) {
-          return;
-        }
-        const targetId = button.getAttribute("data-secondary-id");
-        const isAlreadyOpen = sidebar.getAttribute("data-current-secondary") === targetId && sidebar.classList.contains("is-secondary-open");
-        if (isAlreadyOpen) {
-          closeSecondary();
-          return;
-        }
-        openSecondary(targetId, button.getAttribute("data-secondary-title"));
-      });
     });
 
-    if (secondaryClose) {
-      secondaryClose.addEventListener("click", closeSecondary);
-    }
+    sidebar.addEventListener("click", (event) => {
+      const closeButton = event.target.closest("[data-sidebar-flyout-close], [data-sidebar-secondary-close]");
+      if (closeButton && sidebar.contains(closeButton)) {
+        const panel = closeButton.closest("[data-sidebar-flyout-panel]");
+        closeFlyouts(panel ? panelLevel(panel) : 2);
+        return;
+      }
+
+      const trigger = event.target.closest("[data-sidebar-flyout-trigger], [data-sidebar-secondary-trigger]");
+      if (!trigger || !sidebar.contains(trigger)) {
+        return;
+      }
+      event.preventDefault();
+      if (!ensureExpandedForNestedNavigation()) {
+        return;
+      }
+      const targetId = triggerTarget(trigger);
+      const targetPanel = flyoutPanels.find((panel) => panel.getAttribute("data-sidebar-flyout-panel") === targetId);
+      if (!targetPanel) {
+        return;
+      }
+      const isAlreadyOpen = targetPanel.classList.contains("is-active");
+      if (isAlreadyOpen) {
+        closeFlyouts(panelLevel(targetPanel));
+        return;
+      }
+      openFlyout(targetId);
+    });
 
     if (toggleButton) {
       toggleButton.addEventListener("click", () => {
@@ -238,9 +277,8 @@
     const initialSecondary = sidebar.getAttribute("data-initial-secondary") || "";
     setSection(initialSection);
     applyResponsiveState();
-    if (initialSecondary && isExpanded()) {
-      const matchingTrigger = branchButtons.find((button) => button.getAttribute("data-secondary-id") === initialSecondary);
-      openSecondary(initialSecondary, matchingTrigger ? matchingTrigger.getAttribute("data-secondary-title") : "Details");
+    if (initialSecondary) {
+      openSecondary(initialSecondary);
     } else {
       closeSecondary();
     }

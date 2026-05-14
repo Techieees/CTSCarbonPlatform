@@ -359,6 +359,14 @@ body.dark-mode {
   will-change: opacity, transform;
 }
 
+.app-sidebar__flyout[data-sidebar-flyout-level="3"] {
+  left: calc(var(--app-main-sidebar-w) + var(--app-primary-sidebar-w) + var(--app-secondary-sidebar-w));
+}
+
+.app-sidebar__flyout[data-sidebar-flyout-level="4"] {
+  left: calc(var(--app-main-sidebar-w) + var(--app-primary-sidebar-w) + var(--app-secondary-sidebar-w) + var(--app-secondary-sidebar-w));
+}
+
 .app-sidebar__secondary.is-active {
   display: flex;
 }
