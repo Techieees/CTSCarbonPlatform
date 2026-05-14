@@ -15,15 +15,13 @@
                         <div class="col-lg-8">
                             <div class="eg-section-label mb-1">Operational workspace</div>
                             <h2 class="card-title mb-2 d-flex align-items-center flex-wrap gap-2 h4 mb-lg-1">
-                                {% if company_logo_rel %}
-                                <img src="{{ url_for('static', filename=company_logo_rel) }}" alt="" class="cts-company-logo-inline cts-company-logo-inline--md flex-shrink-0">
-                                {% endif %}
-                                <span class="d-inline-flex align-items-center">Data Entry · {{ user.company_name }}</span>
+                                <img src="{{ url_for('static', filename=company_logo_rel) if company_logo_rel else '' }}" alt="" class="cts-company-logo-inline cts-company-logo-inline--md flex-shrink-0 {% if not company_logo_rel %}d-none{% endif %}" id="workspaceCompanyLogo" loading="lazy" decoding="async">
+                                <span class="d-inline-flex align-items-center" id="workspaceCompanyTitle">Data Entry · {{ (company_branding.get(default_company, {}).get('label') if company_branding and default_company else user.company_name) or user.company_name }}</span>
                             </h2>
                             <p class="text-muted mb-0 small">Centralized <strong>GHG data entry</strong>, validation, evidence, and mapping workflow — same enterprise grid language as preview and audit views.</p>
                         </div>
                         <div class="col-lg-4 text-lg-end">
-                            <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle rounded-pill px-3 py-2">Active account</span>
+                            <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle rounded-pill px-3 py-2" id="workspaceCompanyBadge">Active account</span>
                         </div>
                     </div>
                 </div>
@@ -143,7 +141,7 @@
 
                             <!-- Enterprise table energy (the fun kind) -->
                             <section class="de-grid-region" aria-label="Editable data grid">
-                                <div class="eg-grid-shell data-entry-table-shell shadow-sm border-secondary-subtle">
+                                <div class="eg-grid-shell data-entry-table-shell shadow-none border-secondary-subtle">
                                     <div class="eg-scroll data-entry-table-scroll">
                                     <table class="table table-sm align-middle mb-0 data-entry-grid-table eg-table" id="dataTable">
                                         <thead class="data-grid__thead">
@@ -436,20 +434,23 @@
 
 {% block scripts %}
 <script type="application/json" id="companiesJson">{{ (companies or []) | tojson }}</script>
+<script type="application/json" id="companyBrandingJson">{{ (company_branding or {}) | tojson }}</script>
 <script type="application/json" id="defaultCompanyJson">{{ (default_company or "") | tojson }}</script>
 <style>
 .data-entry-table-shell {
   --data-grid-zoom: 1;
-  --data-grid-font-size: calc(0.8125rem * var(--data-grid-zoom));
-  --data-grid-index-font-size: calc(0.75rem * var(--data-grid-zoom));
-  --data-grid-cell-min-width: calc(108px * var(--data-grid-zoom));
-  --data-grid-cell-max-width: calc(280px * var(--data-grid-zoom));
-  --data-grid-cell-pad-y: calc(0.34rem * var(--data-grid-zoom));
-  --data-grid-cell-pad-x: calc(0.5rem * var(--data-grid-zoom));
-  --data-grid-input-pad-y: calc(0.38rem * var(--data-grid-zoom));
-  --data-grid-input-pad-x: calc(0.5rem * var(--data-grid-zoom));
-  --data-grid-error-font-size: calc(0.68rem * var(--data-grid-zoom));
-  --data-grid-row-actions-width: calc(48px * var(--data-grid-zoom));
+  --data-grid-font-size: calc(var(--eg-cell-font-size, 0.8125rem) * var(--data-grid-zoom));
+  --data-grid-index-font-size: calc(var(--eg-head-font-size, 0.6875rem) * var(--data-grid-zoom));
+  --data-grid-cell-min-width: calc(104px * var(--data-grid-zoom));
+  --data-grid-cell-max-width: calc(260px * var(--data-grid-zoom));
+  --data-grid-cell-pad-y: calc(0.2rem * var(--data-grid-zoom));
+  --data-grid-cell-pad-x: calc(0.38rem * var(--data-grid-zoom));
+  --data-grid-input-pad-y: calc(0.2rem * var(--data-grid-zoom));
+  --data-grid-input-pad-x: calc(0.38rem * var(--data-grid-zoom));
+  --data-grid-error-font-size: calc(0.64rem * var(--data-grid-zoom));
+  --data-grid-index-width: calc(42px * var(--data-grid-zoom));
+  --data-grid-select-width: calc(34px * var(--data-grid-zoom));
+  --data-grid-row-actions-width: calc(42px * var(--data-grid-zoom));
   border-radius: var(--eg-card-radius, 0.5rem) !important;
   overflow: hidden;
   border-color: var(--bs-border-color) !important;
@@ -472,23 +473,29 @@
   margin-bottom: 0;
 }
 
+.de-helper-toolbar {
+  background: var(--bs-body-bg) !important;
+  border-radius: var(--eg-card-radius, 0.5rem) !important;
+}
+
 .dashboard-page #dataTable.data-entry-grid-table.eg-table tbody tr:not(.is-locked-row):hover td {
-  background-color: rgba(var(--brand-blue-rgb, 47, 95, 179), 0.04) !important;
+  background-color: rgba(var(--brand-blue-rgb, 47, 95, 179), 0.035) !important;
+  box-shadow: none !important;
 }
 
 .dashboard-page #dataTable.data-entry-grid-table.eg-table .data-grid__cell.is-active {
-  box-shadow: inset 0 0 0 2px rgba(var(--brand-blue-rgb, 47, 95, 179), 0.72);
-  background: rgba(var(--brand-blue-rgb, 47, 95, 179), 0.09) !important;
+  box-shadow: inset 0 0 0 1px rgba(var(--brand-blue-rgb, 47, 95, 179), 0.72);
+  background: rgba(var(--brand-blue-rgb, 47, 95, 179), 0.055) !important;
 }
 
 .dashboard-page #dataTable.data-entry-grid-table.eg-table .data-grid__input:focus-visible {
-  outline: 2px solid rgba(var(--brand-blue-rgb, 47, 95, 179), 0.55);
-  outline-offset: -2px;
+  outline: 1px solid rgba(var(--brand-blue-rgb, 47, 95, 179), 0.6);
+  outline-offset: -1px;
 }
 
 .dashboard-page #dataTable.data-entry-grid-table.eg-table select.data-grid__input.data-grid__select:focus-visible {
-  outline: 2px solid rgba(var(--brand-blue-rgb, 47, 95, 179), 0.55);
-  outline-offset: -2px;
+  outline: 1px solid rgba(var(--brand-blue-rgb, 47, 95, 179), 0.6);
+  outline-offset: -1px;
 }
 
 .data-entry-main {
@@ -503,8 +510,9 @@
   overflow: auto;
   background: var(--bs-body-bg);
   scrollbar-gutter: stable;
-  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+  contain: style;
 }
 
 .data-entry-grid-table {
@@ -514,18 +522,23 @@
   color: var(--bs-body-color);
   font-size: var(--data-grid-font-size);
   min-width: max-content;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
 .data-entry-grid-table thead.data-grid__thead th {
   position: sticky;
   top: 0;
   z-index: 4;
-  background: #f5f5f5 !important;
-  color: #000;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  box-shadow: none;
+  background: var(--eg-head-track-bg, var(--bs-body-bg)) !important;
+  color: var(--bs-secondary-color);
+  border: 0;
+  border-bottom: 1px solid var(--bs-border-color);
+  border-right: 1px solid var(--bs-border-color-translucent);
+  box-shadow: none !important;
   white-space: nowrap;
-  font-weight: 600;
+  font-size: var(--data-grid-index-font-size);
+  font-weight: 650;
   text-align: left;
 }
 
@@ -534,8 +547,10 @@
 .data-entry-grid-table thead th {
   padding: var(--data-grid-cell-pad-y) var(--data-grid-cell-pad-x);
   vertical-align: middle;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  background-color: #ffffff;
+  border: 0;
+  border-bottom: 1px solid var(--bs-border-color-translucent);
+  border-right: 1px solid var(--bs-border-color-translucent);
+  background-color: var(--bs-body-bg);
 }
 
 .data-entry-grid-table tbody tr.is-locked-row {
@@ -547,11 +562,11 @@
 }
 
 .data-entry-grid-table tbody tr.data-grid__row-saved-flash td {
-  animation: dataGridSavedFlash 1.6s ease-out 1;
+  animation: dataGridSavedFlash 0.9s ease-out 1;
 }
 
 @keyframes dataGridSavedFlash {
-  0% { background-color: rgba(25, 135, 84, 0.45) !important; }
+  0% { background-color: rgba(25, 135, 84, 0.18) !important; }
   100% { background-color: var(--bs-body-bg); }
 }
 
@@ -559,35 +574,34 @@
 .data-grid__meta {
   white-space: nowrap;
   font-size: var(--data-grid-index-font-size);
-  background: #ffffff !important;
+  background: var(--bs-body-bg) !important;
 }
 
 .data-grid__index {
-  width: calc(44px * var(--data-grid-zoom));
-  min-width: calc(44px * var(--data-grid-zoom));
+  width: var(--data-grid-index-width);
+  min-width: var(--data-grid-index-width);
 }
 
 .data-grid__meta {
-  width: calc(120px * var(--data-grid-zoom));
-  min-width: calc(120px * var(--data-grid-zoom));
+  width: calc(108px * var(--data-grid-zoom));
+  min-width: calc(108px * var(--data-grid-zoom));
 }
 
 .data-grid__cell {
   min-width: var(--data-grid-cell-min-width);
   max-width: var(--data-grid-cell-max-width);
   padding: 0 !important;
-  background: #ffffff !important;
+  background: var(--bs-body-bg) !important;
 }
 
 .data-grid__cell.is-active {
-  box-shadow: inset 0 0 0 2px rgba(13, 110, 253, 0.55);
-  background: rgba(13, 110, 253, 0.12) !important;
+  box-shadow: inset 0 0 0 1px rgba(var(--brand-blue-rgb, 47, 95, 179), 0.72);
+  background: rgba(var(--brand-blue-rgb, 47, 95, 179), 0.055) !important;
 }
 
 .data-grid__cell-inner {
-  display: flex;
-  flex-direction: column;
-  min-height: 100%;
+  display: block;
+  min-height: 0;
 }
 
 .data-grid__input {
@@ -596,11 +610,12 @@
   border: 0;
   border-radius: 0;
   padding: var(--data-grid-input-pad-y) var(--data-grid-input-pad-x);
-  background: #ffffff;
-  color: #000;
+  background: var(--bs-body-bg);
+  color: var(--bs-body-color);
   box-shadow: none !important;
   font-size: var(--data-grid-font-size);
-  line-height: 1.25;
+  line-height: 1.2;
+  min-height: calc(1.55rem * var(--data-grid-zoom));
 }
 
 .data-grid__input[type="number"] {
@@ -609,7 +624,7 @@
 
 .data-grid__input:focus {
   outline: none;
-  background: #ffffff;
+  background: var(--bs-body-bg);
 }
 
 .data-grid__input[readonly] {
@@ -638,16 +653,16 @@
 .data-grid__row-actions {
   width: var(--data-grid-row-actions-width);
   text-align: center;
-  background: #ffffff !important;
+  background: var(--bs-body-bg) !important;
 }
 
 .data-grid__meta-badge {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  padding: 0.1rem 0.4rem;
-  border-radius: 999px;
-  font-size: 0.72rem;
+  padding: 0.05rem 0.25rem;
+  border-radius: 0.25rem;
+  font-size: 0.68rem;
   background: var(--bs-tertiary-bg);
   color: var(--bs-body-color);
   border: 1px solid var(--bs-border-color);
@@ -663,10 +678,11 @@
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.42rem 0.7rem;
-  border-radius: 999px;
+  padding: 0.3rem 0.55rem;
+  border-radius: 0.375rem;
   border: 1px solid var(--bs-border-color);
-  background: var(--bs-tertiary-bg);
+  background: var(--bs-body-bg);
+  font-size: 0.78rem;
 }
 
 .dashboard-page .row.mb-4 {
@@ -703,11 +719,12 @@ body.dark-mode .data-grid__row-actions {
 
 body.dark-mode .dashboard-page #dataTable.data-entry-grid-table.eg-table tbody tr:not(.is-locked-row):hover td {
   background-color: rgba(255, 255, 255, 0.05) !important;
+  box-shadow: none !important;
 }
 
 body.dark-mode .dashboard-page #dataTable.data-entry-grid-table.eg-table .data-grid__cell.is-active {
-  box-shadow: inset 0 0 0 2px rgba(109, 168, 253, 0.65);
-  background: rgba(59, 130, 246, 0.12) !important;
+  box-shadow: inset 0 0 0 1px rgba(109, 168, 253, 0.65);
+  background: rgba(59, 130, 246, 0.08) !important;
 }
 
 body.dark-mode .data-entry-grid-table thead.data-grid__thead th {
@@ -724,10 +741,11 @@ select.data-grid__input.data-grid__select {
   border: 0;
   border-radius: 0;
   padding: var(--data-grid-input-pad-y) var(--data-grid-input-pad-x);
-  background: #ffffff;
-  color: #000;
+  background: var(--bs-body-bg);
+  color: var(--bs-body-color);
   font-size: var(--data-grid-font-size);
-  line-height: 1.25;
+  line-height: 1.2;
+  min-height: calc(1.55rem * var(--data-grid-zoom));
 }
 
 select.data-grid__input.data-grid__select:focus {
@@ -761,30 +779,27 @@ body.dark-mode select.data-grid__input.data-grid__select:disabled {
 }
 
 .data-grid__evidence-inner {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  min-height: 2.25rem;
-  justify-content: center;
+  display: block;
+  min-height: 0;
 }
 
 .data-grid__evidence-btn {
   width: 100%;
   text-align: left;
-  border-radius: 12px !important;
-  border: 1px dashed var(--bs-border-color) !important;
-  background: var(--bs-tertiary-bg);
+  border-radius: 0 !important;
+  border: 0 !important;
+  background: transparent;
   color: var(--bs-body-color);
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.35rem 0.5rem !important;
-  font-size: calc(0.78rem * var(--data-grid-zoom));
+  padding: var(--data-grid-input-pad-y) var(--data-grid-input-pad-x) !important;
+  font-size: var(--data-grid-font-size);
+  min-height: calc(1.55rem * var(--data-grid-zoom));
 }
 
 .data-grid__evidence-btn:not(:disabled):hover {
-  border-style: solid !important;
-  background: rgba(13, 110, 253, 0.06);
+  background: rgba(var(--brand-blue-rgb, 47, 95, 179), 0.035);
 }
 
 .data-grid__evidence-btn:disabled {
@@ -819,7 +834,7 @@ body.dark-mode select.data-grid__input.data-grid__select:disabled {
 }
 
 body.dark-mode .data-grid__evidence-btn {
-  background: #1a1a1a;
+  background: transparent;
   color: #f5f5f5;
   border-color: rgba(255, 255, 255, 0.18) !important;
 }
@@ -860,17 +875,47 @@ body.dark-mode .evidence-preview-linked-summary {
 }
 
 .data-grid__select-col {
-  width: calc(36px * var(--data-grid-zoom));
-  min-width: calc(36px * var(--data-grid-zoom));
+  width: var(--data-grid-select-width);
+  min-width: var(--data-grid-select-width);
   vertical-align: middle;
 }
 
+.dashboard-page #dataTable thead th:first-child,
+.dashboard-page #dataTable tbody td:first-child {
+  left: 0;
+  background: var(--bs-body-bg) !important;
+  box-shadow: 1px 0 0 var(--bs-border-color-translucent);
+}
+
+.dashboard-page #dataTable thead th.data-grid__select-col,
+.dashboard-page #dataTable tbody td.data-grid__select-col {
+  position: sticky;
+  left: var(--data-grid-index-width);
+  z-index: 2;
+  background: var(--bs-body-bg) !important;
+  box-shadow: 1px 0 0 var(--bs-border-color-translucent);
+}
+
+.dashboard-page #dataTable thead th:first-child,
+.dashboard-page #dataTable thead th.data-grid__select-col {
+  z-index: 5;
+  background: var(--eg-head-track-bg, var(--bs-body-bg)) !important;
+}
+
 .data-grid__row-selected td {
-  box-shadow: inset 3px 0 0 0 rgba(13, 110, 253, 0.55);
+  box-shadow: inset 2px 0 0 0 rgba(var(--brand-blue-rgb, 47, 95, 179), 0.55);
+}
+
+.dashboard-page #dataTable.data-entry-grid-table.eg-table tbody tr.data-grid__row-selected:hover td {
+  box-shadow: inset 2px 0 0 0 rgba(var(--brand-blue-rgb, 47, 95, 179), 0.55) !important;
 }
 
 body.dark-mode .data-grid__row-selected td {
-  box-shadow: inset 3px 0 0 0 rgba(109, 168, 253, 0.65);
+  box-shadow: inset 2px 0 0 0 rgba(109, 168, 253, 0.65);
+}
+
+body.dark-mode .dashboard-page #dataTable.data-entry-grid-table.eg-table tbody tr.data-grid__row-selected:hover td {
+  box-shadow: inset 2px 0 0 0 rgba(109, 168, 253, 0.65) !important;
 }
 
 .data-entry-toolbar__chip--selection {
@@ -995,6 +1040,7 @@ const ILLU_CHEVRON = '<span class="dash-admin-illu dash-admin-illu--toolbar smal
 const ILLU_WIDE_EXPAND = '<span class="dash-admin-illu dash-admin-illu--btn me-1" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 3H3v6M15 21h6v-6M3 15v6h6M21 9V3h-6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></span>';
 const ILLU_WIDE_COMPRESS = '<span class="dash-admin-illu dash-admin-illu--btn me-1" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 9H3V3M15 15h6v6M9 15v6H3M15 9V3h6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></span>';
 const COMPANIES = JSON.parse(document.getElementById('companiesJson')?.textContent || '[]');
+const COMPANY_BRANDING = JSON.parse(document.getElementById('companyBrandingJson')?.textContent || '{}');
 let currentCompany = JSON.parse(document.getElementById('defaultCompanyJson')?.textContent || '""');
 let currentSheet = null;
 let currentHeaders = [];
@@ -1008,12 +1054,16 @@ let reportingPeriodsLoaded = false;
 let siteTagOptionsByCompany = {};
 let gridSelectedRows = new Set();
 let lastCheckboxRowIndex = null;
+let gridStructureDirty = false;
 
 const WORKSPACE_MODE_KEY = 'cts-data-entry-wide-mode';
 const elWorkspace = document.getElementById('dataEntryWorkspace');
 const elToggleWorkspace = document.getElementById('toggleWorkspaceBtn');
 const elColumnCountLabel = document.getElementById('columnCountLabel');
 const elCompany = document.getElementById('companySelect');
+const elWorkspaceCompanyLogo = document.getElementById('workspaceCompanyLogo');
+const elWorkspaceCompanyTitle = document.getElementById('workspaceCompanyTitle');
+const elWorkspaceCompanyBadge = document.getElementById('workspaceCompanyBadge');
 const elSheetList = document.getElementById('sheetList');
 const elSheetFilter = document.getElementById('sheetFilter');
 const elSheetCount = document.getElementById('sheetCount');
@@ -1055,6 +1105,48 @@ let activeJobPollTimer = null;
 function setStatus(msg) {
   elSaveStatus.textContent = msg || '';
 }
+
+function getCompanyBranding(companyKey) {
+  const key = String(companyKey || '').trim();
+  const byKey = key ? COMPANY_BRANDING[key] : null;
+  if (byKey) return byKey;
+  const opt = elCompany?.selectedOptions?.[0];
+  return {
+    label: opt?.textContent?.trim() || key || 'Company',
+    logo_url: '',
+  };
+}
+
+function syncWorkspaceBranding(companyKey = currentCompany) {
+  const key = String(companyKey || '').trim();
+  const branding = getCompanyBranding(key);
+  const label = String(branding.label || key || 'Company').trim();
+  const logoUrl = String(branding.logo_url || '').trim();
+
+  if (elWorkspaceCompanyTitle) {
+    elWorkspaceCompanyTitle.textContent = `Data Entry · ${label}`;
+  }
+  if (elWorkspaceCompanyBadge) {
+    elWorkspaceCompanyBadge.setAttribute('title', label ? `Active account: ${label}` : 'Active account');
+  }
+  if (!elWorkspaceCompanyLogo) return;
+
+  elWorkspaceCompanyLogo.alt = label ? `${label} logo` : '';
+  if (!logoUrl) {
+    elWorkspaceCompanyLogo.removeAttribute('src');
+    elWorkspaceCompanyLogo.classList.add('d-none');
+    return;
+  }
+  if (elWorkspaceCompanyLogo.getAttribute('src') !== logoUrl) {
+    elWorkspaceCompanyLogo.src = logoUrl;
+  }
+  elWorkspaceCompanyLogo.classList.remove('d-none');
+}
+
+elWorkspaceCompanyLogo?.addEventListener('error', () => {
+  elWorkspaceCompanyLogo.removeAttribute('src');
+  elWorkspaceCompanyLogo.classList.add('d-none');
+});
 
 function closestZoomLevel(value) {
   return GRID_ZOOM_LEVELS.reduce((best, level) => (
@@ -1426,6 +1518,7 @@ function ensureAppendRow() {
   const last = gridRows[gridRows.length - 1];
   if (!last || last.is_persisted || rowHasValues(last)) {
     gridRows.push(createBlankRow());
+    gridStructureDirty = true;
   }
 }
 
@@ -1544,6 +1637,7 @@ function renderEvidenceAttachButton(it) {
 function renderGrid() {
   const thead = table.querySelector('thead');
   const tbody = table.querySelector('tbody');
+  gridStructureDirty = false;
   elColumnCountLabel.textContent = `${currentHeaders.length} columns`;
 
   thead.innerHTML = `
@@ -1583,19 +1677,47 @@ function renderGrid() {
     </tr>`;
   }).join('');
 
-  const selAll = thead.querySelector('.data-grid__select-all');
-  if (selAll instanceof HTMLInputElement) {
-    selAll.addEventListener('click', (e) => {
+  syncHeaderSelectAllCheckbox();
+  updateSelectionToolbar();
+  updateButtonState();
+}
+
+function bindGridDelegatedEvents() {
+  if (!table || table.dataset.gridEventsBound === '1') return;
+  table.dataset.gridEventsBound = '1';
+
+  table.addEventListener('focusin', (e) => {
+    const target = e.target instanceof Element ? e.target : null;
+    if (!target) return;
+    const evidenceBtn = target.closest('.data-grid__evidence-btn');
+    if (evidenceBtn instanceof HTMLButtonElement) {
+      setActiveEvidenceCell(evidenceBtn);
+      return;
+    }
+    if (
+      target.classList.contains('data-grid__input') &&
+      (target instanceof HTMLInputElement || target instanceof HTMLSelectElement)
+    ) {
+      setActiveCell(target);
+    }
+  });
+
+  table.addEventListener('click', (e) => {
+    const target = e.target instanceof Element ? e.target : null;
+    if (!target) return;
+
+    const selAll = target.closest('.data-grid__select-all');
+    if (selAll instanceof HTMLInputElement) {
       e.stopPropagation();
       toggleSelectAllPersistedRows(selAll.checked);
-    });
-  }
+      return;
+    }
 
-  tbody.querySelectorAll('.data-grid__row-select').forEach((cb) => {
-    cb.addEventListener('click', (e) => {
+    const rowSelect = target.closest('.data-grid__row-select');
+    if (rowSelect instanceof HTMLInputElement) {
       e.stopPropagation();
-      const idx = Number(cb.getAttribute('data-row'));
-      const on = cb.checked;
+      const idx = Number(rowSelect.getAttribute('data-row'));
+      const on = rowSelect.checked;
       if (e.shiftKey && lastCheckboxRowIndex !== null && lastCheckboxRowIndex !== idx) {
         const lo = Math.min(lastCheckboxRowIndex, idx);
         const hi = Math.max(lastCheckboxRowIndex, idx);
@@ -1613,12 +1735,12 @@ function renderGrid() {
       }
       lastCheckboxRowIndex = idx;
       renderGrid();
-    });
-  });
+      return;
+    }
 
-  tbody.querySelectorAll('[data-remove-row]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const rowIndex = Number(btn.getAttribute('data-remove-row'));
+    const removeBtn = target.closest('[data-remove-row]');
+    if (removeBtn instanceof HTMLElement) {
+      const rowIndex = Number(removeBtn.getAttribute('data-remove-row'));
       gridRows.splice(rowIndex, 1);
       const nextSel = new Set();
       gridSelectedRows.forEach((i) => {
@@ -1629,36 +1751,61 @@ function renderGrid() {
       lastCheckboxRowIndex = null;
       ensureAppendRow();
       renderGrid();
-    });
-  });
-
-  tbody.querySelectorAll('.data-grid__input').forEach((control) => {
-    control.addEventListener('focus', () => setActiveCell(control));
-    control.addEventListener('click', () => setActiveCell(control));
-    if (control instanceof HTMLSelectElement) {
-      control.addEventListener('change', () => syncGridFromControl(control));
-    } else {
-      control.addEventListener('input', () => syncGridFromControl(control));
+      return;
     }
-    control.addEventListener('keydown', handleGridKeydown);
-    control.addEventListener('paste', handleGridPaste);
+
+    const evidenceBtn = target.closest('.data-grid__evidence-btn');
+    if (evidenceBtn instanceof HTMLButtonElement) {
+      setActiveEvidenceCell(evidenceBtn);
+      if (evidenceBtn.disabled) return;
+      e.preventDefault();
+      openEvidenceModal(Number(evidenceBtn.getAttribute('data-row')));
+      return;
+    }
+
+    if (
+      target.classList.contains('data-grid__input') &&
+      (target instanceof HTMLInputElement || target instanceof HTMLSelectElement)
+    ) {
+      setActiveCell(target);
+    }
   });
 
-  tbody.querySelectorAll('.data-grid__evidence-btn').forEach((btn) => {
-    btn.addEventListener('focus', () => setActiveEvidenceCell(btn));
-    btn.addEventListener('click', (ev) => {
-      setActiveEvidenceCell(btn);
-      if (btn.disabled) return;
-      ev.preventDefault();
-      openEvidenceModal(Number(btn.getAttribute('data-row')));
-    });
-    btn.addEventListener('keydown', handleEvidenceKeydown);
+  table.addEventListener('input', (e) => {
+    const control = e.target;
+    if (control instanceof HTMLInputElement && control.classList.contains('data-grid__input')) {
+      syncGridFromControl(control);
+    }
   });
 
-  syncHeaderSelectAllCheckbox();
-  updateSelectionToolbar();
-  updateButtonState();
+  table.addEventListener('change', (e) => {
+    const control = e.target;
+    if (control instanceof HTMLSelectElement && control.classList.contains('data-grid__input')) {
+      syncGridFromControl(control);
+    }
+  });
+
+  table.addEventListener('keydown', (e) => {
+    const target = e.target instanceof Element ? e.target : null;
+    if (!target) return;
+    if (target.closest('.data-grid__evidence-btn')) {
+      handleEvidenceKeydown(e);
+      return;
+    }
+    if (target.classList.contains('data-grid__input')) {
+      handleGridKeydown(e);
+    }
+  });
+
+  table.addEventListener('paste', (e) => {
+    const target = e.target instanceof Element ? e.target : null;
+    if (target?.classList.contains('data-grid__input')) {
+      handleGridPaste(e);
+    }
+  });
 }
+
+bindGridDelegatedEvents();
 
 function setActiveCell(input) {
   table.querySelectorAll('.data-grid__cell.is-active').forEach((cell) => cell.classList.remove('is-active'));
@@ -1687,7 +1834,7 @@ function setActiveEvidenceCell(btn) {
 }
 
 function handleEvidenceKeydown(e) {
-  const btn = e.currentTarget;
+  const btn = e.target;
   if (!(btn instanceof HTMLButtonElement) || btn.disabled) return;
   const rowIndex = Number(btn.getAttribute('data-row'));
   const colIndex = Number(btn.getAttribute('data-col'));
@@ -1705,7 +1852,7 @@ function handleEvidenceKeydown(e) {
     if (nextCol >= currentHeaders.length) {
       nextCol = 0;
       nextRow = ensureEditableRowIndex(rowIndex + 1);
-      renderGrid();
+      renderGridIfStructureDirty();
     } else if (nextCol < 0) {
       nextRow = Math.max(0, rowIndex - 1);
       nextCol = currentHeaders.length - 1;
@@ -1724,7 +1871,7 @@ function handleEvidenceKeydown(e) {
     if (e.key === 'ArrowUp') nextRow -= 1;
     if (nextCol < 0 || nextCol >= currentHeaders.length || nextRow < 0) return;
     nextRow = ensureEditableRowIndex(nextRow);
-    renderGrid();
+    renderGridIfStructureDirty();
     focusCell(nextRow, nextCol);
   }
 }
@@ -1753,12 +1900,20 @@ function focusCell(rowIndex, colIndex) {
 function ensureEditableRowIndex(rowIndex) {
   while (gridRows.length <= rowIndex) {
     gridRows.push(createBlankRow());
+    gridStructureDirty = true;
   }
   if (!gridRows[rowIndex].is_editable) {
     gridRows.push(createBlankRow());
+    gridStructureDirty = true;
     return gridRows.length - 1;
   }
   return rowIndex;
+}
+
+function renderGridIfStructureDirty() {
+  if (!gridStructureDirty) return false;
+  renderGrid();
+  return true;
 }
 
 function handleGridKeydown(e) {
@@ -1776,7 +1931,7 @@ function handleGridKeydown(e) {
   if (e.key === 'Enter') {
     e.preventDefault();
     const nextRow = ensureEditableRowIndex(rowIndex + 1);
-    renderGrid();
+    renderGridIfStructureDirty();
     focusCell(nextRow, colIndex);
     return;
   }
@@ -1788,7 +1943,7 @@ function handleGridKeydown(e) {
     if (nextCol >= currentHeaders.length) {
       nextCol = 0;
       nextRow = ensureEditableRowIndex(rowIndex + 1);
-      renderGrid();
+      renderGridIfStructureDirty();
     } else if (nextCol < 0) {
       nextRow = Math.max(0, rowIndex - 1);
       nextCol = currentHeaders.length - 1;
@@ -1808,7 +1963,7 @@ function handleGridKeydown(e) {
     if (nextCol < 0 || nextCol >= currentHeaders.length || nextRow < 0) return;
     e.preventDefault();
     nextRow = ensureEditableRowIndex(nextRow);
-    renderGrid();
+    renderGridIfStructureDirty();
     focusCell(nextRow, nextCol);
   }
 }
@@ -1987,9 +2142,9 @@ function validateGridForSave() {
     if (btn) {
       btn.focus();
       const tr = btn.closest('tr');
-      tr?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+      tr?.scrollIntoView({ behavior: 'auto', block: 'center', inline: 'nearest' });
       const td = btn.closest('td');
-      td?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      td?.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'center' });
     }
     return { ok: false, issues };
   }
@@ -1998,9 +2153,9 @@ function validateGridForSave() {
   if (firstInput && (firstInput instanceof HTMLInputElement || firstInput instanceof HTMLSelectElement)) {
     firstInput.focus();
     const tr = firstInput.closest('tr');
-    tr?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+    tr?.scrollIntoView({ behavior: 'auto', block: 'center', inline: 'nearest' });
     const td = firstInput.closest('td');
-    td?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    td?.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'center' });
   }
 
   return { ok: false, issues };
@@ -2176,6 +2331,7 @@ function renderSheets(filterText = '') {
 }
 
 async function loadSheets() {
+  syncWorkspaceBranding(currentCompany);
   if (!currentCompany) {
     elSheetList.innerHTML = `<div class="text-muted p-3">No company available.</div>`;
     return;
@@ -2229,6 +2385,7 @@ async function attachEvidenceCountsToRows() {
 
 async function selectSheet(sheet, flashEntryGroups = null) {
   if (!sheet) return;
+  syncWorkspaceBranding(currentCompany);
   currentSheet = sheet;
   gridSelectedRows.clear();
   lastCheckboxRowIndex = null;
@@ -2460,6 +2617,7 @@ async function mapNow() {
 
 elCompany?.addEventListener('change', async () => {
   currentCompany = elCompany.value;
+  syncWorkspaceBranding(currentCompany);
   void ensureSiteTagOptions(currentCompany);
   await loadSheets();
 });
@@ -2968,6 +3126,10 @@ void ensureReportingPeriodOptions();
   }
 
   if (!currentCompany && COMPANIES.length) currentCompany = (COMPANIES[0].key || COMPANIES[0]);
+  if (elCompany && currentCompany) {
+    elCompany.value = currentCompany;
+  }
+  syncWorkspaceBranding(currentCompany);
 
   try {
     await loadSheets();

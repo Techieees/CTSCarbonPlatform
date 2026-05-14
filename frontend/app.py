@@ -15824,6 +15824,18 @@ def dashboard():
 
     companies = _list_template_companies_for_user()
     default_company = companies[0]["key"] if companies else None
+    _prime_company_logo_static_rel_cache([str(c.get("key") or "") for c in companies])
+    company_branding = {}
+    for c in companies:
+        key = str(c.get("key") or "").strip()
+        if not key:
+            continue
+        label = str(c.get("label") or key).strip()
+        logo_rel = _company_logo_static_rel(key)
+        company_branding[key] = {
+            "label": label,
+            "logo_url": url_for("static", filename=logo_rel) if logo_rel else "",
+        }
 
     if not current_user.is_admin:
         rk = _resolve_template_company_name(current_user.company_name or "")
@@ -15836,6 +15848,7 @@ def dashboard():
         "dashboard.html",
         user=current_user,
         companies=companies,
+        company_branding=company_branding,
         default_company=default_company,
         mapping_runs=mapping_runs,
         mapping_preview_run_ids=mapping_preview_run_ids,
