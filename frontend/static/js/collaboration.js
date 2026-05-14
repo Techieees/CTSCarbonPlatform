@@ -67,6 +67,66 @@
     const badge = notificationRoot.querySelector("[data-collab-notification-badge]");
     const markAllBtn = notificationRoot.querySelector("[data-mark-all-notifications]");
 
+    function notificationStatusLabel(item) {
+      const kind = String(item && item.type || "").trim().toLowerCase();
+      const haystack = [
+        item && item.title,
+        item && item.message
+      ].join(" ").toLowerCase();
+      if (kind === "danger" || kind === "error" || kind === "failed" || haystack.indexOf("failed") !== -1) {
+        return "Failed";
+      }
+      if (haystack.indexOf("running") !== -1 || haystack.indexOf("queued") !== -1 || haystack.indexOf("started") !== -1 || haystack.indexOf("processing") !== -1) {
+        return "Processing";
+      }
+      if (kind === "success" || haystack.indexOf("completed") !== -1 || haystack.indexOf("synced") !== -1 || haystack.indexOf("established") !== -1 || haystack.indexOf("ready") !== -1 || haystack.indexOf("generated") !== -1) {
+        return "Completed";
+      }
+      if (kind === "message") return "New";
+      return "Info";
+    }
+
+    function fallbackNotificationCard(item) {
+      return {
+        company_name: "Carbon Platform",
+        uploaded_by_user: "System",
+        uploaded_by_user_id: 0,
+        uploaded_by_job_title: "",
+        uploaded_by_has_profile_photo: false,
+        upload_timestamp: String(item && item.created_at || ""),
+        category: String(item && item.title || "Notification"),
+        row_count: 0,
+        mapping_status: notificationStatusLabel(item),
+        mapping_state: "",
+        mapped_by_admin: "",
+        mapping_timestamp: "",
+        mapped: false
+      };
+    }
+
+    function renderNotificationCard(item) {
+      if (!window.CtsMappingCards) return "";
+      const card = item && item.mapping_card && typeof item.mapping_card === "object"
+        ? item.mapping_card
+        : fallbackNotificationCard(item);
+      const inner = window.CtsMappingCards.renderCardHtml(card, { compact: true });
+      const href = item && item.link ? escapeHtml(item.link) : "";
+      const hitOpen = href
+        ? '<a class="collab-notification-item__card-hit" href="' + href + '">'
+        : '<div class="collab-notification-item__card-hit">';
+      const hitClose = href ? "</a>" : "</div>";
+      return (
+        '<article class="collab-notification-item collab-notification-item--mapping-card" data-notification-id="' +
+        Number(item && item.id || 0) +
+        '">' +
+        hitOpen +
+        inner +
+        hitClose +
+        (item && item.is_read ? "" : '<span class="search-result-item__kind">New</span>') +
+        "</article>"
+      );
+    }
+
     async function loadNotifications() {
       const started = performance && typeof performance.now === "function" ? performance.now() : Date.now();
       const assets = window.__CTS_MAPPING_CARD_ASSETS__ || {};
@@ -109,7 +169,7 @@
       setBadge(badge, data.unread_count);
       let rows = Array.isArray(data.notifications) ? data.notifications : [];
 
-      if (rows.some(function (item) { return item && item.mapping_card; })) {
+      if (rows.length) {
         await ensureMappingCards().catch(function () { return null; });
       }
 
@@ -124,50 +184,13 @@
         });
       }
 
-      const legacyBlocks = rows
+      const notificationBlocks = rows
         .map(function (item) {
-          if (item.mapping_card && window.CtsMappingCards) {
-            var card = item.mapping_card;
-            var inner = window.CtsMappingCards.renderCardHtml(card, { compact: true });
-            var href = item.link ? escapeHtml(item.link) : escapeHtml(assets.dashboardUrl || "/");
-            return (
-              '<article class="collab-notification-item collab-notification-item--mapping-card" data-notification-id="' +
-              Number(item.id) +
-              '">' +
-              '<a class="collab-notification-item__card-hit" href="' +
-              href +
-              '">' +
-              inner +
-              "</a>" +
-              (item.is_read ? "" : '<span class="search-result-item__kind">New</span>') +
-              "</article>"
-            );
-          }
-          var titleHtml = item.link
-            ? '<a href="' + escapeHtml(item.link) + '">' + escapeHtml(item.title) + "</a>"
-            : escapeHtml(item.title);
-          return (
-            '<article class="collab-notification-item" data-notification-id="' +
-            Number(item.id) +
-            '">' +
-            "<div>" +
-            '<div class="collab-notification-item__title">' +
-            titleHtml +
-            "</div>" +
-            "<div>" +
-            escapeHtml(item.message) +
-            "</div>" +
-            '<div class="collab-notification-item__meta">' +
-            escapeHtml(item.created_at) +
-            "</div>" +
-            "</div>" +
-            (item.is_read ? "" : '<span class="search-result-item__kind">New</span>') +
-            "</article>"
-          );
+          return renderNotificationCard(item);
         })
         .join("");
 
-      const composed = (adminMappingHtml || "") + legacyBlocks;
+      const composed = (adminMappingHtml || "") + notificationBlocks;
 
       if (!composed.trim()) {
         list.innerHTML = '<div class="collab-empty-state">No notifications yet.</div>';

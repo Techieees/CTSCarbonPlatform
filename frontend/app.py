@@ -1803,7 +1803,72 @@ def _mapping_card_payload_for_pair(company_name: str, sheet_name: str) -> dict[s
     return None
 
 
-def _notification_payload(row: "Notification") -> dict[str, object]:
+def _notification_card_status(row: "Notification") -> str:
+    kind = str(getattr(row, "type", "") or "").strip().lower()
+    haystack = " ".join(
+        [
+            str(getattr(row, "title", "") or ""),
+            str(getattr(row, "message", "") or ""),
+        ]
+    ).lower()
+    if kind in {"danger", "error", "failed"} or "failed" in haystack:
+        return "Failed"
+    if any(token in haystack for token in ("running", "queued", "started", "processing")):
+        return "Processing"
+    if kind == "success" or any(token in haystack for token in ("completed", "synced", "established", "ready", "generated")):
+        return "Completed"
+    if kind == "message":
+        return "New"
+    return "Info"
+
+
+def _notification_card_row_count(row: "Notification") -> int:
+    text = " ".join(
+        [
+            str(getattr(row, "title", "") or ""),
+            str(getattr(row, "message", "") or ""),
+        ]
+    )
+    for pattern in (
+        r"\b([0-9][0-9,]*)\s+(?:imported\s+)?(?:row|rows|record|records|supplier|suppliers|endpoint|endpoints)\b",
+        r"\b(?:inserted|imported|updated|retrieved|synced)\s+([0-9][0-9,]*)\b",
+    ):
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            try:
+                return int(match.group(1).replace(",", ""))
+            except Exception:
+                return 0
+    return 0
+
+
+def _notification_card_payload(row: "Notification", notification_user: object | None = None) -> dict[str, object]:
+    created_at = row.created_at.strftime("%Y-%m-%d %H:%M") if getattr(row, "created_at", None) else ""
+    user = notification_user
+    if user is None:
+        try:
+            user = User.query.get(int(getattr(row, "user_id", 0) or 0))
+        except Exception:
+            user = None
+    company_name = _clean_company_name(getattr(user, "company_name", "") or "") or "Carbon Platform"
+    return {
+        "company_name": company_name,
+        "uploaded_by_user": _user_display_name(user) or "System",
+        "uploaded_by_user_id": int(getattr(user, "id", 0) or 0),
+        "uploaded_by_job_title": _user_professional_title(user),
+        "uploaded_by_has_profile_photo": bool(str(getattr(user, "profile_photo_path", "") or "").strip()),
+        "upload_timestamp": created_at,
+        "category": str(getattr(row, "title", "") or "").strip() or "Notification",
+        "row_count": _notification_card_row_count(row),
+        "mapping_status": _notification_card_status(row),
+        "mapping_state": "",
+        "mapped_by_admin": "",
+        "mapping_timestamp": "",
+        "mapped": False,
+    }
+
+
+def _notification_payload(row: "Notification", notification_user: object | None = None) -> dict[str, object]:
     created_at = row.created_at.strftime("%Y-%m-%d %H:%M") if getattr(row, "created_at", None) else ""
     payload: dict[str, object] = {
         "id": int(row.id),
@@ -1820,8 +1885,10 @@ def _notification_payload(row: "Notification") -> dict[str, object]:
             parsed = json.loads(str(raw_meta))
             if isinstance(parsed, dict):
                 payload["mapping_card"] = parsed
+                return payload
         except Exception:
             pass
+    payload["mapping_card"] = _notification_card_payload(row, notification_user)
     return payload
 
 
@@ -25763,7 +25830,7 @@ def api_notifications_recent():
         limit=_parse_int_arg("limit", 8, minimum=1, maximum=30),
     )
     unread = notification_service.unread_count(Notification, user_id=current_user.id)
-    return jsonify({"notifications": [_notification_payload(row) for row in rows], "unread_count": unread})
+    return jsonify({"notifications": [_notification_payload(row, current_user) for row in rows], "unread_count": unread})
 
 
 @app.route("/api/notifications/unread_count", methods=["GET"])
