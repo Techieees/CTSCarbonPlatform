@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Products — CTS Methodology{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/sustainability-estimation.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid sust-page px-3 px-lg-4 py-3 py-lg-4 mb-5" id="sust-products-root">
+  <header class="sust-hero mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+      <div>
+        <p class="text-muted small mb-1">Manufacturer workflow · {{ company_name }}</p>
+        <h1 class="h3 mb-1">Products Log</h1>
+        <p class="text-muted mb-0">Methodology-driven Cat {% for c in enabled_categories %}{{ c }}{% if not loop.last %}, {% endif %}{% endfor %} — embedded transport, use-phase, and EOL logic.</p>
+      </div>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('sustainability.sustainability_estimation_hub', company=company_name, period=period_key) }}">Methodology hub</a>
+    </div>
+  </header>
+
+  <div class="row g-3 mb-4">
+    {% for cat in enabled_categories %}
+    <div class="col-md-4">
+      <div class="sust-kpi">
+        <div class="sust-kpi__label">Category {{ cat }}</div>
+        <div class="sust-kpi__value">Active</div>
+        <div class="small text-muted">
+          {% if cat == '9' %}Embedded route table{% elif cat == '11' %}Lifetime kWh × country EF{% else %}Company disposal profile{% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if nordic_epod_workbook %}
+  {% include "sustainability/partials/nordic_epod_workbook_card.html" %}
+  {% endif %}
+
+  {% if gt_monthly %}
+  <div class="sust-card mb-3">
+    <h2 class="h6">GT Nordics fixed monthly scenario</h2>
+    <p class="small text-muted mb-2">{{ gt_monthly.label }} — qty {{ gt_monthly.default_quantity }} {{ gt_monthly.quantity_unit }}, avg weight {{ gt_monthly.average_product_weight_kg }} kg, default dest. {{ gt_monthly.default_destination }}</p>
+  </div>
+  {% endif %}
+
+  <div class="sust-card mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h2 class="h6 mb-0">Reporting period: {{ period_label }}</h2>
+      <button type="button" class="btn btn-sm btn-outline-primary" id="sustAddProductRow">Add row</button>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle" id="sustProductsTable">
+        <thead>
+          <tr>
+            <th>Product type</th>
+            <th>Qty</th>
+            <th>Unit</th>
+            <th>End use</th>
+            <th>Weight</th>
+            <th>W unit</th>
+            <th>Proof</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="sustProductsBody"></tbody>
+      </table>
+    </div>
+    <div class="d-flex flex-wrap gap-2 mt-3">
+      <button type="button" class="btn btn-primary" id="sustSaveProducts">Save product log</button>
+      <button type="button" class="btn btn-success" id="sustCalcProducts">Run methodology calculation</button>
+    </div>
+    <div id="sustProductsFeedback" class="sust-feedback mt-3" hidden></div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <div class="sust-card">
+        <h2 class="h6">Cat 9 transport routes ({{ company_name }})</h2>
+        <table class="table table-sm small mb-0">
+          <thead><tr><th>Destination</th><th>Land km</th><th>Sea km</th></tr></thead>
+          <tbody>
+            {% for r in transport_routes %}
+            <tr><td>{{ r.destination_region }}</td><td>{{ r.land_distance_km }}</td><td>{{ r.sea_distance_km }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="sust-card">
+        <h2 class="h6">Cat 11 profiles</h2>
+        {% for p in cat11_profiles %}
+        <p class="small mb-1"><strong>{{ p.label }}</strong> — {{ "{:,.0f}".format(p.lifetime_kwh) }} kWh lifetime</p>
+        {% else %}
+        <p class="text-muted small mb-0">No Cat 11 profile.</p>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  window.SUST_PRODUCTS_CONFIG = {
+    company_name: {{ company_name|tojson }},
+    period_key: {{ period_key|tojson }},
+    product_types: {{ product_types|tojson }},
+    destinations: {{ destination_options|tojson }},
+    quantity_units: {{ quantity_units|tojson }},
+    product_units: {{ product_units|tojson }},
+    initial_rows: {{ product_rows|tojson }},
+    save_url: {{ url_for('sustainability.api_products')|tojson }},
+    calc_url: {{ url_for('sustainability.api_calculate')|tojson }},
+    proof_url: {{ url_for('sustainability.api_products_proof')|tojson }}
+  };
+</script>
+<script src="{{ url_for('static', filename='js/sustainability-products.js') }}" defer></script>
+{% endblock %}

@@ -4,9 +4,9 @@
 {% set runs_active = ep in ('mapping_runs', 'admin_mapping_runs') %}
 {% set supplier_pages_active = can_manage_supplier_registries() and ep in ('suppliers_hub_redirect', 'suppliers_all_page', 'suppliers_carbon_steel_page', 'suppliers_internal_page') %}
 {% set carbon_active = ep in ('carbon_accounting', 'emissions_records_page', 'scope1_detail', 'scope2_detail', 'scope3_detail') %}
-{% set data_sources_active = ep in ('data_sources_ccc_api', 'engage_waste_api_page', 'data_sources_klarakarbon', 'data_sources_employee_commuting', 'data_sources_averages', 'data_sources_scenarios', 'admin') %}
+{% set data_sources_active = ep in ('data_sources_ccc_api', 'engage_waste_api_page', 'data_sources_klarakarbon', 'data_sources_employee_commuting', 'data_sources_averages', 'data_sources_scenarios', 'sustainability.sustainability_estimation_hub', 'sustainability.sustainability_estimation_run_detail', 'sustainability.sustainability_products_page', 'sustainability.sustainability_admin_methodologies', 'admin') %}
 {% set data_outputs_active = ep in ('analytics_mapped_window_output', 'analytics_emissions_totals', 'analytics_share_analysis', 'data_output_travel', 'data_output_klarakarbon') %}
-{% set data_active = ep in ('dashboard', 'products_input_page', 'mapping_runs', 'admin_mapping_runs', 'mapping_review_page', 'mapping_previews_page', 'mapping_preview_detail') or data_sources_active or data_outputs_active %}
+{% set data_active = ep in ('dashboard', 'products_input_page', 'sustainability.sustainability_products_page', 'mapping_runs', 'admin_mapping_runs', 'mapping_review_page', 'mapping_previews_page', 'mapping_preview_detail') or data_sources_active or data_outputs_active %}
 {% set analytics_active = ep in ('analytics_forecasting', 'analytics_decarbonization', 'analytics_emissions_map', 'governance_double_counting_check') %}
 {% set governance_active = ep in ('governance_audit_ready_output',) %}
 {% set esg_active = ep in ('csrd', 'csrd_policies', 'lca', 'lca_tool') %}
@@ -207,9 +207,13 @@
           <h2>Data</h2>
         </div>
         <nav class="app-sidebar__panel-menu">
-          <a href="{{ url_for('products_input_page') }}" class="app-sidebar__menu-item {% if ep == 'products_input_page' %}is-active{% endif %}" {% if ep == 'products_input_page' %}aria-current="page"{% endif %}>
+          <a href="{{ url_for('sustainability.sustainability_products_page') }}" class="app-sidebar__menu-item {% if ep in ('products_input_page', 'sustainability.sustainability_products_page') %}is-active{% endif %}" {% if ep == 'sustainability.sustainability_products_page' %}aria-current="page"{% endif %}>
             {{ illu.illu_sidebar_products_input('app-sidebar__icon') }}
-            <span>Products Input</span>
+            <span>Products</span>
+          </a>
+          <a href="{{ url_for('sustainability.sustainability_estimation_hub') }}" class="app-sidebar__menu-item {% if ep in ('sustainability.sustainability_estimation_hub', 'sustainability.sustainability_estimation_run_detail') %}is-active{% endif %}" {% if ep == 'sustainability.sustainability_estimation_hub' %}aria-current="page"{% endif %}>
+            {{ illu.illu_sidebar_ds_scenarios('app-sidebar__icon') }}
+            <span>Methodology Estimation</span>
           </a>
           <a href="{{ url_for('dashboard') }}" class="app-sidebar__menu-item {% if ep == 'dashboard' %}is-active{% endif %}" {% if ep == 'dashboard' %}aria-current="page"{% endif %}>
             {{ illu.illu_nav_pen_entry('app-sidebar__icon') }}
@@ -506,13 +510,9 @@
           {{ illu.illu_sidebar_ds_klarakarbon('app-sidebar__icon') }}
           <span>Klarakarbon</span>
         </a>
-        <a href="{{ url_for('data_sources_averages') }}" class="app-sidebar__menu-item {% if ep == 'data_sources_averages' %}is-active{% endif %}" {% if ep == 'data_sources_averages' %}aria-current="page"{% endif %}>
-          {{ illu.illu_sidebar_ds_averages('app-sidebar__icon') }}
-          <span>Averages</span>
-        </a>
-        <a href="{{ url_for('data_sources_scenarios') }}" class="app-sidebar__menu-item {% if ep == 'data_sources_scenarios' %}is-active{% endif %}" {% if ep == 'data_sources_scenarios' %}aria-current="page"{% endif %}>
+        <a href="{{ url_for('sustainability.sustainability_estimation_hub') }}" class="app-sidebar__menu-item {% if ep in ('data_sources_averages', 'data_sources_scenarios', 'sustainability.sustainability_estimation_hub') %}is-active{% endif %}" {% if ep == 'sustainability.sustainability_estimation_hub' %}aria-current="page"{% endif %}>
           {{ illu.illu_sidebar_ds_scenarios('app-sidebar__icon') }}
-          <span>Scenarios</span>
+          <span>Sustainability Estimation</span>
         </a>
         <a href="{{ url_for('data_sources_employee_commuting') }}" class="app-sidebar__menu-item {% if ep == 'data_sources_employee_commuting' %}is-active{% endif %}" {% if ep == 'data_sources_employee_commuting' %}aria-current="page"{% endif %}>
           {{ illu.illu_sidebar_ds_headcount('app-sidebar__icon') }}

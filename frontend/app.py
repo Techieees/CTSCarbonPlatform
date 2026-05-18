@@ -125,6 +125,25 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = str(FRONTEND_UPLOAD_DIR)
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
 
+from frontend.extensions import db  # noqa: E402
+from frontend.platform_core.companies import (  # noqa: E402
+    COMPANY_COUNTRY_CANONICAL as _COMPANY_COUNTRY_CANONICAL,
+    canonical_company_name_and_country as _canonical_company_name_and_country,
+    clean_company_name as _clean_company_name,
+    resolve_template_company_name as _resolve_template_company_name,
+)
+from frontend.platform_core.roles import (  # noqa: E402
+    ROLES_WITH_ADMIN_ACCESS,
+    USER_ROLES,
+    USER_ROLES_SET,
+    is_auditor_user as _is_auditor_user,
+    is_owner_user as _is_owner_user,
+    is_readonly_user as _is_readonly_user,
+    normalize_user_role,
+)
+
+db.init_app(app)
+
 app.logger.info("[PROFILE_PHOTO_STORAGE] Using storage path: %s", PROFILE_PHOTOS_STORAGE_DIR)
 
 _ANALYTICS_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="analytics")
@@ -907,91 +926,6 @@ def run_in_background(job_type: str, company: str, target, *args, **kwargs) -> s
     threading.Thread(target=runner, daemon=True).start()
     return job_id
 
-# ---- Company canonical names + countries (web mapping) ----
-# User-provided source-of-truth list (deduplicated).
-_COMPANY_COUNTRY_CANONICAL: dict[str, str] = {
-    "BIMMS": "Portugal",
-    "CTS Finland": "Finland",
-    "CTS-VDC Services": "Ireland",
-    "DC Piping": "Portugal",
-    "GT Nordics": "Norway",
-    "Mecwide Nordics": "Norway",
-    "Porvelox": "Portugal",
-    "Caerus Nordics": "Norway",
-    "CTS Sweden": "Sweden",
-    "Navitas Portugal": "Portugal",
-    "NEP Switchboards": "Norway",
-    "CTS Denmark": "Denmark",
-    "CTS Group": "Switzerland",
-    "CTS Nordics": "Norway",
-    "Fortica": "Norway",
-    "MC Prefab": "Sweden",
-    "Navitas Norway": "Norway",
-    "QEC": "Norway",
-    "SD Nordics": "Norway",
-    "CTS Security Solutions": "Sweden",
-    "Velox": "Norway",
-    "CTS EU": "Portugal",
-    "Gapit": "Norway",
-}
-
-
-def _canonical_company_name_and_country(name: str) -> tuple[str, str | None]:
-    raw = (name or "").strip()
-    if not raw:
-        return "", None
-
-    def norm(s: str) -> str:
-        return "".join(ch.lower() for ch in (s or "") if ch.isalnum())
-
-    n = norm(raw)
-    # Build synonyms (file stems vs display names)
-    synonyms: dict[str, str] = {
-        norm("CTS-VDC"): "CTS-VDC Services",
-        norm("CTS VDC"): "CTS-VDC Services",
-        norm("CTS-VDC Services"): "CTS-VDC Services",
-        norm("CTS Group HQ"): "CTS Group",
-        norm("CTS Group"): "CTS Group",
-        norm("NordicEPOD"): "Nordic EPOD",
-        norm("Nordic EPOD"): "Nordic EPOD",
-        norm("Caerus Nordics"): "Caerus Nordics",
-        norm("CTS EU"): "CTS EU",
-        norm("GT Nordics"): "GT Nordics",
-        norm("Mecwide Nordics"): "Mecwide Nordics",
-        norm("Navitas Norway"): "Navitas Norway",
-        norm("Navitas Portugal"): "Navitas Portugal",
-        norm("CTS Denmark"): "CTS Denmark",
-        norm("CTS Finland"): "CTS Finland",
-        norm("CTS Sweden"): "CTS Sweden",
-        norm("CTS Nordics"): "CTS Nordics",
-        norm("CTS Security Solutions"): "CTS Security Solutions",
-        norm("DC Piping"): "DC Piping",
-        norm("MC Prefab"): "MC Prefab",
-        norm("Porvelox"): "Porvelox",
-        norm("Fortica"): "Fortica",
-        norm("Gapit"): "Gapit",
-        norm("QEC"): "QEC",
-        norm("SD Nordics"): "SD Nordics",
-        norm("Velox"): "Velox",
-        norm("BIMMS"): "BIMMS",
-        norm("NEP Switchboards"): "NEP Switchboards",
-        norm("NEP Switchboards AS"): "NEP Switchboards",
-    }
-
-    canonical = synonyms.get(n, raw)
-    # Country lookup uses canonical keys; if missing, best-effort match by normalized canonical names
-    country = _COMPANY_COUNTRY_CANONICAL.get(canonical)
-    if country is None:
-        want = norm(canonical)
-        for k, v in _COMPANY_COUNTRY_CANONICAL.items():
-            if norm(k) == want:
-                country = v
-                canonical = k
-                break
-
-    return canonical, country
-
-db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
@@ -1526,6 +1460,8 @@ def _enforce_readonly_auditor_access():
         "dashboard",
         "data_sources_averages",
         "data_sources_scenarios",
+        "sustainability.sustainability_estimation_hub",
+        "sustainability.sustainability_estimation_run_detail",
     }
     blocked_write_endpoints = {
         "create_feed_post",
@@ -1542,6 +1478,8 @@ def _enforce_readonly_auditor_access():
         "api_excel_schema_save",
         "api_averages_save",
         "api_scenarios_save",
+        "sustainability.api_questionnaire",
+        "sustainability.api_calculate",
         "api_evidence_upload",
         "api_evidence_link",
         "api_evidence_unlink",
@@ -1652,17 +1590,6 @@ class User(UserMixin, db.Model):
     travel_provider = db.Column(db.String(20), nullable=True)
     operating_locations_json = db.Column(db.Text, nullable=True)
     last_seen_at = db.Column(db.DateTime, nullable=True, index=True)
-
-
-USER_ROLES: tuple[str, ...] = ("owner", "super_admin", "admin", "manager", "auditor", "user")
-USER_ROLES_SET = frozenset(USER_ROLES)
-# Roles that may use existing admin routes (is_admin=True)
-ROLES_WITH_ADMIN_ACCESS = frozenset({"owner", "super_admin", "admin", "manager"})
-
-
-def normalize_user_role(raw: str | None) -> str:
-    r = (raw or "user").strip().lower()
-    return r if r in USER_ROLES_SET else "user"
 
 
 def _split_full_name(full_name: str) -> tuple[str, str]:
@@ -5055,11 +4982,6 @@ def _normalize_feed_filter(raw: object) -> str:
     return value if value in FEED_FILTER_OPTIONS else "all"
 
 
-def _clean_company_name(value: object) -> str:
-    raw = str(value or "").strip()
-    return _resolve_template_company_name(raw) or raw
-
-
 def _safe_float(value: object) -> float | None:
     if value in (None, ""):
         return None
@@ -5073,18 +4995,6 @@ def _positive_ratio(numerator: float | None, denominator: float | None) -> float
     if numerator is None or denominator is None or denominator <= 0:
         return None
     return numerator / denominator
-
-
-def _is_owner_user(u: object | None) -> bool:
-    return normalize_user_role(getattr(u, "role", None)) == "owner"
-
-
-def _is_auditor_user(u: object | None) -> bool:
-    return normalize_user_role(getattr(u, "role", None)) == "auditor"
-
-
-def _is_readonly_user(u: object | None) -> bool:
-    return _is_auditor_user(u)
 
 
 def _allowed_companies_for_averages() -> list[str]:
@@ -6661,14 +6571,6 @@ def _ensure_mapping_run_source_entry_group_column() -> None:
             conn.execute(text("ALTER TABLE mapping_run ADD COLUMN source_entry_group VARCHAR(40)"))
     except Exception:
         pass
-
-
-def _resolve_template_company_name(company_name: str) -> str | None:
-    raw = (company_name or "").strip()
-    if not raw:
-        return None
-    canon, _country = _canonical_company_name_and_country(raw)
-    return (canon or raw).strip() or None
 
 
 def _resolve_template_sheet_name(company_name: str, sheet_name: str) -> str | None:
@@ -13137,7 +13039,7 @@ def _run_pipeline_background(run_id: int) -> None:
         db.session.commit()
 
 # Registration dropdown: canonical company names only
-COMPANIES = sorted(_COMPANY_COUNTRY_CANONICAL.keys())
+COMPANIES = sorted(_COMPANY_COUNTRY_CANONICAL.keys())  # noqa: F811 — synced with frontend.platform_core.companies
 
 
 def _engage_waste_company_choices(user: object) -> list[str]:
@@ -14670,30 +14572,14 @@ def profile_page():
 @app.route("/data-input/products", methods=["GET"], endpoint="products_input_page")
 @login_required
 def products_input_page():
-    _ensure_db_tables()
-    period_key, period_label = _products_current_period()
+    period_key, _period_label = _products_current_period()
     company_name = _products_company_name(current_user)
-    rows = (
-        ProductMonthlyEntry.query.filter_by(
-            company_name=company_name,
-            reporting_period_key=period_key,
+    return redirect(
+        url_for(
+            "sustainability.sustainability_products_page",
+            company=company_name,
+            period=period_key,
         )
-        .order_by(ProductMonthlyEntry.row_index.asc(), ProductMonthlyEntry.id.asc())
-        .all()
-    )
-    return render_template(
-        "products_input.html",
-        config=_load_products_template_config(),
-        period_key=period_key,
-        period_label=period_label,
-        company_name=company_name,
-        product_rows=[_product_entry_payload(row) for row in rows],
-        product_profile=_products_profile_payload(current_user),
-        business_type_options=BUSINESS_TYPE_OPTIONS,
-        heating_source_options=HEATING_SOURCE_OPTIONS,
-        travel_provider_options=TRAVEL_PROVIDER_OPTIONS,
-        operating_site_type_options=OPERATING_SITE_TYPE_OPTIONS,
-        iso_countries=ISO_COUNTRIES,
     )
 
 
@@ -22535,176 +22421,51 @@ def data_sources_ccc_api():
 @app.route("/data-sources/averages", methods=["GET"])
 @login_required
 def data_sources_averages():
-    _ensure_db_tables()
-    company_name, company_error = _resolve_averages_company(request.args.get("company"))
-    if company_error:
-        flash(company_error)
-        return redirect(url_for("dashboard"))
-    row = AveragesData.query.filter_by(company_name=company_name).first() if company_name else None
-    return render_template(
-        "averages.html",
-        user=current_user,
-        template_mode=_current_template_mode(),
-        company_name=company_name,
-        averages_company_options=_allowed_companies_for_averages(),
-        averages_owner_can_select_company=_is_owner_user(current_user),
-        averages_data=_averages_payload(row),
-        country_options=ISO_COUNTRIES,
-        waste_type_options=AVERAGES_WASTE_TYPES,
-        waste_unit_options=AVERAGES_WASTE_UNITS,
+    company = request.args.get("company") or ""
+    period = request.args.get("period") or ""
+    return redirect(
+        url_for(
+            "sustainability.sustainability_estimation_hub",
+            tab="facility",
+            company=company,
+            period=period,
+        )
     )
 
 
 @app.route("/data-sources/scenarios", methods=["GET"])
 @login_required
 def data_sources_scenarios():
-    _ensure_db_tables()
-    bundle = _template_bundle_for_company(_resolve_template_company_name(getattr(current_user, "company_name", "") or "") or "")
-    rows = ScenariosData.query.filter(ScenariosData.company_name.in_(SCENARIO_COMPANY_OPTIONS)).all()
-    initial_company = _clean_company_name(getattr(current_user, "company_name", "") or "")
-    if initial_company not in SCENARIO_COMPANY_OPTIONS:
-        initial_company = SCENARIO_COMPANY_OPTIONS[0]
-    return render_template(
-        "scenarios.html",
-        user=current_user,
-        template_mode=bundle.get("template_mode"),
-        enabled_categories=bundle.get("enabled_categories", []),
-        disabled_categories=bundle.get("disabled_categories", []),
-        scenario_company_options=SCENARIO_COMPANY_OPTIONS,
-        scenario_category_config=SCENARIO_CATEGORY_CONFIG,
-        scenario_saved_data=_scenario_rows_payload(rows),
-        scenario_initial_company=initial_company,
+    company = request.args.get("company") or ""
+    return redirect(
+        url_for(
+            "sustainability.sustainability_estimation_hub",
+            tab="eol",
+            company=company,
+        )
     )
 
 
 @app.route("/api/averages/save", methods=["GET", "POST"])
 @login_required
 def api_averages_save():
-    _ensure_db_tables()
-    company_name, company_error = _resolve_averages_company((request.args.get("company") if request.method == "GET" else (request.get_json(silent=True) or {}).get("company")))
-    if company_error or not company_name:
-        return jsonify({"error": company_error or "Company is required."}), 400
-    if request.method == "GET":
-        row = AveragesData.query.filter_by(company_name=company_name).first()
-        return jsonify({"ok": True, "data": _averages_payload(row)})
-
-    payload = request.get_json(silent=True) or {}
-
-    waste_type = str(payload.get("waste_type") or "").strip()
-    waste_unit = str(payload.get("waste_unit") or "").strip()
-    electricity_country = str(payload.get("electricity_country") or "").strip()
-
-    if waste_type and waste_type not in AVERAGES_WASTE_TYPES:
-        return jsonify({"error": "Invalid waste type."}), 400
-    if waste_unit and waste_unit not in AVERAGES_WASTE_UNITS:
-        return jsonify({"error": "Invalid waste unit."}), 400
-
-    row = AveragesData.query.filter_by(company_name=company_name).first()
-    if row is None:
-        row = AveragesData(company_name=company_name)
-        db.session.add(row)
-
-    row.saved_by_user_id = int(current_user.id)
-    row.electricity_kwh = _safe_float(payload.get("electricity_kwh"))
-    row.electricity_country = electricity_country or None
-    row.electricity_emission_factor = _safe_float(payload.get("electricity_emission_factor"))
-    row.district_heating_kwh = _safe_float(payload.get("district_heating_kwh"))
-    row.district_heating_supplier = str(payload.get("district_heating_supplier") or "").strip() or None
-    row.waste_type = waste_type or None
-    row.waste_weight = _safe_float(payload.get("waste_weight"))
-    row.waste_unit = waste_unit or None
-    row.water_total_m3 = _safe_float(payload.get("water_total_m3"))
-    row.building_size_m2 = _safe_float(payload.get("building_size_m2"))
-    row.water_per_m2 = _positive_ratio(row.water_total_m3, row.building_size_m2)
-    db.session.commit()
-
-    mapping_frames = _averages_mapping_frames(company_name, payload)
-    mapping_results: list[dict[str, object]] = []
-    mapping_errors: list[str] = []
-    for sheet_name, frame in mapping_frames:
-        result = _run_mapping_for_virtual_sheet(int(current_user.id), company_name, sheet_name, frame)
-        if result.get("ok"):
-            mapping_results.append(result)
-        else:
-            mapping_errors.append(str(result.get("error") or f"{sheet_name} mapping failed."))
-
-    if mapping_results:
-        _create_user_notification(
-            current_user.id,
-            title="Averages mapping completed",
-            message=f"Calculated emissions based on averages for {company_name}.",
-            notification_type="success",
-            link=url_for("data_sources_averages", company=company_name),
-            feed_event="mapping_completed",
-            feed_company=company_name,
-            feed_timestamp=datetime.utcnow(),
-        )
-
     return jsonify(
         {
-            "ok": True,
-            "message": "Saved successfully",
-            "mapping_message": (
-                "Calculated emissions based on averages"
-                if mapping_results and not mapping_errors
-                else ("Averages saved, but some mapping steps failed." if mapping_errors else "Saved successfully")
-            ),
-            "mapping_results": mapping_results,
-            "mapping_errors": mapping_errors,
-            "water_per_m2": row.water_per_m2,
-            "data": _averages_payload(row),
+            "error": "Averages has been replaced by the Sustainability Estimation engine.",
+            "redirect": url_for("sustainability.sustainability_estimation_hub", tab="facility"),
         }
-    )
+    ), 410
 
 
 @app.route("/api/scenarios/save", methods=["GET", "POST"])
 @login_required
 def api_scenarios_save():
-    _ensure_db_tables()
-    if request.method == "GET":
-        company_name = _clean_company_name(request.args.get("company"))
-        categories = SCENARIO_CATEGORY_CONFIG.get(company_name)
-        if not categories:
-            return jsonify({"error": "Select a valid company."}), 400
-        row = ScenariosData.query.filter_by(company_name=company_name).first()
-        payload = _scenario_rows_payload([row] if row else [])
-        return jsonify({"ok": True, "data": payload.get(company_name)})
-
-    payload = request.get_json(silent=True) or {}
-    company_name = _clean_company_name(payload.get("company"))
-    categories = SCENARIO_CATEGORY_CONFIG.get(company_name)
-    if not categories:
-        return jsonify({"error": "Select a valid company."}), 400
-
-    raw_inputs = payload.get("inputs")
-    if not isinstance(raw_inputs, dict):
-        raw_inputs = {}
-
-    clean_inputs = _default_scenario_inputs(categories)
-    for category in categories:
-        incoming = raw_inputs.get(category)
-        if not isinstance(incoming, dict):
-            continue
-        for field_name in clean_inputs[category].keys():
-            clean_inputs[category][field_name] = str(incoming.get(field_name) or "").strip()
-
-    row = ScenariosData.query.filter_by(company_name=company_name).first()
-    if row is None:
-        row = ScenariosData(company_name=company_name)
-        db.session.add(row)
-
-    row.saved_by_user_id = int(current_user.id)
-    row.categories_json = json.dumps(clean_inputs)
-    db.session.commit()
-
     return jsonify(
         {
-            "ok": True,
-            "message": "Saved successfully",
-            "company": company_name,
-            "data": _scenario_rows_payload([row]).get(company_name),
+            "error": "Scenarios has been replaced by the Sustainability Estimation engine.",
+            "redirect": url_for("sustainability.sustainability_estimation_hub", tab="eol"),
         }
-    )
+    ), 410
 
 
 @app.route("/analytics/forecasting", methods=["GET", "POST"])
@@ -26067,6 +25828,11 @@ def admin_data():
     ]
     return jsonify({"data": data})
 
+
+from frontend.sustainability import models as _sustainability_models  # noqa: F401
+from frontend.sustainability import register_sustainability
+
+register_sustainability(app)
 
 with app.app_context():
     _ensure_db_tables()

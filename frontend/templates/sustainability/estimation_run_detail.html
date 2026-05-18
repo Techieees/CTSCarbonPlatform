@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Calculation Run #{{ run.id }}{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/sustainability-estimation.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid sust-page px-3 px-lg-4 py-3 py-lg-4 mb-5">
+  <nav class="mb-3">
+    <a href="{{ url_for('sustainability.sustainability_estimation_hub', tab='results') }}" class="small">← Back to estimation hub</a>
+  </nav>
+
+  <header class="sust-hero mb-4">
+    <h1 class="h4 mb-1">{{ run.company_name }} · {{ run.reporting_period_key }}</h1>
+    <p class="text-muted mb-0">Run #{{ run.id }} · {{ run.created_at }} · <strong>{{ "%.4f"|format(run.total_co2e_t or 0) }} tCO₂e</strong></p>
+  </header>
+
+  {% set result = run.result %}
+  {% if result.methodology_path %}
+  <div class="sust-card mb-3">
+    <h2 class="h6">Methodology path</h2>
+    <ul class="small mb-0">
+      <li>Facility: {{ result.methodology_path.facility_path }}</li>
+      <li>Shared office: {{ "yes" if result.methodology_path.apply_shared_office else "no" }}</li>
+      <li>EOL: {{ result.methodology_path.eol_path }}</li>
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if result.facility and result.facility.lines %}
+  <div class="sust-card mb-3">
+    <h2 class="h6">Facility estimation</h2>
+    <table class="table table-sm sust-result-table">
+      <thead><tr><th>Scope</th><th>Activity</th><th>tCO₂e</th><th>Source</th></tr></thead>
+      <tbody>
+        {% for line in result.facility.lines %}
+        <tr>
+          <td>{{ line.scope_category }}</td>
+          <td>{{ line.activity }} {{ line.activity_unit }}</td>
+          <td>{{ "%.4f"|format(line.emissions_t or 0) }}</td>
+          <td>{{ line.data_source }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if result.eol %}
+  <div class="sust-card mb-3">
+    <h2 class="h6">Scope 3 Cat 12 — {{ result.eol.scenario_label }}</h2>
+    {% if result.eol.methodology_type == 'nordic_epod_workbook_literal_kg' %}
+    <p class="small text-muted mb-2">Audited workbook at {{ result.eol.workbook_product_weight_kg|int }} kg reference (reported: {{ result.eol.reported_product_weight_kg }} kg). {{ result.eol.audit_note }}</p>
+    {% for section in result.eol.workbook_components %}
+    <h3 class="h6 mt-2">{{ section.label }}</h3>
+    <table class="table table-sm sust-result-table mb-2">
+      <tbody>
+        {% for s in section.streams %}
+        <tr><td>{{ s.disposal_stream }}</td><td>{{ s.waste_kg }} kg</td></tr>
+        {% endfor %}
+        {% if section.subtotal_kg %}<tr class="fw-bold"><td>Subtotal</td><td>{{ section.subtotal_kg }} kg</td></tr>{% endif %}
+      </tbody>
+    </table>
+    {% endfor %}
+    {% if result.eol.final_waste_stream_tally_kg %}
+    <h3 class="h6">Final waste stream tally</h3>
+    <table class="table table-sm sust-result-table">
+      <tbody>
+        <tr><td>Recycling</td><td>{{ result.eol.final_waste_stream_tally_kg.recycling }} kg</td></tr>
+        <tr><td>Energy recovery</td><td>{{ result.eol.final_waste_stream_tally_kg.energy_recovery }} kg</td></tr>
+        <tr><td>Landfill</td><td>{{ result.eol.final_waste_stream_tally_kg.landfill }} kg</td></tr>
+        <tr class="fw-bold"><td>Final total</td><td>{{ result.eol.final_waste_stream_tally_kg.final_total }} kg</td></tr>
+      </tbody>
+    </table>
+    {% endif %}
+    {% else %}
+    <p class="small text-muted">Product weight: {{ result.eol.product_weight_kg }} kg · {{ result.eol.product_type }}</p>
+    <div class="sust-stream-bar mb-2" aria-hidden="true">
+      {% set total_w = namespace(v=0) %}
+      {% for s in result.eol.streams %}{% set total_w.v = total_w.v + (s.waste_kg or 0) %}{% endfor %}
+      {% for s in result.eol.streams %}
+      <span class="{{ s.disposal_stream }}" style="width:{{ ((s.waste_kg or 0) / (total_w.v or 1) * 100)|round(1) }}%"></span>
+      {% endfor %}
+    </div>
+    <table class="table table-sm sust-result-table">
+      <thead><tr><th>Stream</th><th>Waste (kg)</th><th>tCO₂e</th></tr></thead>
+      <tbody>
+        {% for s in result.eol.streams %}
+        <tr>
+          <td>{{ s.disposal_stream }}</td>
+          <td>{{ "%.2f"|format(s.waste_kg or 0) }}</td>
+          <td>{{ "%.4f"|format(s.emissions_t or 0) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if result.eol.breakdown %}
+    <h3 class="h6 mt-3">Component breakdown</h3>
+    <ul class="small">
+      {% for row in result.eol.breakdown %}
+      <li>{{ row.component_label }}: {{ "%.2f"|format(row.waste_kg or 0) }} kg → {{ row.disposal_stream }} ({{ row.ratio_pct }}%)</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if result.manufacturer %}
+  <div class="sust-card mb-3">
+    <h2 class="h6">Manufacturer methodology (Cat 9 / 11 / 12)</h2>
+    {% if result.manufacturer.category_9 and result.manufacturer.category_9.lines %}
+    <h3 class="h6 mt-2">Category 9 — transport</h3>
+    <table class="table table-sm sust-result-table">
+      <thead><tr><th>Destination</th><th>Land km</th><th>Sea km</th><th>tCO₂e</th></tr></thead>
+      <tbody>
+        {% for line in result.manufacturer.category_9.lines %}
+        <tr>
+          <td>{{ line.destination_region }}</td>
+          <td>{{ line.land_distance_km }}</td>
+          <td>{{ line.sea_distance_km }}</td>
+          <td>{{ "%.4f"|format(line.total_emissions_t or 0) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+    {% if result.manufacturer.category_11 %}
+    <h3 class="h6 mt-2">Category 11 — use of sold</h3>
+    <p class="small mb-0">{{ result.manufacturer.category_11.lifetime_kwh|int }} kWh × {{ result.manufacturer.category_11.electricity_ef_kg_per_kwh }} kg/kWh = <strong>{{ "%.4f"|format(result.manufacturer.category_11.total_emissions_t or 0) }} t</strong></p>
+    {% endif %}
+    {% if result.manufacturer.category_12 and result.manufacturer.category_12.lines %}
+    <h3 class="h6 mt-2">Category 12 — end of life</h3>
+    {% for line in result.manufacturer.category_12.lines %}
+    <p class="small mb-1">{{ line.scenario_label }} — {{ "%.4f"|format(line.total_emissions_t or 0) }} tCO₂e</p>
+    {% if line.methodology_type == 'nordic_epod_workbook_literal_kg' and line.workbook_components %}
+    {% for section in line.workbook_components %}
+    <p class="small fw-semibold mb-1">{{ section.label }}</p>
+    <table class="table table-sm sust-result-table mb-2">
+      <tbody>
+        {% for s in section.streams %}
+        <tr><td>{{ s.disposal_stream }}</td><td>{{ s.waste_kg }} kg</td></tr>
+        {% endfor %}
+        {% if section.subtotal_kg %}<tr class="fw-bold"><td>Subtotal</td><td>{{ section.subtotal_kg }} kg</td></tr>{% endif %}
+      </tbody>
+    </table>
+    {% endfor %}
+    {% endif %}
+    {% if line.final_waste_stream_tally_kg %}
+    <table class="table table-sm sust-result-table">
+      <tbody>
+        <tr><td>Recycling</td><td>{{ line.final_waste_stream_tally_kg.recycling }} kg</td></tr>
+        <tr><td>Energy recovery</td><td>{{ line.final_waste_stream_tally_kg.energy_recovery }} kg</td></tr>
+        <tr><td>Landfill</td><td>{{ line.final_waste_stream_tally_kg.landfill }} kg</td></tr>
+        <tr class="fw-bold"><td>Final total</td><td>{{ line.final_waste_stream_tally_kg.final_total }} kg</td></tr>
+      </tbody>
+    </table>
+    {% endif %}
+    {% endfor %}
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

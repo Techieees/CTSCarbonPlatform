@@ -1,0 +1,47 @@
+{# Literal audited kg — no derived percentages #}
+<div class="sust-card mb-3">
+  <h2 class="h6">Nordic EPOD — audited workbook (literal kg)</h2>
+  <p class="small text-muted mb-2">Reference product weight: <strong>{{ "{:,.0f}".format(nordic_epod_workbook.reference_product_weight_kg) }} kg</strong> · Profile {{ nordic_epod_workbook.profile_key }}</p>
+
+  <div class="row g-3 small">
+    <div class="col-md-4">
+      <h3 class="h6">EPD supplied</h3>
+      <ul class="list-unstyled mb-0">
+        <li>Recycling: {{ nordic_epod_workbook.category_12.epd_supplied.streams_kg.recycling }} kg</li>
+        <li>Energy recovery: {{ nordic_epod_workbook.category_12.epd_supplied.streams_kg.energy_recovery }} kg</li>
+        <li>Landfill: {{ nordic_epod_workbook.category_12.epd_supplied.streams_kg.landfill }} kg</li>
+        <li><strong>Subtotal: {{ nordic_epod_workbook.category_12.epd_supplied.subtotal_kg }} kg</strong></li>
+      </ul>
+    </div>
+    <div class="col-md-4">
+      <h3 class="h6">Packaging</h3>
+      <p class="mb-1 text-muted">{{ nordic_epod_workbook.category_12.packaging.processing_note }}</p>
+      <ul class="list-unstyled mb-0">
+        <li>Packaging: {{ nordic_epod_workbook.category_12.packaging.packaging_total_kg }} kg</li>
+        <li>Recycling: {{ nordic_epod_workbook.category_12.packaging.streams_kg.recycling }} kg</li>
+        <li>Energy recovery: {{ nordic_epod_workbook.category_12.packaging.streams_kg.energy_recovery }} kg</li>
+      </ul>
+    </div>
+    <div class="col-md-4">
+      <h3 class="h6">Switchboard PEP EoL</h3>
+      <ul class="list-unstyled mb-0">
+        <li>Switchboard: {{ nordic_epod_workbook.category_12.switchboard_pep.switchboard_total_kg }} kg</li>
+        <li>Recycling: {{ nordic_epod_workbook.category_12.switchboard_pep.streams_kg.recycling }} kg</li>
+        <li>Landfill: {{ nordic_epod_workbook.category_12.switchboard_pep.streams_kg.landfill }} kg</li>
+        <li><strong>Subtotal: {{ nordic_epod_workbook.category_12.switchboard_pep.switchboard_total_kg }} kg</strong></li>
+      </ul>
+    </div>
+  </div>
+
+  <hr class="my-3">
+  <h3 class="h6">Final waste stream tally</h3>
+  <table class="table table-sm mb-0" style="max-width: 28rem;">
+    <tbody>
+      <tr><td>Recycling</td><td class="text-end">{{ nordic_epod_workbook.category_12.final_waste_stream_tally_kg.recycling }} kg</td></tr>
+      <tr><td>Energy recovery</td><td class="text-end">{{ nordic_epod_workbook.category_12.final_waste_stream_tally_kg.energy_recovery }} kg</td></tr>
+      <tr><td>Landfill</td><td class="text-end">{{ nordic_epod_workbook.category_12.final_waste_stream_tally_kg.landfill }} kg</td></tr>
+      <tr class="fw-bold"><td>Final total</td><td class="text-end">{{ nordic_epod_workbook.category_12.final_waste_stream_tally_kg.final_total }} kg</td></tr>
+    </tbody>
+  </table>
+  <p class="small text-muted mt-2 mb-0">Cat 11 lifetime: {{ "{:,.0f}".format(nordic_epod_workbook.category_11.lifetime_end_product_kwh) }} kWh</p>
+</div>

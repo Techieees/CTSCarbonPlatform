@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% block title %}Sustainability Estimation{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/sustainability-estimation.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid sust-page px-3 px-lg-4 py-3 py-lg-4 mb-5" id="sust-estimation-root">
+  <header class="sust-hero mb-4">
+    <div class="row g-3 align-items-start">
+      <div class="col-lg-8">
+        <p class="text-muted small mb-1">CTS Group methodology engine</p>
+        <h1 class="h3 mb-2">Sustainability Estimation</h1>
+        <p class="text-muted mb-0">CTS workbook methodologies — business function controls workflows, categories, and embedded assumptions.</p>
+      </div>
+      <div class="col-lg-4 text-lg-end">
+        {% if can_edit_admin %}
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('sustainability.sustainability_admin_methodologies') }}">Admin: Methodologies</a>
+        {% endif %}
+      </div>
+    </div>
+  </header>
+
+  <div class="sust-kpi-grid mb-4">
+    <div class="sust-kpi"><div class="sust-kpi__label">Methodologies</div><div class="sust-kpi__value">{{ methodologies|length }}</div></div>
+    <div class="sust-kpi"><div class="sust-kpi__label">Average factors</div><div class="sust-kpi__value">{{ average_factors|length }}</div></div>
+    <div class="sust-kpi"><div class="sust-kpi__label">Shared offices</div><div class="sust-kpi__value">{{ shared_offices|length }}</div></div>
+    <div class="sust-kpi"><div class="sust-kpi__label">Period</div><div class="sust-kpi__value">{{ period_key }}</div></div>
+  </div>
+
+  <ul class="nav nav-pills sust-tabs mb-3 flex-wrap" role="tablist">
+    <li class="nav-item"><a class="nav-link {% if active_tab == 'workflow' %}active{% endif %}" href="?tab=workflow&company={{ company_name|urlencode }}&period={{ period_key }}">Workflow</a></li>
+    {% if capabilities.facility_estimation or capabilities.shared_office %}
+    <li class="nav-item"><a class="nav-link {% if active_tab == 'facility' %}active{% endif %}" href="?tab=facility&company={{ company_name|urlencode }}&period={{ period_key }}">Facility</a></li>
+    {% endif %}
+    {% if products_enabled %}
+    <li class="nav-item"><a class="nav-link" href="{{ url_for('sustainability.sustainability_products_page', company=company_name, period=period_key) }}">Products</a></li>
+    {% endif %}
+    {% if '12' in enabled_categories %}
+    <li class="nav-item"><a class="nav-link {% if active_tab == 'eol' %}active{% endif %}" href="?tab=eol&company={{ company_name|urlencode }}&period={{ period_key }}">Cat 12</a></li>
+    {% endif %}
+    <li class="nav-item"><a class="nav-link {% if active_tab == 'results' %}active{% endif %}" href="?tab=results&company={{ company_name|urlencode }}&period={{ period_key }}">Results</a></li>
+  </ul>
+
+  {% if active_tab == 'workflow' %}
+  <div class="sust-card mb-3" id="sustWorkflowPanel">
+    <h2 class="h6">Active workflow · {{ business_function_current or '—' }}</h2>
+    <p class="small text-muted">Company rules: {% if company_config %}{{ company_config.enabled_categories|join(', ') }}{% else %}—{% endif %}</p>
+    <div class="d-flex flex-wrap gap-2 mb-2">
+      {% for cat in enabled_categories %}
+      <span class="badge text-bg-primary">Cat {{ cat }}</span>
+      {% endfor %}
+    </div>
+    {% if gt_monthly %}
+    <p class="small mb-0"><strong>GT Nordics monthly scenario:</strong> {{ gt_monthly.default_quantity }} × {{ gt_monthly.average_product_weight_kg }} kg → {{ gt_monthly.default_destination }}</p>
+    {% endif %}
+  </div>
+  {% if nordic_epod_workbook and active_tab == 'workflow' %}
+  {% include "sustainability/partials/nordic_epod_workbook_card.html" %}
+  {% endif %}
+  {% endif %}
+
+  <div class="row g-3">
+    <div class="col-xl-8">
+      <div class="sust-card">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label" for="sustCompany">Company</label>
+            <select id="sustCompany" class="form-select" {% if company_options|length <= 1 %}disabled{% endif %}>
+              {% for c in company_options %}
+              <option value="{{ c }}" {% if c == company_name %}selected{% endif %}>{{ c }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="sustPeriod">Reporting period (YYYY-MM)</label>
+            <input id="sustPeriod" class="form-control" type="text" value="{{ period_key }}" pattern="\d{4}-\d{2}">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="sustBusinessFunction">Business function</label>
+            <select id="sustBusinessFunction" class="form-select">
+              {% for bf in business_functions %}
+              <option value="{{ bf }}" {% if bf == business_function_current %}selected{% endif %}>{{ bf }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="sustCountry">Country</label>
+            <select id="sustCountry" class="form-select">
+              <option value="">—</option>
+              {% for country in country_options %}
+              <option value="{{ country }}" {% if questionnaire and questionnaire.country == country %}selected{% endif %}>{{ country }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="sustOfficeSite">Office / site</label>
+            <select id="sustOfficeSite" class="form-select">
+              <option value="">—</option>
+              {% for office in shared_offices %}
+              <option value="{{ office.office_site_key }}" {% if questionnaire and questionnaire.office_site_key == office.office_site_key %}selected{% endif %}>{{ office.office_label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" for="sustEmployees">Employees</label>
+            <input id="sustEmployees" type="number" min="0" class="form-control" value="{{ questionnaire.employee_count if questionnaire else '' }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" for="sustOfficeM2">Office size (m²)</label>
+            <input id="sustOfficeM2" type="number" min="0" step="0.1" class="form-control" value="{{ questionnaire.office_size_m2 if questionnaire else '' }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" for="sustProductType">Product type</label>
+            <select id="sustProductType" class="form-select">
+              <option value="">—</option>
+              {% for pt in product_types %}
+              <option value="{{ pt }}" {% if questionnaire and questionnaire.product_type == pt %}selected{% endif %}>{{ pt }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <div class="form-check mt-4">
+              <input class="form-check-input" type="checkbox" id="sustSharedOffice" {% if questionnaire and questionnaire.is_shared_office %}checked{% endif %}>
+              <label class="form-check-label" for="sustSharedOffice">Shared office allocation</label>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="form-check mt-4">
+              <input class="form-check-input" type="checkbox" id="sustUtilityBills" {% if questionnaire and questionnaire.has_utility_bills %}checked{% endif %}>
+              <label class="form-check-label" for="sustUtilityBills">Utility bills available (use measured data)</label>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="sustElectricityType">Electricity type</label>
+            <select id="sustElectricityType" class="form-select">
+              {% for t in electricity_types %}
+              <option value="{{ t }}" {% if questionnaire and questionnaire.electricity_type == t %}selected{% endif %}>{{ t }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="sustHeatingType">Heating type</label>
+            <select id="sustHeatingType" class="form-select">
+              {% for t in heating_types %}
+              <option value="{{ t }}" {% if questionnaire and questionnaire.heating_type == t %}selected{% endif %}>{{ t }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        {% if capabilities.facility_estimation and active_tab in ('facility', 'workflow', 'questionnaire') %}
+        <hr>
+        <h2 class="h6">Measured utilities (optional)</h2>
+        <div class="row g-2">
+          <div class="col-6 col-md-3"><label class="form-label small">Electricity kWh</label><input id="sustActualElectricity" type="number" class="form-control form-control-sm" min="0" step="0.01"></div>
+          <div class="col-6 col-md-3"><label class="form-label small">Heating kWh</label><input id="sustActualHeating" type="number" class="form-control form-control-sm" min="0" step="0.01"></div>
+          <div class="col-6 col-md-3"><label class="form-label small">Water m³</label><input id="sustActualWater" type="number" class="form-control form-control-sm" min="0" step="0.01"></div>
+          <div class="col-6 col-md-3"><label class="form-label small">Waste kg</label><input id="sustActualWaste" type="number" class="form-control form-control-sm" min="0" step="0.01"></div>
+        </div>
+        {% endif %}
+
+        {% if '12' in enabled_categories and active_tab in ('eol', 'workflow') %}
+        <hr>
+        <h2 class="h6">Scope 3 Category 12 — product weight</h2>
+        <input type="hidden" id="sustEolScenario" value="">
+        <div class="row g-2 align-items-end">
+          <div class="col-md-6">
+            <label class="form-label" for="sustProductWeight">Total product weight (kg)</label>
+            <input id="sustProductWeight" type="number" class="form-control" min="0" step="0.01" placeholder="Monthly production weight">
+          </div>
+          <div class="col-md-6" id="sustScenarioPreview"></div>
+        </div>
+        {% endif %}
+
+        <div class="d-flex flex-wrap gap-2 mt-3">
+          <button type="button" class="btn btn-outline-primary" id="sustSaveQuestionnaireBtn">Save questionnaire</button>
+          <button type="button" class="btn btn-primary" id="sustCalculateBtn">Run methodology calculation</button>
+        </div>
+        <div id="sustFeedback" class="sust-feedback mt-3" hidden></div>
+        <div id="sustResultPanel"></div>
+      </div>
+    </div>
+
+    <div class="col-xl-4">
+      <div class="sust-card mb-3">
+        <h2 class="h6 mb-3">Methodology versions</h2>
+        {% for m in methodologies %}
+        <div class="sust-method-card mb-2">
+          <strong>{{ m.label }}</strong>
+          <p class="small text-muted mb-1">{{ m.version_key }}{% if m.product_type %} · {{ m.product_type }}{% endif %}</p>
+          {% if m.eol_scenarios %}
+          <p class="small mb-0">{{ m.eol_scenarios|length }} EOL scenario(s) embedded</p>
+          {% endif %}
+        </div>
+        {% else %}
+        <p class="text-muted small mb-0">No methodologies loaded.</p>
+        {% endfor %}
+      </div>
+
+      <div class="sust-card">
+        <h2 class="h6 mb-3">Recent calculations</h2>
+        {% if recent_runs %}
+        <ul class="list-unstyled mb-0 small">
+          {% for run in recent_runs %}
+          <li class="mb-2">
+            <a href="{{ url_for('sustainability.sustainability_estimation_run_detail', run_id=run.id) }}">{{ run.company_name }} · {{ run.reporting_period_key }}</a>
+            <span class="text-muted"> — {{ "%.4f"|format(run.total_co2e_t or 0) }} t</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-muted small mb-0">No runs yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  window.SUST_ESTIMATION_CONFIG = {
+    company_name: {{ company_name|tojson }},
+    period_key: {{ period_key|tojson }},
+    methodologies: {{ methodologies|tojson }},
+    workflow: {{ workflow|tojson }},
+    enabled_categories: {{ enabled_categories|tojson }},
+    questionnaire_url: {{ url_for('sustainability.api_questionnaire')|tojson }},
+    workflow_url: {{ url_for('sustainability.api_workflow')|tojson }},
+    calculate_url: {{ url_for('sustainability.api_calculate')|tojson }},
+    products_url: {{ url_for('sustainability.sustainability_products_page')|tojson }}
+  };
+</script>
+<script src="{{ url_for('static', filename='js/sustainability-estimation.js') }}" defer></script>
+{% endblock %}

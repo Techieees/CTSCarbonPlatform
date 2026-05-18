@@ -1,0 +1,131 @@
+.sust-page {
+  --sust-accent: #0d6efd;
+  --sust-card-radius: 1rem;
+}
+
+.sust-page .sust-hero,
+.sust-page .sust-card,
+.sust-page .sust-kpi {
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--sust-card-radius);
+  box-shadow: 0 0.75rem 1.5rem rgba(15, 23, 42, 0.05);
+  background: var(--bs-body-bg);
+}
+
+.sust-page .sust-hero {
+  padding: 1.25rem 1.5rem;
+}
+
+.sust-page .sust-card {
+  padding: 1rem 1.25rem;
+  height: 100%;
+}
+
+.sust-page .sust-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.sust-page .sust-kpi {
+  padding: 0.85rem 1rem;
+}
+
+.sust-page .sust-kpi__label {
+  font-size: 0.78rem;
+  color: var(--bs-secondary-color);
+}
+
+.sust-page .sust-kpi__value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.sust-page .sust-tabs .nav-link {
+  border-radius: 0.65rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.sust-page .sust-tabs .nav-link.active {
+  background: var(--sust-accent);
+  color: #fff;
+}
+
+.sust-page .sust-method-card {
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.85rem;
+  padding: 0.85rem;
+  background: var(--bs-secondary-bg);
+}
+
+.sust-page .sust-stream-bar {
+  display: flex;
+  height: 0.65rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--bs-tertiary-bg);
+}
+
+.sust-page .sust-stream-bar span {
+  display: block;
+  height: 100%;
+}
+
+.sust-page .sust-stream-bar .recycling { background: #22c55e; }
+.sust-page .sust-stream-bar .energy_recovery { background: #f59e0b; }
+.sust-page .sust-stream-bar .landfill { background: #64748b; }
+
+.sust-page .sust-result-table {
+  font-size: 0.88rem;
+}
+
+.sust-page .sust-feedback {
+  border-radius: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.88rem;
+}
+
+.sust-page .sust-feedback.is-ok {
+  background: var(--bs-success-bg-subtle);
+  color: var(--bs-success-text-emphasis);
+}
+
+.sust-page .sust-feedback.is-err {
+  background: var(--bs-danger-bg-subtle);
+  color: var(--bs-danger-text-emphasis);
+}
+
+.sust-page .sust-workbook-readonly {
+  border-color: var(--bs-secondary-border-subtle, #ced4da);
+  background: linear-gradient(180deg, var(--bs-secondary-bg) 0%, var(--bs-body-bg) 2.5rem);
+}
+
+.sust-page .sust-methodology-badge {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.sust-page .sust-workbook-lifecycle-table th,
+.sust-page .sust-workbook-lifecycle-table td {
+  font-size: 0.88rem;
+}
+
+.sust-page .sust-workbook-lifecycle-table .font-monospace {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 992px) {
+  .sust-page .sust-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 576px) {
+  .sust-page .sust-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+}

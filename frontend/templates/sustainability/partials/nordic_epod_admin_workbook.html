@@ -1,0 +1,43 @@
+{# Nordic EPOD Cat 12 — read-only audited workbook (admin) #}
+<div class="sust-card sust-workbook-readonly mb-3">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+    <div>
+      <h2 class="h6 mb-1">Nordic EPOD — Category 12 lifecycle</h2>
+      <p class="small text-muted mb-0">Readonly audited workbook methodology</p>
+    </div>
+    <span class="badge text-bg-secondary sust-methodology-badge">nordic_epod_workbook_literal_kg</span>
+  </div>
+
+  <p class="small mb-2">
+    Values embedded from <code>frontend/sustainability/profiles/nordic_epod_workbook.py</code>
+    · reference product weight <strong>{{ "{:,.0f}".format(nordic_epod_workbook.reference_product_weight_kg) }} kg</strong>
+    · profile <code>{{ nordic_epod_workbook.profile_key }}</code>
+  </p>
+  <p class="small text-muted mb-3">
+    Cat 11 lifetime: {{ "{:,.0f}".format(nordic_epod_workbook.category_11.lifetime_end_product_kwh) }} kWh (workbook-fixed).
+    Not editable in this admin view — change source file and redeploy to update audited values.
+  </p>
+
+  <div class="table-responsive">
+    <table class="table table-sm table-bordered align-middle mb-0 sust-workbook-lifecycle-table">
+      <thead class="table-light">
+        <tr>
+          <th scope="col">Section</th>
+          <th scope="col" class="text-end">Recycling kg</th>
+          <th scope="col" class="text-end">Energy recovery kg</th>
+          <th scope="col" class="text-end">Landfill kg</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in nordic_admin_lifecycle_rows %}
+        <tr{% if row.is_total %} class="table-secondary fw-bold"{% endif %}>
+          <td>{{ row.section }}</td>
+          <td class="text-end font-monospace">{{ row.recycling_kg }}</td>
+          <td class="text-end font-monospace">{{ row.energy_recovery_kg }}</td>
+          <td class="text-end font-monospace">{{ row.landfill_kg }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

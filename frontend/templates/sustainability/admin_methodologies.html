@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+
+{% block title %}Admin — Sustainability Methodologies{% endblock %}
+
+
+
+{% block extra_head %}
+
+<link rel="stylesheet" href="{{ url_for('static', filename='css/sustainability-estimation.css') }}">
+
+{% endblock %}
+
+
+
+{% block content %}
+
+<div class="container-fluid sust-page px-3 px-lg-4 py-3 py-lg-4 mb-5">
+
+  <header class="sust-hero mb-4">
+
+    <h1 class="h4 mb-1">Methodology configuration</h1>
+
+    <p class="text-muted mb-2">CTS workbook methodologies — average factors and company-specific EOL profiles. Nordic EPOD Cat 12 is a fixed audited kg lifecycle (not ratio-based).</p>
+
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('sustainability.sustainability_estimation_hub') }}">← Estimation hub</a>
+
+  </header>
+
+
+
+  <div class="row g-3">
+
+    <div class="col-lg-6">
+
+      <div class="sust-card">
+
+        <h2 class="h6 mb-3">Average factors</h2>
+
+        <div class="table-responsive">
+
+          <table class="table table-sm align-middle">
+
+            <thead>
+
+              <tr><th>Key</th><th>Value</th><th>EF</th><th></th></tr>
+
+            </thead>
+
+            <tbody>
+
+              {% for f in average_factors %}
+
+              <tr data-factor-id="{{ f.id }}">
+
+                <td><code>{{ f.factor_key }}</code><br><span class="small text-muted">{{ f.label }}</span></td>
+
+                <td><input type="number" step="any" class="form-control form-control-sm factor-value" value="{{ f.value }}"></td>
+
+                <td><input type="number" step="any" class="form-control form-control-sm factor-ef" value="{{ f.emission_factor or '' }}"></td>
+
+                <td><button type="button" class="btn btn-sm btn-primary factor-save">Save</button></td>
+
+              </tr>
+
+              {% endfor %}
+
+            </tbody>
+
+          </table>
+
+        </div>
+
+      </div>
+
+    </div>
+
+    <div class="col-lg-6">
+
+      {% include "sustainability/partials/nordic_epod_admin_workbook.html" %}
+
+
+
+      {% if eol_profiles %}
+
+      <div class="sust-card">
+
+        <h2 class="h6 mb-3">EOL component profiles (ratio-based)</h2>
+
+        <p class="small text-muted mb-2">Editable disposal ratios for non–Nordic EPOD methodologies only.</p>
+
+        <div class="table-responsive">
+
+          <table class="table table-sm align-middle">
+
+            <thead>
+
+              <tr><th>Component</th><th>Stream</th><th>Ratio %</th><th>Weight frac.</th><th></th></tr>
+
+            </thead>
+
+            <tbody>
+
+              {% for p in eol_profiles %}
+
+              <tr data-profile-id="{{ p.id }}">
+
+                <td>{{ p.component_label }}<br><span class="small text-muted">scenario #{{ p.eol_scenario_id }}</span></td>
+
+                <td>{{ p.disposal_stream }}</td>
+
+                <td><input type="number" step="0.1" class="form-control form-control-sm profile-ratio" value="{{ p.ratio_pct }}"></td>
+
+                <td><input type="number" step="0.01" class="form-control form-control-sm profile-weight" value="{{ p.weight_fraction }}"></td>
+
+                <td><button type="button" class="btn btn-sm btn-primary profile-save">Save</button></td>
+
+              </tr>
+
+              {% endfor %}
+
+            </tbody>
+
+          </table>
+
+        </div>
+
+      </div>
+
+      {% endif %}
+
+
+
+      <div class="sust-card mt-3">
+
+        <h2 class="h6 mb-3">Methodology versions</h2>
+
+        <ul class="list-unstyled small mb-0">
+
+          {% for m in methodologies %}
+
+          <li class="mb-2">
+
+            <strong>{{ m.label }}</strong> ({{ m.version_key }}){% if m.product_type %} — {{ m.product_type }}{% endif %}
+
+            {% if m.version_key == 'nordic-epod-eol-v1' %}
+
+            <span class="badge text-bg-secondary ms-1">nordic_epod_workbook_literal_kg</span>
+
+            {% endif %}
+
+          </li>
+
+          {% endfor %}
+
+        </ul>
+
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+
+
+
+<script>
+
+(function () {
+
+  const factorUrl = {{ url_for('sustainability.api_admin_update_average_factor', factor_id=0)|tojson }}.replace('/0', '/');
+
+  const profileUrl = {{ url_for('sustainability.api_admin_update_eol_profile', profile_id=0)|tojson }}.replace('/0', '/');
+
+
+
+  document.querySelectorAll('.factor-save').forEach((btn) => {
+
+    btn.addEventListener('click', async () => {
+
+      const row = btn.closest('tr');
+
+      const id = row.dataset.factorId;
+
+      const res = await fetch(factorUrl + id, {
+
+        method: 'POST',
+
+        headers: { 'Content-Type': 'application/json' },
+
+        body: JSON.stringify({
+
+          value: Number(row.querySelector('.factor-value').value),
+
+          emission_factor: Number(row.querySelector('.factor-ef').value) || null,
+
+        }),
+
+      });
+
+      if (!res.ok) alert('Save failed');
+
+      else btn.textContent = 'Saved';
+
+    });
+
+  });
+
+
+
+  document.querySelectorAll('.profile-save').forEach((btn) => {
+
+    btn.addEventListener('click', async () => {
+
+      const row = btn.closest('tr');
+
+      const id = row.dataset.profileId;
+
+      const res = await fetch(profileUrl + id, {
+
+        method: 'POST',
+
+        headers: { 'Content-Type': 'application/json' },
+
+        body: JSON.stringify({
+
+          ratio_pct: Number(row.querySelector('.profile-ratio').value),
+
+          weight_fraction: Number(row.querySelector('.profile-weight').value),
+
+        }),
+
+      });
+
+      if (!res.ok) alert('Save failed');
+
+      else btn.textContent = 'Saved';
+
+    });
+
+  });
+
+})();
+
+</script>
+
+{% endblock %}
+
