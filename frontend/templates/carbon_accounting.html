@@ -8,10 +8,10 @@
       <h2 class="mb-1">Carbon Accounting</h2>
       <div class="text-muted">Reporting year: {{ year }}</div>
     </div>
-    <a class="btn btn-ghost d-inline-flex align-items-center" href="{{ url_for('home') }}">
-      {{ illu.illu_arrow_left('me-1') }}Back to Overview
-    </a>
   </div>
+
+  {% set workspace_panels = workspace_panels() %}
+  {% include 'partials/workspace_context_rail.html' %}
 
   <div class="row g-3">
     <div class="col-lg-4">

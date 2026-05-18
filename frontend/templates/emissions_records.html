@@ -11,13 +11,10 @@
         Canonical mapped emissions (normalized storage). Dashboards, carbon accounting, and admin reports aggregate from the same underlying mapping outputs as this table.
       </p>
     </div>
-    <div class="d-flex flex-wrap gap-2">
-      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('carbon_accounting') }}">Carbon accounting</a>
-      {% if current_user.is_admin %}
-      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin_mapping_reconciliation_page') }}">Reconciliation</a>
-      {% endif %}
-    </div>
   </div>
+
+  {% set workspace_panels = workspace_panels() %}
+  {% include 'partials/workspace_context_rail.html' %}
 
   {% if mismatch_any %}
   <div class="alert alert-warning py-2 small mb-3" role="status">

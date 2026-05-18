@@ -33,6 +33,9 @@
     {% if current_user.is_authenticated %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/collaboration.css') }}">
     {% endif %}
+    {% if current_user.is_authenticated %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/workspace-context.css') }}">
+    {% endif %}
     {% block extra_head %}{% endblock %}
 </head>
 <body>

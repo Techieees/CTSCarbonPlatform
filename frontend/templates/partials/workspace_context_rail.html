@@ -1,0 +1,73 @@
+{# Contextual workflow rail — lightweight continuation layer (not a dashboard) #}
+{% if workspace_panels %}
+<section class="workspace-context{% if workspace_panels.compact %} workspace-context--compact{% endif %}" aria-label="Workspace shortcuts">
+  <div class="workspace-context__grid">
+    {% if workspace_panels.continue %}
+    <div class="workspace-context__panel workspace-context__panel--primary">
+      <h2 class="workspace-context__title">Continue workflow</h2>
+      <ul class="workspace-context__list">
+        {% for item in workspace_panels.continue %}
+        <li>
+          <a class="workspace-context__link" href="{{ item.href }}">
+            <span class="workspace-context__link-label">{{ item.label }}</span>
+            {% if item.meta %}
+            <span class="workspace-context__link-meta">{{ item.meta }}</span>
+            {% endif %}
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    {% if workspace_panels.related %}
+    <div class="workspace-context__panel">
+      <h2 class="workspace-context__title">Related tools</h2>
+      <ul class="workspace-context__list workspace-context__list--compact">
+        {% for item in workspace_panels.related %}
+        <li>
+          <a class="workspace-context__link workspace-context__link--compact" href="{{ item.href }}">{{ item.label }}</a>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    {% if workspace_panels.recent %}
+    <div class="workspace-context__panel">
+      <h2 class="workspace-context__title">Recent pages</h2>
+      <ul class="workspace-context__list workspace-context__list--compact">
+        {% for item in workspace_panels.recent %}
+        <li>
+          <a class="workspace-context__link workspace-context__link--compact" href="{{ item.href }}">{{ item.label }}</a>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    {% if workspace_panels.status %}
+    <div class="workspace-context__panel workspace-context__panel--status">
+      <h2 class="workspace-context__title">Status</h2>
+      <ul class="workspace-context__status-list">
+        {% for item in workspace_panels.status %}
+        <li>
+          {% if item.href %}
+          <a class="workspace-context__status" href="{{ item.href }}">
+            <span class="workspace-context__status-label">{{ item.label }}</span>
+            <span class="workspace-context__status-value">{{ item.value }}</span>
+          </a>
+          {% else %}
+          <div class="workspace-context__status">
+            <span class="workspace-context__status-label">{{ item.label }}</span>
+            <span class="workspace-context__status-value">{{ item.value }}</span>
+          </div>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endif %}

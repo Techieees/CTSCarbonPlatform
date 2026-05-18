@@ -15,6 +15,9 @@
     </div>
   </div>
 
+  {% set workspace_panels = workspace_panels() %}
+  {% include 'partials/workspace_context_rail.html' %}
+
   <div class="card shadow-sm border-secondary-subtle eg-card eg-toolbar">
     <div class="card-body py-3">
       <form id="mrFilterForm" class="row g-2 align-items-end">

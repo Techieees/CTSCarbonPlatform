@@ -25829,6 +25829,245 @@ def admin_data():
     return jsonify({"data": data})
 
 
+_WORKSPACE_ENDPOINT_LABELS: dict[str, str] = {
+    "home": "Overview",
+    "dashboard": "Data entry",
+    "feed": "Feed",
+    "mapping_runs": "Mapping runs",
+    "admin_mapping_runs": "Mapping runs (admin)",
+    "mapping_review_page": "Mapping review",
+    "mapping_previews_page": "Mapping previews",
+    "carbon_accounting": "Carbon accounting",
+    "emissions_records_page": "Emissions records",
+    "data_sources_klarakarbon": "Klarakarbon source",
+    "analytics_emissions_totals": "Totals tables",
+    "analytics_emissions_map": "Emissions map",
+    "governance_audit_ready_output": "Audit-ready output",
+    "reports_page": "Reports",
+    "audit_2025_page": "Audit 2025",
+    "settings_profile_page": "Profile settings",
+    "sustainability.sustainability_estimation_hub": "Methodology estimation",
+    "sustainability.sustainability_products_page": "Products workflow",
+}
+
+
+def _workspace_context_url_map(endpoint: str | None) -> dict[str, str]:
+    """Stable deep links for contextual workspace panels."""
+    ep = (endpoint or "").strip()
+    runs_ep = "admin_mapping_runs" if bool(getattr(current_user, "is_admin", False)) else "mapping_runs"
+    scope_methodology = url_for("methodology_scope1")
+    if ep == "scope2_detail":
+        scope_methodology = url_for("methodology_scope2")
+    elif ep == "scope3_detail":
+        scope_methodology = url_for("methodology_scope3")
+
+    latest_preview_run_id = ""
+    try:
+        arch = (
+            MappingPreviewArchive.query.order_by(MappingPreviewArchive.created_at.desc())
+            .limit(1)
+            .first()
+        )
+        if arch and getattr(arch, "run_id", None):
+            latest_preview_run_id = str(arch.run_id)
+    except Exception:
+        pass
+
+    urls = {
+        "home": url_for("home"),
+        "dashboard": url_for("dashboard"),
+        "feed": url_for("feed"),
+        "feed_mine": url_for("feed", view="mine"),
+        "mapping_runs": url_for(runs_ep),
+        "mapping_review": url_for("mapping_review_page"),
+        "mapping_review_pending": url_for("mapping_review_page") + "?review_status=Pending",
+        "mapping_previews": url_for("mapping_previews_page"),
+        "mapping_preview_latest": (
+            url_for("mapping_preview_detail", run_id=latest_preview_run_id)
+            if latest_preview_run_id
+            else url_for("mapping_previews_page")
+        ),
+        "carbon_accounting": url_for("carbon_accounting"),
+        "emissions_records": url_for("emissions_records_page"),
+        "scope1": url_for("scope1_detail"),
+        "scope3": url_for("scope3_detail"),
+        "analytics_totals": url_for("analytics_emissions_totals"),
+        "analytics_mapped": url_for("analytics_mapped_window_output"),
+        "analytics_map": url_for("analytics_emissions_map"),
+        "governance_audit": url_for("governance_audit_ready_output"),
+        "methodology": url_for("methodology"),
+        "methodology_scope": scope_methodology,
+        "locations": url_for("locations"),
+        "reports": url_for("reports_page"),
+        "newsletters": url_for("newsletters_page"),
+        "events": url_for("events_page"),
+        "audit_2025": url_for("audit_2025_page"),
+        "settings_profile": url_for("settings_profile_page"),
+        "mapping_reconciliation": url_for("admin_mapping_reconciliation_page"),
+        "sustainability_estimation": url_for("sustainability.sustainability_estimation_hub"),
+        "sustainability_products": url_for("sustainability.sustainability_products_page"),
+        "data_output_klarakarbon": url_for("data_output_klarakarbon"),
+        "admin_jobs": url_for("admin_background_jobs"),
+    }
+    return urls
+
+
+def _workspace_recent_pages_for_user(user_id: int, url_map: dict[str, str]) -> list[dict[str, str]]:
+    """Last distinct operational pages (lightweight; no full history UI)."""
+    skip = {
+        "static",
+        "login",
+        "logout",
+        "register",
+        "settings_profile_page",
+        "search_page",
+        None,
+    }
+    endpoint_to_key = {
+        "home": "home",
+        "dashboard": "dashboard",
+        "feed": "feed",
+        "mapping_runs": "mapping_runs",
+        "admin_mapping_runs": "mapping_runs",
+        "mapping_review_page": "mapping_review",
+        "mapping_previews_page": "mapping_previews",
+        "carbon_accounting": "carbon_accounting",
+        "emissions_records_page": "emissions_records",
+        "data_sources_klarakarbon": "data_output_klarakarbon",
+        "analytics_emissions_totals": "analytics_totals",
+        "analytics_emissions_map": "analytics_map",
+        "governance_audit_ready_output": "governance_audit",
+        "reports_page": "reports",
+        "audit_2025_page": "audit_2025",
+        "sustainability.sustainability_estimation_hub": "sustainability_estimation",
+        "sustainability.sustainability_products_page": "sustainability_products",
+    }
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    try:
+        _ensure_db_tables()
+        rows = (
+            PageVisitEvent.query.filter_by(user_id=int(user_id))
+            .filter(PageVisitEvent.endpoint.isnot(None))
+            .order_by(PageVisitEvent.created_at.desc())
+            .limit(48)
+            .all()
+        )
+        for row in rows:
+            ep = str(getattr(row, "endpoint", "") or "").strip()
+            if not ep or ep in skip or ep in seen:
+                continue
+            key = endpoint_to_key.get(ep)
+            if not key or key not in url_map:
+                continue
+            seen.add(ep)
+            out.append(
+                {
+                    "label": _WORKSPACE_ENDPOINT_LABELS.get(ep, ep.replace("_", " ").title()),
+                    "href": url_map[key],
+                }
+            )
+            if len(out) >= 4:
+                break
+    except Exception:
+        pass
+    return out
+
+
+def _workspace_context_stats(endpoint: str | None, url_map: dict[str, str] | None = None) -> dict:
+    ep = (endpoint or "").strip()
+    stats: dict = {}
+    stats_endpoints = {
+        "home",
+        "feed",
+        "mapping_runs",
+        "admin_mapping_runs",
+        "carbon_accounting",
+        "mapping_review_page",
+        "emissions_records_page",
+        "data_sources_klarakarbon",
+        "locations",
+        "settings_profile_page",
+    }
+    if ep not in stats_endpoints:
+        return stats
+    try:
+        _ensure_db_tables()
+        uid = int(current_user.id)
+        recent = (
+            MappingRun.query.filter_by(user_id=uid)
+            .order_by(MappingRun.created_at.desc())
+            .limit(1)
+            .first()
+        )
+        if recent:
+            when = recent.created_at.strftime("%Y-%m-%d %H:%M") if recent.created_at else ""
+            stats["last_run_label"] = f"{recent.company_name} · {recent.sheet_name} · {recent.status} · {when}".strip()
+
+        if ep in ("mapping_runs", "admin_mapping_runs"):
+            q = MappingRun.query.filter_by(user_id=uid) if ep == "mapping_runs" else MappingRun.query
+            succeeded = q.filter(MappingRun.status == "succeeded").count()
+            failed = q.filter(MappingRun.status == "failed").count()
+            pending = q.filter(~MappingRun.status.in_(("succeeded", "failed"))).count()
+            stats["runs_summary"] = f"{succeeded} ok · {failed} failed · {pending} in progress"
+        elif ep == "home":
+            total = MappingRun.query.filter_by(user_id=uid).count()
+            stats["mapping_runs_meta"] = f"{total} run(s) on record" if total else "No runs yet — start from data entry"
+        elif ep == "mapping_review_page":
+            pending_review = int(
+                MappingReviewSnapshot.query.filter(
+                    MappingReviewSnapshot.review_status.in_(("Pending", "Needs Review"))
+                ).count()
+            )
+            stats["review_queue_label"] = (
+                f"{pending_review} row(s) pending review" if pending_review else "No rows awaiting review"
+            )
+        elif ep == "data_sources_klarakarbon":
+            stats["kk_output_ready"] = bool(
+                (STAGE2_KLARAKARBON_DIR / "klarakarbon_summary.xlsx").exists()
+            )
+        elif ep == "settings_profile_page" and url_map:
+            stats["recent_pages"] = _workspace_recent_pages_for_user(uid, url_map)
+    except Exception:
+        pass
+    return stats
+
+
+@app.context_processor
+def _workspace_panels_context():
+    from frontend.platform.workspace_context import build_workspace_panels
+
+    def workspace_panels():
+        try:
+            if not current_user.is_authenticated:
+                return None
+            ep = request.endpoint or ""
+            public_eps = {
+                "index",
+                "platform",
+                "methodology",
+                "login",
+                "register",
+            }
+            if ep.startswith("methodology") or ep.startswith("impact"):
+                return None
+            if ep in public_eps:
+                return None
+            urls = _workspace_context_url_map(ep)
+            stats = _workspace_context_stats(ep, urls)
+            return build_workspace_panels(
+                ep,
+                is_admin=bool(getattr(current_user, "is_admin", False)),
+                can_suppliers=_user_can_manage_supplier_registries(current_user),
+                stats=stats,
+                urls=urls,
+            )
+        except Exception:
+            return None
+
+    return dict(workspace_panels=workspace_panels)
+
+
 from frontend.sustainability import models as _sustainability_models  # noqa: F401
 from frontend.sustainability import register_sustainability
 

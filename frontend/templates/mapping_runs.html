@@ -11,10 +11,10 @@
       <h2 class="mb-1">Mapping Runs</h2>
       <div class="text-muted">Your “Map now” runs and downloadable outputs.</div>
     </div>
-    <a class="btn btn-ghost d-inline-flex align-items-center" href="{{ url_for('dashboard') }}">
-      {{ illu.illu_arrow_left('me-1') }}Dashboard
-    </a>
   </div>
+
+  {% set workspace_panels = workspace_panels() %}
+  {% include 'partials/workspace_context_rail.html' %}
 
   <div class="card">
     <div class="card-body">
@@ -66,7 +66,12 @@
       <div class="text-center py-5">
         {{ illu.illu_empty_bolt() }}
         <div class="mt-3 text-muted">No mapping runs yet.</div>
-        <div class="text-muted">Run “Map now” from the Dashboard to generate outputs.</div>
+        <p class="text-muted mb-3">Run <strong>Map now</strong> from Data Entry to generate outputs, then continue in Mapping Review.</p>
+        <div class="d-flex flex-wrap justify-content-center gap-2">
+          <a class="btn btn-primary btn-sm" href="{{ url_for('dashboard') }}">Open data entry</a>
+          <a class="btn btn-ghost btn-sm" href="{{ url_for('mapping_previews_page') }}">Mapping previews</a>
+          <a class="btn btn-ghost btn-sm" href="{{ url_for('mapping_review_page') }}">Mapping review</a>
+        </div>
       </div>
       {% endif %}
     </div>

@@ -18,6 +18,11 @@
       <p class="locations-page__subtitle mb-0"> Users can analyze headquarters, offices, and active sites alongside multiple climate datasets including temperature trends, precipitation patterns, wet day frequency, and water stress exposure. The platform supports layered environmental visualization to help identify potential operational risks across different geographic regions.</p>
     </div>
 
+    {% if current_user.is_authenticated %}
+    {% set workspace_panels = workspace_panels() %}
+    {% include 'partials/workspace_context_rail.html' %}
+    {% endif %}
+
     <div id="map-container" class="locations-map-card">
       <div class="locations-map-layout main-layout">
         <div class="locations-map-wrap">

@@ -118,22 +118,12 @@
       </main>
 
       <aside class="feed-column feed-column--right">
-        <section class="feed-card feed-sidebar-card">
-          <h2 class="feed-sidebar-card__title">Platform Updates</h2>
-          <ul class="feed-widget-list">
-            <li>Product updates shared by your team will appear here through real posts.</li>
-            <li>Use alerts for important platform notices and operational changes.</li>
-          </ul>
+        {% set workspace_panels = workspace_panels() %}
+        {% if workspace_panels %}
+        <section class="feed-card feed-sidebar-card feed-sidebar-card--workspace">
+          {% include 'partials/workspace_context_rail.html' %}
         </section>
-
-        <section class="feed-card feed-sidebar-card">
-          <h2 class="feed-sidebar-card__title">Suggested content</h2>
-          <ul class="feed-widget-list">
-            <li>Share a report when a new export is ready.</li>
-            <li>Post an alert when deadlines or reporting windows change.</li>
-            <li>Use updates for internal progress and delivery notes.</li>
-          </ul>
-        </section>
+        {% endif %}
       </aside>
     </div>
   </div>

@@ -138,6 +138,10 @@
 {% block content %}
 <!-- Profile settings: avatar crop is a personality test -->
 <div class="container mt-4 mt-lg-5">
+    <div class="profile-workspace-wrap mb-3">
+      {% set workspace_panels = workspace_panels() %}
+      {% include 'partials/workspace_context_rail.html' %}
+    </div>
     <div class="row justify-content-center">
         <div class="col-md-9 col-lg-8 profile-page">
             <div class="card">
